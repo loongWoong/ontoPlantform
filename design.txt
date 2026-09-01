@@ -1,0 +1,2092 @@
+下面给出一份可以作为 **OntoPlatform v0.1 总体架构设计基线** 的完整版本，并把它与已经收敛的 **Ontology Runtime Kernel v0.1** 的关系一次性定义清楚。
+
+---
+
+# OntoPlatform v0.1 总体设计
+
+## 1. 产品定位
+
+**OntoPlatform** 是一个面向业务人员、领域专家、开发者和 AI Agent 的本体智能应用平台。
+
+它以 **Ontology（本体）** 为业务语义中心，把：
+
+```text
+业务知识
++
+现实数据
++
+业务能力
++
+AI / Agent
++
+应用
+```
+
+统一到一个可设计、可发布、可运行的业务世界中。
+
+核心价值链：
+
+```text
+定义业务世界
+        ↓
+     Ontology
+        ↓
+连接现实数据
+        ↓
+       Data
+        ↓
+赋予业务能力
+        ↓
+    Capability
+        ↓
+形成领域应用
+        ↓
+   Application
+        ↓
+AI / Agent 智能使用
+        ↓
+ Runtime Kernel
+```
+
+一句话：
+
+> **OntoPlatform 负责“构建、治理和使用业务世界”，Ontology Runtime Kernel 负责“让业务世界真正运行起来”。**
+
+---
+
+# 2. 整体定位：Design Time + Run Time
+
+OntoPlatform 和 Kernel 最核心的关系，是：
+
+```text
+                  Design Time
+                       │
+                 OntoPlatform
+                       │
+           设计 / 配置 / 编排 / 发布
+                       │
+                       ▼
+                    Publish
+                       │
+                       ▼
+                   Run Time
+                       │
+             Ontology Runtime Kernel
+                       │
+             Object / Relation / State
+                       │
+                Function / Execution
+```
+
+所以两者不是简单的：
+
+```text
+Platform = Kernel 的超集
+```
+
+而是：
+
+```text
+OntoPlatform
+    = Design + Compose + Govern + Intelligence
+
+Runtime Kernel
+    = Semantic Execution + Runtime State
+```
+
+---
+
+# 3. 用户视角：只暴露 4 个核心概念
+
+虽然后端内部很复杂，但前端产品必须简单。
+
+用户真正需要理解：
+
+```text
+本体
+数据
+能力
+应用
+```
+
+加一个平台容器：
+
+```text
+工作空间
+```
+
+因此一级产品结构建议：
+
+```text
+工作空间
+
+├── 本体
+├── 数据
+├── 能力
+└── 应用
+
+AI 助手
+设置
+```
+
+不要让用户直接接触：
+
+```text
+ObjectType
+Projection
+Function
+Workflow
+Executor
+Runtime
+Semantic Context
+MCP
+```
+
+这些属于内部实现概念。
+
+---
+
+# 4. 工作空间 Workspace
+
+Workspace 是平台级隔离与组织容器。
+
+```text
+Workspace
+├── Ontology
+├── Data
+├── Capability
+└── Application
+```
+
+Workspace 负责：
+
+```text
+资源组织
+权限隔离
+生命周期
+发布范围
+```
+
+第一版不要引入：
+
+```text
+Workspace
+  ↓
+Solution
+  ↓
+Project
+```
+
+这种多级容器。
+
+---
+
+# 5. Ontology：平台核心领域
+
+Ontology 是整个 Platform 的中心语义模型。
+
+用户通过 Ontology 定义：
+
+> **这个业务世界里有什么东西，以及它们之间是什么关系。**
+
+Ontology 只负责描述业务世界结构，不吞并 Data、Capability、Workflow、Application。
+
+---
+
+## 5.1 Ontology 核心模型
+
+```text
+Ontology
+├── ObjectType
+│   └── Property
+├── Relation
+└── Vocabulary
+```
+
+例如高速领域：
+
+```text
+Vehicle
+TollStation
+Road
+Transaction
+Account
+```
+
+以及：
+
+```text
+Vehicle --passes--> TollStation
+TollStation --belongs_to--> Road
+Transaction --belongs_to--> Vehicle
+```
+
+---
+
+# 6. ObjectType
+
+定义业务对象类型：
+
+```yaml
+Vehicle:
+  description: 车辆
+
+  properties:
+    plate:
+      type: string
+
+    type:
+      type: string
+
+    balance:
+      type: number
+```
+
+平台中的 ObjectType 最终会编译成 Kernel 的：
+
+```text
+ObjectType
+```
+
+但二者不是同一个领域对象。
+
+---
+
+# 7. Relation
+
+定义对象之间的语义关系：
+
+```yaml
+passes:
+  source: Vehicle
+  target: TollStation
+```
+
+平台定义的是：
+
+```text
+Relation Definition
+```
+
+Kernel 运行的是：
+
+```text
+Relation Instance
+```
+
+即：
+
+```text
+Platform:
+Vehicle --passes--> TollStation
+
+Kernel:
+Vehicle/V001 --passes--> TollStation/ST001
+```
+
+---
+
+# 8. Vocabulary
+
+Vocabulary 是为了让业务语言和 Ontology 对齐。
+
+例如：
+
+```text
+收费站
+收费场站
+站点
+Toll Station
+```
+
+可以映射到：
+
+```text
+TollStation
+```
+
+Vocabulary 是后续 LLM 理解业务语义的重要基础。
+
+它属于 Platform，不进入 Kernel 的核心 Runtime 模型。
+
+---
+
+# 9. Ontology 生命周期
+
+Ontology 是设计时资产：
+
+```text
+Draft
+  ↓
+Validate
+  ↓
+Review
+  ↓
+Publish
+  ↓
+Runtime Schema
+```
+
+平台内部：
+
+```text
+Ontology
+```
+
+发布后生成：
+
+```text
+OntologySchema
+```
+
+然后进入 Kernel。
+
+---
+
+# 10. Ontology Compiler
+
+这是 Platform 和 Kernel 之间非常关键的防腐层。
+
+```text
+Platform Ontology
+        ↓
+Ontology Compiler
+        ↓
+Kernel OntologySchema
+```
+
+Compiler 负责：
+
+```text
+解析
+引用解析
+语义校验
+类型转换
+裁剪平台属性
+生成 Runtime Schema
+```
+
+因此：
+
+> Kernel 不认识 Platform 内部复杂的 Ontology Model。
+
+---
+
+# 11. Data：连接现实世界
+
+Data Domain 负责：
+
+> **如何把现实世界的数据映射到 Ontology 世界。**
+
+核心模型：
+
+```text
+Data
+├── DataSource
+├── DataAsset
+├── Mapping
+└── Projection
+```
+
+---
+
+# 12. DataSource
+
+支持：
+
+```text
+Database
+API
+ES
+File
+Object Storage
+MQ
+```
+
+例如：
+
+```text
+MySQL
+ES
+Kafka
+REST API
+```
+
+它们属于 Infrastructure 的具体实现。
+
+Domain 只认识：
+
+```text
+DataSource
+```
+
+---
+
+# 13. Mapping
+
+Mapping 解决：
+
+> 数据字段与业务语义怎么对应？
+
+例如：
+
+```text
+vehicle_plate
+      ↓
+Vehicle.plate
+```
+
+或：
+
+```text
+station_code
+      ↓
+TollStation.code
+```
+
+Mapping 是：
+
+> **语义映射规则。**
+
+---
+
+# 14. Projection
+
+Projection 解决：
+
+> 如何从数据源得到运行时对象和关系？
+
+例如：
+
+```text
+transaction table
+vehicle table
+station table
+       ↓
+    Projection
+       ↓
+Vehicle
+Transaction
+passes Relation
+```
+
+所以：
+
+```text
+Mapping
+= 字段/语义对应
+
+Projection
+= 从源数据构造语义状态
+```
+
+这是两个不同层次。
+
+---
+
+# 15. Data → Kernel
+
+Data 不直接操作 Kernel Store。
+
+统一：
+
+```text
+DataSource
+    ↓
+Mapping
+    ↓
+Projection
+    ↓
+RuntimeGateway
+    ↓
+Kernel
+```
+
+最终形成：
+
+```text
+Source State
+     ↓
+Semantic State
+```
+
+其中：
+
+> **Kernel 是 Semantic State 的唯一运行时事实来源。**
+
+Platform 不复制一份 PlatformObject。
+
+---
+
+# 16. State 的最终归属
+
+系统存在三种状态：
+
+```text
+Source State
+Semantic State
+Application State
+```
+
+分别属于：
+
+```text
+Data
+Kernel
+Application
+```
+
+关系：
+
+```text
+External Data
+     ↓
+Source State
+
+Mapping / Projection
+     ↓
+
+Kernel
+     ↓
+Semantic State
+
+Application
+     ↓
+Application State
+```
+
+特别重要：
+
+> Platform 不维护第二套 Semantic Object State。
+
+否则最终会变成：
+
+```text
+Platform Object
+     ↕
+Kernel Object
+```
+
+导致同步地狱。
+
+---
+
+# 17. Capability：平台的“动词世界”
+
+如果说：
+
+```text
+Ontology = 世界有什么
+```
+
+那么：
+
+```text
+Capability = 世界可以做什么
+```
+
+Capability 是 Platform 的第二核心领域。
+
+例如：
+
+```text
+车辆充值
+收费站开启
+拥堵分析
+异常车辆处置
+交易异常分析
+```
+
+---
+
+# 18. Function / Workflow / Tool 的层级
+
+平台内部统一采用：
+
+```text
+Function
+   ↓
+Capability
+   ↓
+Application
+```
+
+其中：
+
+```text
+Function
+```
+
+来自 Kernel，是最小执行能力。
+
+```text
+Workflow
+```
+
+是 Platform 中组合 Function 的实现方式。
+
+```text
+Capability
+```
+
+是面向业务的能力抽象。
+
+```text
+Tool
+```
+
+只是向 Agent 暴露 Capability 的协议形式。
+
+因此：
+
+```text
+Function
+= 原子执行
+
+Workflow
+= 能力编排
+
+Capability
+= 业务能力
+
+Tool
+= Agent 接口
+```
+
+---
+
+# 19. Capability 的实现方式
+
+一个 Capability 可以由：
+
+```text
+Single Function
+Workflow
+Agent
+AI + Function
+```
+
+实现。
+
+例如：
+
+```text
+Capability:
+异常车辆处置
+```
+
+内部：
+
+```text
+查询车辆
+   ↓
+查询通行记录
+   ↓
+分析异常
+   ↓
+调用处置函数
+   ↓
+发送通知
+```
+
+用户看到的只有：
+
+```text
+异常车辆处置
+```
+
+而不是 Workflow DAG。
+
+---
+
+# 20. Capability 发布生命周期
+
+```text
+Draft
+  ↓
+Validate
+  ↓
+Test
+  ↓
+Publish
+  ↓
+Executable
+```
+
+发布以后：
+
+```text
+Capability
+     ↓
+Function / Workflow
+     ↓
+RuntimeGateway
+     ↓
+Kernel
+```
+
+---
+
+# 21. Application：面向最终用户的产品
+
+Application 是 Platform 最上层的产品抽象。
+
+它负责：
+
+```text
+UI
+Query
+View
+Capability
+Workflow
+Agent
+```
+
+例如：
+
+```text
+收费站拥堵监控
+车辆异常分析
+清分结算分析
+高速运营助手
+```
+
+用户创建的是：
+
+> **应用**
+
+而不是：
+
+> Workflow / Function / Tool。
+
+---
+
+# 22. Application 内部结构
+
+可以：
+
+```text
+Application
+├── Views
+├── Queries
+├── Capabilities
+├── Workflows
+└── Agents
+```
+
+但这些是内部组成。
+
+前端产品统一叫：
+
+```text
+应用
+```
+
+---
+
+# 23. View
+
+View 是 Ontology → UI 的投影。
+
+例如：
+
+```text
+Object
+  ↓
+Card
+
+Relation
+  ↓
+Table / Graph
+
+Property
+  ↓
+Field
+
+Query
+  ↓
+Chart
+
+Spatial Object
+  ↓
+Map
+```
+
+最终形成：
+
+```text
+Ontology
+    ↓
+Application View
+    ↓
+React / HTML
+```
+
+这也是 Ontology Driven UI 的基础。
+
+---
+
+# 24. Intelligence：AI 不作为独立用户世界
+
+AI 是横向能力。
+
+而不是：
+
+```text
+本体
+数据
+能力
+应用
+AI
+```
+
+五个并列业务模块。
+
+AI 应该贯穿：
+
+```text
+Ontology
+  ↓
+Data
+  ↓
+Capability
+  ↓
+Application
+```
+
+具体：
+
+```text
+自然语言建模
+AI 辅助 Mapping
+AI Capability Creation
+AI Application Generation
+Agent
+Natural Language Query
+```
+
+---
+
+# 25. Intelligence 内部建议三个核心部分
+
+```text
+Intelligence
+├── Semantic
+├── LLM
+└── Agent
+```
+
+---
+
+# 26. Semantic：连接 Ontology 与 LLM
+
+Semantic Layer 负责：
+
+```text
+Ontology → AI Context
+User Language → Ontology Concept
+```
+
+例如：
+
+用户：
+
+> “帮我找出拥堵收费站附近的异常车辆。”
+
+Semantic Layer 识别：
+
+```text
+拥堵
+→ TollStation.status
+
+附近
+→ Spatial / Relation semantics
+
+异常车辆
+→ Vehicle + Anomaly capability
+```
+
+这一步不应该全部依赖 Prompt。
+
+---
+
+# 27. LLM Layer
+
+LLM 负责：
+
+```text
+理解
+结构化生成
+推理
+规划
+判断
+```
+
+通过：
+
+```python
+LLMProvider
+```
+
+连接：
+
+```text
+OpenAI
+Qwen
+GLM
+llama.cpp
+vLLM
+Ollama
+```
+
+Domain 不依赖具体模型。
+
+---
+
+# 28. Agent Layer
+
+Agent 是：
+
+```text
+Goal
+ ↓
+Understand
+ ↓
+Plan
+ ↓
+Select Capability
+ ↓
+Execute
+ ↓
+Observe
+ ↓
+Continue
+```
+
+Agent 不直接操作 Kernel。
+
+正确：
+
+```text
+Agent
+  ↓
+Capability
+  ↓
+RuntimeGateway
+  ↓
+Kernel
+```
+
+基础 Ontology 查询除外：
+
+```text
+ontology.describe
+ontology.get
+ontology.find
+ontology.related
+```
+
+可以作为 Agent 基础观察能力。
+
+---
+
+# 29. Governance
+
+Governance 是横切领域。
+
+第一版只需要：
+
+```text
+Access
+Lifecycle
+Audit
+```
+
+---
+
+## Access
+
+```text
+用户
+角色
+Workspace
+资源
+权限
+```
+
+---
+
+## Lifecycle
+
+统一管理：
+
+```text
+Draft
+Validated
+Published
+Deprecated
+```
+
+适用于：
+
+```text
+Ontology
+Capability
+Application
+```
+
+---
+
+## Audit
+
+记录：
+
+```text
+谁
+什么时候
+操作了什么
+产生了什么变化
+```
+
+利用 Kernel 的：
+
+```text
+Change
+Execution
+```
+
+即可。
+
+第一版不用自己重新建立一套状态变更体系。
+
+---
+
+# 30. Platform 与 Kernel 的核心关系
+
+这是整套设计最关键的接口：
+
+```text
+                 OntoPlatform
+                      │
+              RuntimeGateway
+                      │
+                      ▼
+          Ontology Runtime Kernel
+```
+
+Platform 不能直接：
+
+```text
+Platform → SQLite
+Platform → Kernel Store
+```
+
+而统一：
+
+```text
+Platform
+   ↓
+RuntimeGateway
+   ↓
+Kernel
+```
+
+---
+
+# 31. RuntimeGateway
+
+RuntimeGateway 是 Platform 的 Anti-Corruption Layer。
+
+负责：
+
+```text
+Platform Model
+      ↕
+Kernel Model
+```
+
+主要 API：
+
+```text
+publish_schema()
+get_object()
+find_objects()
+related()
+invoke()
+observe_changes()
+```
+
+并负责：
+
+```text
+ObjectRef 转换
+FunctionCall 转换
+Schema 转换
+Change 转换
+错误转换
+```
+
+---
+
+# 32. Platform 与 Kernel 的“所有权关系”
+
+这是最终必须明确的。
+
+| 对象                        | 所属         |
+| ------------------------- | ---------- |
+| Ontology                  | Platform   |
+| ObjectType Definition     | Platform   |
+| Relation Definition       | Platform   |
+| Vocabulary                | Platform   |
+| DataSource                | Platform   |
+| Mapping                   | Platform   |
+| Projection                | Platform   |
+| Capability                | Platform   |
+| Workflow                  | Platform   |
+| Application               | Platform   |
+| Agent                     | Platform   |
+| Object Runtime Instance   | **Kernel** |
+| Relation Runtime Instance | **Kernel** |
+| Runtime State             | **Kernel** |
+| Runtime Function          | **Kernel** |
+| Function Execution        | **Kernel** |
+| Change                    | **Kernel** |
+
+Platform 负责定义与管理。
+
+Kernel 负责运行与保存语义状态。
+
+---
+
+# 33. Function 归属需要特别说明
+
+这里容易产生误解：
+
+```text
+Platform Capability
+      ↓
+Kernel Function
+```
+
+不是说 Platform 拥有 Kernel Function 的实例。
+
+而是：
+
+```text
+Platform
+定义 Capability
+       ↓
+编排 / 绑定
+       ↓
+Kernel Function
+```
+
+Kernel Function 是：
+
+> 最小运行时能力。
+
+Capability 是：
+
+> 面向业务的完整能力。
+
+---
+
+# 34. 三条核心业务链
+
+## 链一：知识建模
+
+```text
+业务知识
+    ↓
+Ontology
+    ↓
+Ontology Compiler
+    ↓
+Kernel Schema
+```
+
+---
+
+## 链二：数据进入业务世界
+
+```text
+External Data
+    ↓
+DataSource
+    ↓
+Mapping
+    ↓
+Projection
+    ↓
+RuntimeGateway
+    ↓
+Kernel Object / Relation
+```
+
+---
+
+## 链三：AI / Application 驱动业务世界
+
+```text
+User / AI
+    ↓
+Application / Agent
+    ↓
+Capability
+    ↓
+RuntimeGateway
+    ↓
+Kernel Function
+    ↓
+State Change
+    ↓
+Kernel State
+```
+
+三个链最终组成闭环：
+
+```text
+            Ontology
+            /      \
+           /        \
+        Data       Capability
+          \          /
+           \        /
+            Runtime
+               |
+          Application
+               ↑
+               |
+              AI
+```
+
+---
+
+# 35. OntoPlatform 的领域模型
+
+最终可以收敛为：
+
+```text
+Workspace
+│
+├── Ontology
+│   ├── ObjectType
+│   ├── Relation
+│   └── Vocabulary
+│
+├── Data
+│   ├── DataSource
+│   ├── DataAsset
+│   ├── Mapping
+│   └── Projection
+│
+├── Capability
+│   ├── Capability
+│   └── Workflow
+│
+└── Application
+    ├── View
+    ├── Query
+    └── Agent
+```
+
+横切：
+
+```text
+Governance
+├── Access
+├── Lifecycle
+└── Audit
+```
+
+AI：
+
+```text
+Intelligence
+├── Semantic
+├── LLM
+└── Agent
+```
+
+运行：
+
+```text
+RuntimeGateway
+      ↓
+Ontology Runtime Kernel
+```
+
+---
+
+# 36. 后端架构
+
+建议最终：
+
+```text
+onto-platform/
+│
+├── domain/
+│   ├── workspace/
+│   ├── ontology/
+│   ├── data/
+│   ├── capability/
+│   ├── application/
+│   ├── intelligence/
+│   └── governance/
+│
+├── application/
+│   ├── workspace/
+│   ├── ontology/
+│   ├── data/
+│   ├── capability/
+│   ├── application/
+│   └── intelligence/
+│
+├── ports/
+│   ├── runtime.py
+│   ├── datasource.py
+│   ├── llm.py
+│   ├── storage.py
+│   └── execution.py
+│
+├── infrastructure/
+│   ├── runtime/
+│   ├── datasource/
+│   ├── llm/
+│   ├── persistence/
+│   └── execution/
+│
+└── interfaces/
+    ├── api/
+    ├── web/
+    ├── cli/
+    └── mcp/
+```
+
+---
+
+# 37. Domain Layer
+
+Domain 只表达业务语义：
+
+```text
+Workspace
+Ontology
+DataSource
+Mapping
+Projection
+Capability
+Application
+Agent
+Governance
+```
+
+不允许知道：
+
+```text
+SQLite
+PostgreSQL
+MCP
+HTTP
+OpenAI
+llama.cpp
+```
+
+---
+
+# 38. Application Layer
+
+按照用户 Use Case 组织：
+
+```text
+CreateOntology
+ValidateOntology
+PublishOntology
+
+ConnectDataSource
+CreateMapping
+PublishProjection
+
+CreateCapability
+PublishCapability
+
+CreateApplication
+PublishApplication
+
+AskOntology
+RunAgent
+```
+
+不要设计成大量：
+
+```text
+OntologyService
+DataService
+AgentService
+```
+
+这种“大服务类”。
+
+---
+
+# 39. Infrastructure
+
+实现 Port：
+
+```text
+StateStore
+DataSourceConnector
+LLMProvider
+FunctionExecutor
+Repository
+```
+
+例如：
+
+```text
+SQLite
+PostgreSQL
+ES
+Kafka
+Qwen
+OpenAI
+llama.cpp
+Python
+```
+
+全部属于 Infrastructure。
+
+---
+
+# 40. Interfaces
+
+提供：
+
+```text
+REST API
+Web UI
+CLI
+MCP
+```
+
+这些只是协议适配。
+
+不要包含领域逻辑。
+
+---
+
+# 41. 前端信息架构
+
+建议：
+
+```text
+┌──────────────────────────────┐
+│       OntoPlatform           │
+├──────────────────────────────┤
+│ 工作空间                      │
+├──────────────────────────────┤
+│ 本体                          │
+│ 数据                          │
+│ 能力                          │
+│ 应用                          │
+├──────────────────────────────┤
+│ AI 助手                       │
+│ 设置                          │
+└──────────────────────────────┘
+```
+
+用户主流程：
+
+```text
+创建工作空间
+    ↓
+定义本体
+    ↓
+连接数据
+    ↓
+创建能力
+    ↓
+构建应用
+```
+
+AI 可以在每一步辅助。
+
+---
+
+# 42. 前端设计原则
+
+### 第一原则
+
+> **用户看到的是业务语言，不是技术语言。**
+
+例如：
+
+```text
+对象
+关系
+能力
+应用
+```
+
+而不是：
+
+```text
+ObjectType
+RelationDef
+Function
+Workflow
+Runtime
+```
+
+---
+
+### 第二原则
+
+> **复杂性默认隐藏，按需展开。**
+
+例如 Capability 页面：
+
+```text
+异常车辆处置
+```
+
+点击“实现详情”后才看到：
+
+```text
+Workflow
+Functions
+Agent
+```
+
+---
+
+### 第三原则
+
+> **AI 是平台的自然语言入口。**
+
+每个页面都应该能表达：
+
+```text
+“帮我完成这个事情”
+```
+
+而不是要求用户学习完整配置流程。
+
+---
+
+# 43. Ontology 的普适性
+
+Ontology 不依赖高速行业。
+
+例如：
+
+### 高速
+
+```text
+Vehicle
+TollStation
+Transaction
+Road
+```
+
+### 制造
+
+```text
+Equipment
+ProductionLine
+WorkOrder
+Material
+```
+
+### 政务
+
+```text
+Person
+Organization
+Application
+Event
+```
+
+### 企业经营
+
+```text
+Customer
+Contract
+Product
+Order
+Account
+```
+
+底层全部归约为：
+
+```text
+Object
+Property
+Relation
+Capability
+Application
+```
+
+所以普适性来自：
+
+> **稳定的语义抽象，而不是支持大量行业专用功能。**
+
+---
+
+# 44. 为什么这个设计适合 LLM
+
+传统方式：
+
+```text
+LLM
+ ↓
+一堆 API
+ ↓
+业务系统
+```
+
+OntoPlatform：
+
+```text
+LLM
+ ↓
+Ontology
+ ↓
+Object / Relation
+ ↓
+Capability
+ ↓
+Runtime
+```
+
+LLM 先理解：
+
+```text
+世界是什么
+```
+
+再决定：
+
+```text
+做什么
+```
+
+最后：
+
+```text
+Runtime 执行
+```
+
+于是形成：
+
+```text
+Ontology
+    ↓
+Semantic Context
+    ↓
+LLM
+    ↓
+Intent / Plan
+    ↓
+Capability
+    ↓
+Runtime Kernel
+```
+
+这个链条就是 OntoPlatform 的核心 AI 能力。
+
+---
+
+# 45. 与 Kernel 的完整关系
+
+最终可以用这张图定义两者：
+
+```text
+                         USER / AI
+                             │
+                             ▼
+┌───────────────────────────────────────────────────┐
+│                  ONTOPLATFORM                      │
+│                                                   │
+│  Workspace                                        │
+│      │                                            │
+│      ├── Ontology ─────────┐                      │
+│      │                     │                      │
+│      ├── Data ─────────────┤                      │
+│      │                     │                      │
+│      ├── Capability ───────┤                      │
+│      │                     │                      │
+│      └── Application       │                      │
+│                            │                      │
+│         Intelligence ──────┤                      │
+│                            │                      │
+│                    RuntimeGateway                 │
+└────────────────────────────┼──────────────────────┘
+                             │
+                             ▼
+┌───────────────────────────────────────────────────┐
+│             ONTOLOGY RUNTIME KERNEL               │
+│                                                   │
+│ Schema                                            │
+│ Object                                            │
+│ Relation                                          │
+│ Function                                          │
+│ State                                             │
+│ Execution                                         │
+│ Change                                            │
+└───────────────────────────────────────────────────┘
+                             │
+                             ▼
+                    Semantic Runtime State
+```
+
+---
+
+# 46. 两个系统的职责边界
+
+| 能力          | OntoPlatform |           Kernel |
+| ----------- | -----------: | ---------------: |
+| 本体建模        |            ✅ |                ❌ |
+| 本体版本        |            ✅ |                ❌ |
+| 本体发布        |            ✅ |                ❌ |
+| 业务术语        |            ✅ |                ❌ |
+| 数据源管理       |            ✅ |                ❌ |
+| 数据 Mapping  |            ✅ |                ❌ |
+| Projection  |            ✅ |                ❌ |
+| Object 定义   |            ✅ | ✅ Runtime Schema |
+| Object 实例   |            ❌ |                ✅ |
+| Relation 定义 |            ✅ | ✅ Runtime Schema |
+| Relation 实例 |            ❌ |                ✅ |
+| Function 定义 | Capability 层 |       ✅ Function |
+| Workflow    |            ✅ |                ❌ |
+| Capability  |            ✅ |                ❌ |
+| Application |            ✅ |                ❌ |
+| Agent       |            ✅ |                ❌ |
+| LLM         |            ✅ |                ❌ |
+| State       |        观察/管理 |                ✅ |
+| Execution   |        编排/驱动 |                ✅ |
+| Change      |        消费/治理 |                ✅ |
+| MCP         |      Adapter |                ❌ |
+| CLI         |      Adapter |                ❌ |
+| 权限          |            ✅ |                ❌ |
+| 审计          |            ✅ |                ❌ |
+
+---
+
+# 47. 最关键的边界原则
+
+## 原则一
+
+**Platform 不拥有第二份 Semantic State。**
+
+Kernel 是 Runtime State 的唯一事实来源。
+
+---
+
+## 原则二
+
+**Kernel 不知道 Platform。**
+
+Kernel 甚至可以脱离 OntoPlatform 独立运行。
+
+---
+
+## 原则三
+
+**Platform 不直接调用 Kernel 内部组件。**
+
+统一：
+
+```text
+RuntimeGateway
+```
+
+---
+
+## 原则四
+
+**Application 不直接操作 Function。**
+
+统一：
+
+```text
+Application
+ ↓
+Capability
+ ↓
+Runtime
+```
+
+---
+
+## 原则五
+
+**Agent 不直接操作数据库。**
+
+统一：
+
+```text
+Agent
+ ↓
+Capability
+ ↓
+Runtime
+```
+
+---
+
+# 48. 一个完整业务实例
+
+以：
+
+> “高速收费站拥堵分析”
+
+为例。
+
+### Step 1：Ontology
+
+```text
+Vehicle
+TollStation
+Road
+TrafficFlow
+```
+
+关系：
+
+```text
+Vehicle --passes--> TollStation
+TollStation --belongs_to--> Road
+```
+
+---
+
+### Step 2：Data
+
+```text
+交易数据库
+ETC 数据
+门架日志
+```
+
+建立：
+
+```text
+Mapping
+Projection
+```
+
+进入 Kernel：
+
+```text
+Vehicle
+TollStation
+TrafficFlow
+```
+
+---
+
+### Step 3：Capability
+
+创建：
+
+```text
+收费站拥堵分析
+```
+
+内部：
+
+```text
+查询流量
+→ 计算指标
+→ 判断拥堵
+→ 查询附近车辆
+```
+
+---
+
+### Step 4：Application
+
+创建：
+
+```text
+收费站运行监控
+```
+
+页面：
+
+```text
+地图
+收费站列表
+拥堵趋势
+异常车辆
+```
+
+---
+
+### Step 5：AI
+
+用户：
+
+> “济南西收费站现在为什么拥堵？”
+
+Agent：
+
+```text
+Ontology
+ ↓
+TollStation
+ ↓
+Runtime State
+ ↓
+related
+ ↓
+TrafficFlow
+ ↓
+Capability
+ ↓
+分析
+ ↓
+自然语言答案
+```
+
+整个过程不需要 Agent 自己理解数据库。
+
+---
+
+# 49. 这样形成真正的 Ontology Intelligence Loop
+
+```text
+         ┌───────────────┐
+         │   Ontology    │
+         └───────┬───────┘
+                 ↓
+         ┌───────────────┐
+         │ Runtime State │
+         └───────┬───────┘
+                 ↓
+         ┌───────────────┐
+         │  Capability   │
+         └───────┬───────┘
+                 ↓
+         ┌───────────────┐
+         │ AI / Agent    │
+         └───────┬───────┘
+                 ↓
+         ┌───────────────┐
+         │    Action     │
+         └───────┬───────┘
+                 ↓
+              Change
+                 ↓
+           Runtime State
+                 │
+                 └──────────→ AI
+```
+
+这才是平台真正的“本体智能”。
+
+---
+
+# 50. 最终架构冻结版
+
+我会把 OntoPlatform v0.1 最终冻结为：
+
+```text
+ONTO PLATFORM
+│
+├── Workspace
+│
+├── Ontology
+│   ├── ObjectType
+│   ├── Relation
+│   └── Vocabulary
+│
+├── Data
+│   ├── DataSource
+│   ├── DataAsset
+│   ├── Mapping
+│   └── Projection
+│
+├── Capability
+│   ├── Capability
+│   └── Workflow
+│
+├── Application
+│   ├── View
+│   ├── Query
+│   └── Agent
+│
+├── Intelligence
+│   ├── Semantic
+│   ├── LLM
+│   └── Agent
+│
+└── Governance
+    ├── Access
+    ├── Lifecycle
+    └── Audit
+             │
+             ↓
+       RuntimeGateway
+             │
+             ↓
+ONTOLOGY RUNTIME KERNEL
+│
+├── Schema
+├── Object
+├── Relation
+├── Function
+├── State
+├── Execution
+└── Change
+```
+
+其中有一个小修正需要明确：
+
+> **Agent 在产品架构上属于 Intelligence，在 Application 中可以作为一种应用组成形式；不要把它复制成两个不同的 Agent Domain。**
+
+也就是实际实现中维护一套 Agent Domain，Application 只是引用它。
+
+---
+
+# 51. 最终用一句话定义两个产品
+
+### Ontology Runtime Kernel
+
+> **让一个语义世界可以被读取、导航、操作和持续运行。**
+
+### OntoPlatform
+
+> **让用户可以创建、连接、赋能、治理并通过 AI 使用这个语义世界。**
+
+最终形成：
+
+```text
+             OntoPlatform
+                  │
+     ┌────────────┼────────────┐
+     │            │            │
+  Ontology      Data       Capability
+     │            │            │
+     └────────────┼────────────┘
+                  ↓
+             Application
+                  ↑
+                  │
+                 AI
+                  │
+                  ↓
+          RuntimeGateway
+                  ↓
+      Ontology Runtime Kernel
+                  ↓
+       Object / Relation / State
+                  ↓
+              Change
+                  ↑
+                  │
+              Application
+```
+
+这版可以作为 **OntoPlatform + Ontology Runtime Kernel 的总体架构基线**。后续详细设计应该围绕几个稳定契约展开：**Ontology 发布协议、Data Mapping/Projection 协议、Capability→Function 协议、RuntimeGateway 协议、Semantic Context 协议，以及 Application 的统一模型**。这些才是下一层真正需要冻结的架构接口。

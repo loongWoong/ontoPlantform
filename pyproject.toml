@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "onto-platform"
+version = "0.1.0"
+description = "OntoPlatform v0.1 - build, govern and use a semantic business world on top of the Ontology Runtime Kernel"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+# Domain / Application / Ports are zero-dependency by design (design.txt §37).
+# The Kernel is an infrastructure concern and is imported lazily.
+dependencies = []
+
+[project.optional-dependencies]
+kernel = ["ontology-runtime>=0.1.1"]
+dev = ["pytest>=8.0", "ontology-runtime>=0.1.1"]
+
+[project.scripts]
+onto = "onto_platform.interfaces.cli:main"
+onto-api = "onto_platform.interfaces.api:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

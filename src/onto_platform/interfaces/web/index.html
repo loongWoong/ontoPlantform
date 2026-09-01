@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>OntoPlatform 控制台</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #ffffff; --ink: #1c2330; --muted: #6b7280;
+    --line: #e5e7eb; --accent: #2456d6; --ok: #0a7d4f; --warn: #b45309;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.6 "Segoe UI", "Microsoft YaHei", sans-serif;
+         background: var(--bg); color: var(--ink); }
+  header { background: #101828; color: #fff; padding: 14px 24px;
+           display: flex; align-items: baseline; gap: 16px; }
+  header h1 { font-size: 17px; margin: 0; letter-spacing: .5px; }
+  header span { color: #94a3b8; font-size: 12px; }
+  main { display: grid; grid-template-columns: 280px 1fr; gap: 16px;
+         padding: 16px 24px; max-width: 1200px; margin: 0 auto; }
+  .panel { background: var(--panel); border: 1px solid var(--line);
+           border-radius: 10px; padding: 14px 16px; }
+  .panel h2 { font-size: 13px; margin: 0 0 10px; color: var(--muted);
+              text-transform: uppercase; letter-spacing: .8px; }
+  select, input, button, textarea {
+    font: inherit; border: 1px solid var(--line); border-radius: 6px;
+    padding: 6px 10px; background: #fff; color: var(--ink);
+  }
+  button { background: var(--accent); color: #fff; border: none; cursor: pointer; }
+  button.ghost { background: #eef2ff; color: var(--accent); }
+  button:hover { filter: brightness(1.05); }
+  ul { list-style: none; margin: 0; padding: 0; }
+  li.nav { padding: 7px 10px; border-radius: 6px; cursor: pointer; margin-bottom: 2px; }
+  li.nav:hover { background: #eef2ff; }
+  li.nav.active { background: var(--accent); color: #fff; }
+  table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+  th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; }
+  .tag { display: inline-block; padding: 1px 8px; border-radius: 99px;
+         font-size: 12px; background: #eef2ff; color: var(--accent); }
+  .tag.warn { background: #fef3c7; color: var(--warn); }
+  .tag.ok { background: #d1fae5; color: var(--ok); }
+  .row { display: flex; gap: 8px; margin: 6px 0; flex-wrap: wrap; }
+  .row input { flex: 1; min-width: 120px; }
+  pre { background: #0f172a; color: #d7e3ff; padding: 12px; border-radius: 8px;
+        overflow: auto; font-size: 12px; max-height: 340px; }
+  .muted { color: var(--muted); font-size: 12px; }
+  section { margin-bottom: 18px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>OntoPlatform</h1>
+  <span>本体智能应用平台 · v0.1 · 用户看到的是业务语言，不是技术语言</span>
+</header>
+<main>
+  <aside>
+    <div class="panel">
+      <h2>工作空间</h2>
+      <div class="row">
+        <input id="wsName" placeholder="新工作空间名称">
+        <button onclick="createWorkspace()">创建</button>
+      </div>
+      <ul id="wsList"></ul>
+    </div>
+    <div class="panel" style="margin-top:16px">
+      <h2>AI 助手</h2>
+      <div class="row">
+        <input id="askBox" placeholder="例如：哪些收费站拥堵？"
+               onkeydown="if(event.key==='Enter')ask()">
+        <button onclick="ask()">提问</button>
+      </div>
+      <pre id="askOut" style="display:none"></pre>
+    </div>
+  </aside>
+  <div>
+    <section class="panel">
+      <h2>本体 <span id="ontStatus" class="tag">-</span></h2>
+      <div class="row">
+        <input id="ontName" placeholder="本体名称，如 traffic">
+        <button onclick="createOntology()">创建本体</button>
+        <button class="ghost" onclick="publishOntology()">发布到运行时</button>
+      </div>
+      <div id="ontBody" class="muted">尚未选择工作空间</div>
+    </section>
+    <section class="panel">
+      <h2>运行时状态（Kernel 是唯一事实来源）</h2>
+      <div class="row">
+        <input id="findType" placeholder="对象类型，如 TollStation">
+        <input id="findFilter" placeholder='过滤，如 status=congested'>
+        <button onclick="findObjects()">查询</button>
+      </div>
+      <div id="stateBody" class="muted">-</div>
+    </section>
+    <section class="panel">
+      <h2>能力调用</h2>
+      <div class="row">
+        <input id="invFn" placeholder="能力，如 Vehicle.recharge">
+        <input id="invTarget" placeholder="目标，如 Vehicle/V001">
+        <input id="invArgs" placeholder='参数 JSON，如 {"amount": 100}'>
+        <button onclick="invoke()">执行</button>
+      </div>
+      <pre id="invOut" style="display:none"></pre>
+    </section>
+  </div>
+</main>
+<script>
+const API = "";
+let state = { workspaces: [], current: null, ontology: null };
+
+async function jfetch(url, opts) {
+  const res = await fetch(url, opts);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || res.statusText);
+  return data;
+}
+const jpost = (url, body) => jfetch(API + url, {
+  method: "POST", headers: {"Content-Type": "application/json"},
+  body: JSON.stringify(body)
+});
+
+async function loadWorkspaces() {
+  state.workspaces = await jfetch(API + "/api/workspaces?user=admin");
+  const ul = document.getElementById("wsList");
+  ul.innerHTML = "";
+  for (const ws of state.workspaces) {
+    const li = document.createElement("li");
+    li.className = "nav" + (state.current === ws.id ? " active" : "");
+    li.textContent = ws.name;
+    li.onclick = () => { state.current = ws.id; loadWorkspaces(); loadOntology(); };
+    ul.appendChild(li);
+  }
+}
+async function createWorkspace() {
+  const name = document.getElementById("wsName").value.trim();
+  if (!name) return;
+  await jpost("/api/workspaces", {name, user: "admin"});
+  document.getElementById("wsName").value = "";
+  loadWorkspaces();
+}
+async function loadOntology() {
+  const body = document.getElementById("ontBody");
+  const tag = document.getElementById("ontStatus");
+  if (!state.current) { body.textContent = "尚未选择工作空间"; return; }
+  try {
+    state.ontology = await jfetch(`/api/workspaces/${state.current}/ontology?user=admin`);
+    tag.textContent = state.ontology.lifecycle;
+    tag.className = "tag " + (state.ontology.lifecycle === "published" ? "ok" : "warn");
+    let html = "<table><tr><th>对象</th><th>属性</th></tr>";
+    for (const [name, o] of Object.entries(state.ontology.objects || {})) {
+      const props = Object.values(o.properties || {})
+        .map(p => `${p.name}:${p.type}`).join("、") || "-";
+      html += `<tr><td><b>${name}</b><div class="muted">${o.description || ""}</div></td><td>${props}</td></tr>`;
+    }
+    html += "</table>";
+    const rels = Object.entries(state.ontology.relations || {})
+      .map(([n, r]) => `${r.source} --${n}--> ${r.target}`).join("；");
+    if (rels) html += `<div class="muted" style="margin-top:8px">关系：${rels}</div>`;
+    const vocab = Object.entries(state.ontology.vocabulary || {})
+      .map(([t, v]) => `${t}→${v.concept}`).join("、");
+    if (vocab) html += `<div class="muted">业务术语：${vocab}</div>`;
+    body.innerHTML = html;
+  } catch (e) {
+    tag.textContent = "无";
+    body.textContent = "该工作空间还没有本体，先创建一个。";
+  }
+}
+async function createOntology() {
+  const name = document.getElementById("ontName").value.trim();
+  if (!name || !state.current) return;
+  await jpost(`/api/workspaces/${state.current}/ontology`, {name, user: "admin"});
+  loadOntology();
+}
+async function publishOntology() {
+  if (!state.current) return;
+  await jpost(`/api/workspaces/${state.current}/ontology/publish`, {user: "admin"});
+  loadOntology();
+}
+async function findObjects() {
+  const t = document.getElementById("findType").value.trim();
+  if (!t || !state.current) return;
+  const f = document.getElementById("findFilter").value.trim();
+  let url = `/api/workspaces/${state.current}/state/find?type=${encodeURIComponent(t)}&user=admin`;
+  if (f) { const [k, v] = f.split("="); url += `&${encodeURIComponent(k)}=${encodeURIComponent(v)}`; }
+  const objects = await jfetch(url);
+  const body = document.getElementById("stateBody");
+  if (!objects.length) { body.textContent = "无匹配对象"; return; }
+  const cols = [...new Set(objects.flatMap(o => Object.keys(o.properties)))];
+  let html = `<table><tr><th>对象</th>${cols.map(c => `<th>${c}</th>`).join("")}</tr>`;
+  for (const o of objects) {
+    html += `<tr><td><span class="tag">${o.type}/${o.id}</span></td>` +
+      cols.map(c => `<td>${o.properties[c] ?? "-"}</td>`).join("") + "</tr>";
+  }
+  body.innerHTML = html + "</table>";
+}
+async function invoke() {
+  const fn = document.getElementById("invFn").value.trim();
+  if (!fn || !state.current) return;
+  let args = {};
+  try { args = JSON.parse(document.getElementById("invArgs").value || "{}"); }
+  catch (e) { alert("参数不是合法 JSON"); return; }
+  const out = await jpost(`/api/workspaces/${state.current}/invoke`, {
+    function: fn, target: document.getElementById("invTarget").value.trim() || null,
+    args, user: "admin"});
+  const pre = document.getElementById("invOut");
+  pre.style.display = "block";
+  pre.textContent = JSON.stringify(out, null, 2);
+  findObjects();
+}
+async function ask() {
+  const q = document.getElementById("askBox").value.trim();
+  if (!q || !state.current) return;
+  const pre = document.getElementById("askOut");
+  pre.style.display = "block";
+  pre.textContent = "思考中…";
+  try {
+    const ans = await jpost(`/api/workspaces/${state.current}/ask`, {question: q, user: "admin"});
+    pre.textContent = ans.answer;
+  } catch (e) { pre.textContent = "出错：" + e.message; }
+}
+loadWorkspaces();
+</script>
+</body>
+</html>
