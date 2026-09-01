@@ -138,7 +138,8 @@ class RunAppAgent(_AppMixin):
         self._ctx = ctx
 
     def __call__(self, workspace_id: str, app_id: str, actor: str, alias: str,
-                 goal_override: str = "") -> dict:
+                 goal_override: str = "", provider: "LLMProvider | None" = None,
+                 max_steps: int = 8) -> dict:
         self._ctx.require(actor, workspace_id, "viewer")
         app = self._load(self._ctx, workspace_id, app_id)
         agent = next((a for a in app.agents if a.get("alias") == alias), None)
@@ -147,7 +148,8 @@ class RunAppAgent(_AppMixin):
         goal = goal_override.strip() or agent["goal"]
         from .intelligence_usecases import RunAgent
 
-        return RunAgent(self._ctx)(workspace_id, actor, goal)
+        return RunAgent(self._ctx)(workspace_id, actor, goal,
+                                   provider=provider, max_steps=max_steps)
 
 
 class PublishApplication(_AppMixin):

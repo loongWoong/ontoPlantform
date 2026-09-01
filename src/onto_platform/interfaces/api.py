@@ -286,11 +286,20 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
                 return self._send(200, platform.applications.add_agent(
                     wid, rest[1], user, body["alias"], goal=body.get("goal", ""),
                     description=body.get("description", "")))
+            if len(rest) == 5 and rest[0] == "applications" and rest[2] == "agents" \
+                    and rest[4] == "agent":
+                return self._send(200, platform.applications.run_agent(
+                    wid, rest[1], user, rest[3],
+                    goal_override=body.get("goal", ""),
+                    provider=_provider_from(body),
+                    max_steps=int(body.get("max_steps", 8))))
             if len(rest) == 4 and rest[0] == "applications" and rest[3] == "agent":
                 return self._send(200, platform.applications.run_agent(
                     wid, rest[1], user, rest[2],
-                    goal_override=body.get("goal", "")))
-            if len(rest) == 4 and rest[0] == "applications" and rest[3] == "query":
+                    goal_override=body.get("goal", ""),
+                    provider=_provider_from(body),
+                    max_steps=int(body.get("max_steps", 8))))
+            if len(rest) == 3 and rest[0] == "applications" and rest[2] == "query":
                 return self._send(200, platform.applications.run_query(
                     wid, rest[1], user, body.get("alias", "")))
             if rest == ["ask"]:
@@ -311,6 +320,8 @@ def gateway_of(platform: Platform, workspace_id: str):
 
 
 def _provider_from(body: dict):
+    """Build a provider from the request body, or None to let the use case
+    fall back to the platform-configured provider."""
     llm = body.get("llm") or {}
     if llm.get("provider") == "openai":
         return OpenAICompatProvider(
@@ -318,7 +329,9 @@ def _provider_from(body: dict):
             model=llm.get("model", "gpt-4o-mini"),
             api_key=llm.get("api_key", ""),
         )
-    return EchoLLMProvider(list(llm.get("script", [])))
+    if "script" in llm:
+        return EchoLLMProvider(list(llm.get("script", [])))
+    return None
 
 
 def serve(platform: Platform, host: str = "127.0.0.1", port: int = 8100) -> None:

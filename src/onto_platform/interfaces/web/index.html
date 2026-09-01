@@ -2,110 +2,470 @@
 <html lang="zh">
 <head>
 <meta charset="utf-8">
-<title>OntoPlatform 控制台</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OntoPlatform · 本体智能应用平台</title>
 <style>
   :root {
-    --bg: #f6f7f9; --panel: #ffffff; --ink: #1c2330; --muted: #6b7280;
-    --line: #e5e7eb; --accent: #2456d6; --ok: #0a7d4f; --warn: #b45309;
+    --bg: #f4f5f8; --panel: #ffffff; --ink: #1a2130; --muted: #64707f;
+    --line: #e3e6ec; --line-strong: #cdd3dd;
+    --accent: #3b5bdb; --accent-ink: #2c46b8; --accent-tint: #edf1fd;
+    --ok: #0c7a4d; --ok-tint: #e2f5ec; --warn: #9a5b10; --warn-tint: #fdf0d8;
+    --err: #b3372f; --err-tint: #fde9e7;
+    --code-bg: #101623; --code-ink: #d6e2f8;
+    --radius: 10px; --radius-sm: 7px;
+    --shadow: 0 1px 2px rgba(26,33,48,.05), 0 4px 14px rgba(26,33,48,.06);
   }
   * { box-sizing: border-box; }
-  body { margin: 0; font: 14px/1.6 "Segoe UI", "Microsoft YaHei", sans-serif;
-         background: var(--bg); color: var(--ink); }
-  header { background: #101828; color: #fff; padding: 14px 24px;
-           display: flex; align-items: baseline; gap: 16px; }
-  header h1 { font-size: 17px; margin: 0; letter-spacing: .5px; }
-  header span { color: #94a3b8; font-size: 12px; }
-  main { display: grid; grid-template-columns: 280px 1fr; gap: 16px;
-         padding: 16px 24px; max-width: 1200px; margin: 0 auto; }
-  .panel { background: var(--panel); border: 1px solid var(--line);
-           border-radius: 10px; padding: 14px 16px; }
-  .panel h2 { font-size: 13px; margin: 0 0 10px; color: var(--muted);
-              text-transform: uppercase; letter-spacing: .8px; }
-  select, input, button, textarea {
-    font: inherit; border: 1px solid var(--line); border-radius: 6px;
-    padding: 6px 10px; background: #fff; color: var(--ink);
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 14px/1.65 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
   }
-  button { background: var(--accent); color: #fff; border: none; cursor: pointer; }
-  button.ghost { background: #eef2ff; color: var(--accent); }
-  button:hover { filter: brightness(1.05); }
-  ul { list-style: none; margin: 0; padding: 0; }
-  li.nav { padding: 7px 10px; border-radius: 6px; cursor: pointer; margin-bottom: 2px; }
-  li.nav:hover { background: #eef2ff; }
-  li.nav.active { background: var(--accent); color: #fff; }
-  table { width: 100%; border-collapse: collapse; margin-top: 8px; }
-  th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--line); }
-  th { color: var(--muted); font-weight: 600; font-size: 12px; }
-  .tag { display: inline-block; padding: 1px 8px; border-radius: 99px;
-         font-size: 12px; background: #eef2ff; color: var(--accent); }
-  .tag.warn { background: #fef3c7; color: var(--warn); }
-  .tag.ok { background: #d1fae5; color: var(--ok); }
-  .row { display: flex; gap: 8px; margin: 6px 0; flex-wrap: wrap; }
-  .row input { flex: 1; min-width: 120px; }
-  pre { background: #0f172a; color: #d7e3ff; padding: 12px; border-radius: 8px;
-        overflow: auto; font-size: 12px; max-height: 340px; }
-  .muted { color: var(--muted); font-size: 12px; }
-  section { margin-bottom: 18px; }
+  header {
+    background: #131a2a; color: #fff; padding: 0 28px;
+    display: flex; align-items: center; gap: 20px; height: 56px;
+    position: sticky; top: 0; z-index: 20;
+  }
+  .brand { display: flex; align-items: baseline; gap: 10px; white-space: nowrap; }
+  .brand b { font-size: 16px; letter-spacing: .4px; }
+  .brand span { color: #8d99b5; font-size: 12px; }
+  .spacer { flex: 1; }
+  .ws-picker { display: flex; align-items: center; gap: 8px; color: #aab6cf; font-size: 13px; }
+  header select {
+    background: #1d2740; color: #fff; border: 1px solid #313d5c;
+    border-radius: var(--radius-sm); padding: 5px 10px; font: inherit; min-width: 160px;
+  }
+  .health { font-size: 12px; color: #8d99b5; font-variant-numeric: tabular-nums; }
+  .health b { color: #7fd3a8; font-weight: 600; }
+  nav.tabs {
+    background: var(--panel); border-bottom: 1px solid var(--line);
+    padding: 0 28px; display: flex; gap: 2px; position: sticky; top: 56px; z-index: 19;
+    overflow-x: auto;
+  }
+  nav.tabs button {
+    background: none; border: none; color: var(--muted); font: inherit; font-weight: 500;
+    padding: 12px 16px 10px; cursor: pointer; border-bottom: 2px solid transparent;
+    transition: color .2s, border-color .2s; white-space: nowrap;
+  }
+  nav.tabs button:hover { color: var(--ink); }
+  nav.tabs button.active { color: var(--accent-ink); border-bottom-color: var(--accent); }
+  nav.tabs button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 4px; }
+  main { max-width: 1280px; margin: 0 auto; padding: 22px 28px 80px; }
+  section.tab { display: none; }
+  section.tab.active { display: block; animation: fadein .22s ease; }
+  @keyframes fadein { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+  .grid { display: grid; gap: 16px; }
+  .grid.cols-2 { grid-template-columns: 1fr 1fr; }
+  .grid.cols-3 { grid-template-columns: repeat(3, 1fr); }
+  @media (max-width: 980px) { .grid.cols-2, .grid.cols-3 { grid-template-columns: 1fr; } }
+  .card {
+    background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+    box-shadow: var(--shadow); padding: 16px 18px;
+  }
+  .card > h3 {
+    margin: 0 0 4px; font-size: 14px; font-weight: 600; letter-spacing: .2px;
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  }
+  .card > .hint { color: var(--muted); font-size: 12px; margin: 0 0 12px; }
+  .card h4 { margin: 16px 0 6px; font-size: 12px; color: var(--muted); font-weight: 600;
+             text-transform: uppercase; letter-spacing: .6px; }
+  .row { display: flex; gap: 8px; margin: 8px 0; flex-wrap: wrap; align-items: center; }
+  .row > input, .row > select { flex: 1; min-width: 110px; }
+  input, select, textarea, button { font: inherit; }
+  input, select, textarea {
+    border: 1px solid var(--line-strong); border-radius: var(--radius-sm);
+    padding: 7px 10px; background: #fff; color: var(--ink); transition: border-color .15s, box-shadow .15s;
+  }
+  input:focus, select:focus, textarea:focus {
+    outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(59,91,219,.14);
+  }
+  textarea { width: 100%; font-family: Consolas, "Courier New", monospace; font-size: 12.5px; resize: vertical; }
+  button {
+    border: none; border-radius: var(--radius-sm); padding: 7px 14px; cursor: pointer;
+    background: var(--accent); color: #fff; font-weight: 500;
+    transition: filter .15s, transform .06s, background .15s;
+  }
+  button:hover { filter: brightness(1.08); }
+  button:active { transform: scale(.97); }
+  button:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  button.ghost { background: var(--accent-tint); color: var(--accent-ink); }
+  button.subtle { background: #eef0f4; color: var(--ink); }
+  button.sm { padding: 3px 10px; font-size: 12.5px; }
+  table { width: 100%; border-collapse: collapse; margin-top: 6px; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; white-space: nowrap; }
+  tbody tr { transition: background .12s; }
+  tbody tr:hover { background: #f8f9fc; }
+  .tag {
+    display: inline-block; padding: 1px 9px; border-radius: 99px; font-size: 12px;
+    background: var(--accent-tint); color: var(--accent-ink); font-weight: 500;
+  }
+  .tag.ok { background: var(--ok-tint); color: var(--ok); }
+  .tag.warn { background: var(--warn-tint); color: var(--warn); }
+  .tag.err { background: var(--err-tint); color: var(--err); }
+  .tag.plain { background: #eef0f4; color: var(--muted); }
+  pre {
+    background: var(--code-bg); color: var(--code-ink); padding: 12px 14px;
+    border-radius: var(--radius-sm); overflow: auto; font-size: 12px; line-height: 1.55;
+    max-height: 380px; margin: 8px 0 0;
+  }
+  code { background: #eef0f4; border-radius: 4px; padding: 1px 5px; font-size: 12.5px; }
+  pre code { background: none; padding: 0; }
+  .muted { color: var(--muted); font-size: 12.5px; }
+  .empty {
+    text-align: center; color: var(--muted); padding: 28px 12px; font-size: 13px;
+    border: 1px dashed var(--line-strong); border-radius: var(--radius-sm); margin-top: 8px;
+  }
+  .empty b { display: block; font-size: 14px; color: var(--ink); margin-bottom: 3px; }
+  .loading { color: var(--muted); padding: 14px; text-align: center; font-size: 13px; }
+  .banner { border-radius: var(--radius-sm); padding: 9px 12px; font-size: 13px; margin: 8px 0; }
+  .banner.err { background: var(--err-tint); color: var(--err); }
+  .banner.ok { background: var(--ok-tint); color: var(--ok); }
+  .banner.warn { background: var(--warn-tint); color: var(--warn); }
+  .answer {
+    background: var(--accent-tint); border: 1px solid #d5def7; border-radius: var(--radius-sm);
+    padding: 10px 14px; margin-top: 10px; white-space: pre-wrap; font-size: 13.5px;
+  }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .timeline { list-style: none; margin: 10px 0 0; padding: 0; }
+  .timeline li {
+    position: relative; padding: 0 0 14px 26px; border-left: 2px solid var(--line);
+    margin-left: 8px;
+  }
+  .timeline li:last-child { border-left-color: transparent; padding-bottom: 2px; }
+  .timeline li::before {
+    content: ""; position: absolute; left: -6px; top: 4px; width: 10px; height: 10px;
+    border-radius: 50%; background: var(--accent); border: 2px solid #fff;
+    box-shadow: 0 0 0 1px var(--line-strong);
+  }
+  .timeline .thought { color: var(--muted); font-size: 12.5px; }
+  .timeline .obs { font-size: 12.5px; margin-top: 3px; }
+  .final-answer {
+    background: var(--ok-tint); border: 1px solid #bfe8d4; border-radius: var(--radius-sm);
+    padding: 10px 14px; margin-top: 10px; white-space: pre-wrap;
+  }
+  #toasts { position: fixed; right: 20px; bottom: 20px; display: flex; flex-direction: column;
+            gap: 8px; z-index: 50; }
+  .toast {
+    background: #1d2740; color: #fff; padding: 10px 16px; border-radius: var(--radius-sm);
+    box-shadow: var(--shadow); font-size: 13px; max-width: 380px;
+    animation: slidein .2s ease;
+  }
+  .toast.err { background: #7c2620; }
+  .toast.ok { background: #14532d; }
+  @keyframes slidein { from { opacity: 0; transform: translateX(12px); } to { opacity: 1; transform: none; } }
+  .kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; font-size: 13px; }
+  .kv dt { color: var(--muted); }
+  .kv dd { margin: 0; font-variant-numeric: tabular-nums; }
+  details summary { cursor: pointer; color: var(--accent-ink); font-size: 13px; margin-top: 8px; }
 </style>
 </head>
 <body>
+
 <header>
-  <h1>OntoPlatform</h1>
-  <span>本体智能应用平台 · v0.1 · 用户看到的是业务语言，不是技术语言</span>
+  <div class="brand"><b>OntoPlatform</b><span>本体智能应用平台 v0.1</span></div>
+  <div class="spacer"></div>
+  <div class="ws-picker">
+    工作空间
+    <select id="wsSelect" onchange="switchWorkspace(this.value)"></select>
+  </div>
+  <div class="health" id="health">连接中</div>
 </header>
+
+<nav class="tabs" id="tabs">
+  <button data-tab="overview" class="active">概览</button>
+  <button data-tab="ontology">本体</button>
+  <button data-tab="data">数据</button>
+  <button data-tab="capability">能力</button>
+  <button data-tab="application">应用</button>
+  <button data-tab="runtime">运行时</button>
+  <button data-tab="intelligence">智能</button>
+  <button data-tab="audit">审计</button>
+</nav>
+
 <main>
-  <aside>
-    <div class="panel">
-      <h2>工作空间</h2>
-      <div class="row">
-        <input id="wsName" placeholder="新工作空间名称">
-        <button onclick="createWorkspace()">创建</button>
+
+  <section class="tab active" id="tab-overview">
+    <div class="grid cols-2">
+      <div class="card">
+        <h3>工作空间</h3>
+        <p class="hint">工作空间是隔离容器：每个空间拥有独立的本体、数据、能力与运行时（design.txt §4）。</p>
+        <dl class="kv" id="ovWorkspace"></dl>
+        <div class="row" style="margin-top:14px">
+          <input id="newWsName" placeholder="新工作空间名称">
+          <button onclick="createWorkspace()">创建</button>
+        </div>
       </div>
-      <ul id="wsList"></ul>
+      <div class="card">
+        <h3>运行时索引 <span id="ovLifecycle" class="tag plain">-</span></h3>
+        <p class="hint">Kernel 是唯一事实来源；这里展示已发布到运行时的本体与能力。</p>
+        <div id="ovRuntime"><div class="empty"><b>尚无运行时</b>先在本体页发布一个本体。</div></div>
+      </div>
     </div>
-    <div class="panel" style="margin-top:16px">
-      <h2>AI 助手</h2>
-      <div class="row">
-        <input id="askBox" placeholder="例如：哪些收费站拥堵？"
-               onkeydown="if(event.key==='Enter')ask()">
-        <button onclick="ask()">提问</button>
+    <div class="card" style="margin-top:16px">
+      <h3>三链路一览</h3>
+      <p class="hint">design.txt §34：数据链路 → 能力链路 → 智能链路，全部经 RuntimeGateway 防腐层进入 Kernel。</p>
+      <div class="grid cols-3">
+        <div>
+          <h4>① 数据链路</h4>
+          <p class="muted" style="margin:0">数据源 → 投影 → Gateway → Kernel。<br>外部数据映射为业务对象，平台不存第二份状态。</p>
+        </div>
+        <div>
+          <h4>② 能力链路</h4>
+          <p class="muted" style="margin:0">能力（python / workflow / agent）→ invoke → Kernel。<br>业务行动改变世界，留下变更与审计。</p>
+        </div>
+        <div>
+          <h4>③ 智能链路</h4>
+          <p class="muted" style="margin:0">Ask（确定性）与 Agent（LLM 循环）→ 读世界、调能力。<br>用户看到业务语言，不是技术语言。</p>
+        </div>
       </div>
-      <pre id="askOut" style="display:none"></pre>
     </div>
-  </aside>
-  <div>
-    <section class="panel">
-      <h2>本体 <span id="ontStatus" class="tag">-</span></h2>
-      <div class="row">
-        <input id="ontName" placeholder="本体名称，如 traffic">
-        <button onclick="createOntology()">创建本体</button>
-        <button class="ghost" onclick="publishOntology()">发布到运行时</button>
+  </section>
+
+  <section class="tab" id="tab-ontology">
+    <div class="grid cols-2">
+      <div class="card">
+        <h3>本体定义 <span id="ontLifecycle" class="tag plain">-</span></h3>
+        <p class="hint">对象 / 关系 / 业务术语。published 后不可修改，需新建版本。</p>
+        <div class="row">
+          <input id="ontName" placeholder="本体名称，如 traffic" style="flex:2">
+          <input id="ontDesc" placeholder="描述（可选）">
+          <button onclick="createOntology()">创建本体</button>
+        </div>
+        <div class="row">
+          <button class="subtle" onclick="validateOntology()">校验</button>
+          <button onclick="publishOntology()">发布到运行时</button>
+          <span id="ontValidate" class="muted"></span>
+        </div>
+        <div id="ontBody"><div class="empty"><b>尚无本体</b>创建一个，或选择已有工作空间。</div></div>
       </div>
-      <div id="ontBody" class="muted">尚未选择工作空间</div>
-    </section>
-    <section class="panel">
-      <h2>运行时状态（Kernel 是唯一事实来源）</h2>
-      <div class="row">
-        <input id="findType" placeholder="对象类型，如 TollStation">
-        <input id="findFilter" placeholder='过滤，如 status=congested'>
-        <button onclick="findObjects()">查询</button>
+      <div>
+        <div class="card">
+          <h3>添加对象</h3>
+          <p class="hint">属性每行一个，格式 <code>名称:类型</code>，类型支持 string / number / integer / boolean。</p>
+          <div class="row">
+            <input id="objName" placeholder="对象名，如 Vehicle">
+            <input id="objDesc" placeholder="业务含义，如 车辆">
+          </div>
+          <textarea id="objProps" rows="3" placeholder="plate:string&#10;balance:number"></textarea>
+          <div class="row"><button onclick="addObject()">添加对象</button></div>
+        </div>
+        <div class="card" style="margin-top:16px">
+          <h3>添加关系</h3>
+          <div class="row">
+            <input id="relName" placeholder="关系名，如 passes">
+            <input id="relSource" placeholder="源对象，如 Vehicle">
+            <input id="relTarget" placeholder="目标对象，如 TollStation">
+          </div>
+          <div class="row"><button onclick="addRelation()">添加关系</button></div>
+        </div>
+        <div class="card" style="margin-top:16px">
+          <h3>添加业务术语</h3>
+          <p class="hint">术语是用户语言到本体概念的桥：Ask 用它理解「收费站」指 TollStation。</p>
+          <div class="row">
+            <input id="termWord" placeholder="术语，如 收费站" style="flex:1">
+            <input id="termConcept" placeholder="概念，如 TollStation 或 TollStation.status" style="flex:2">
+            <select id="termKind">
+              <option value="object">对象</option>
+              <option value="property">属性</option>
+              <option value="relation">关系</option>
+            </select>
+          </div>
+          <div class="row"><button onclick="addTerm()">添加术语</button></div>
+        </div>
       </div>
-      <div id="stateBody" class="muted">-</div>
-    </section>
-    <section class="panel">
-      <h2>能力调用</h2>
+    </div>
+  </section>
+
+  <section class="tab" id="tab-data">
+    <div class="grid cols-2">
+      <div class="card">
+        <h3>数据源</h3>
+        <p class="hint">外部世界入口：static（内置静态数据）/ sqlite / rest。平台不复制数据，投影时按需读取。</p>
+        <div id="dsList"><div class="empty"><b>尚无数据源</b>在右侧连接一个。</div></div>
+        <h4>连接新数据源</h4>
+        <div class="row">
+          <input id="dsName" placeholder="名称，如 车辆主数据">
+          <select id="dsKind">
+            <option value="static">static</option>
+            <option value="sqlite">sqlite</option>
+            <option value="rest">rest</option>
+          </select>
+        </div>
+        <textarea id="dsConfig" rows="2" placeholder='数据源 config JSON（static 可留空；sqlite 如 {"path": "data.db"}）'></textarea>
+        <textarea id="dsAssets" rows="3" placeholder='资产声明 JSON 数组，每个资产：{"name": "vehicles", "config": {"rows": [{"vid": "V1", "plate": "鲁A1"}]}}。static 用 rows，sqlite 用 {"query": "SELECT ..."}，rest 用 {"path": "/x", "params": {}}'></textarea>
+        <div class="row"><button onclick="connectSource()">连接</button></div>
+      </div>
+      <div class="card">
+        <h3>投影</h3>
+        <p class="hint">投影 = 映射 + 执行：把数据源资产映射为本体对象/关系，运行时写入 Kernel。</p>
+        <div id="projList"><div class="empty"><b>尚无投影</b>先连接数据源。</div></div>
+        <h4>创建投影</h4>
+        <div class="row">
+          <input id="projName" placeholder="投影名称">
+          <select id="projDs"></select>
+        </div>
+        <textarea id="projMappings" rows="5" placeholder='映射 JSON：{"object_mappings": [{"asset": "vehicles", "object_type": "Vehicle", "id_field": "vid", "fields": [{"source_field": "plate", "property": "plate"}]}], "relation_mappings": [{"asset": "tx", "relation": "passes", "source_field": "vid", "target_field": "sid"}]}'></textarea>
+        <div class="row">
+          <button onclick="createProjection()">创建投影</button>
+          <span class="muted">创建后点「运行」写入运行时</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="tab" id="tab-capability">
+    <div class="grid cols-2">
+      <div class="card">
+        <h3>能力清单</h3>
+        <p class="hint">能力是业务行动的唯一入口：发布后成为运行时函数 <code>对象.能力</code>。</p>
+        <div id="capList"><div class="empty"><b>尚无能力</b>在右侧创建。</div></div>
+      </div>
+      <div class="card">
+        <h3>创建能力</h3>
+        <div class="row">
+          <input id="capKey" placeholder="key，如 recharge" style="flex:1">
+          <input id="capName" placeholder="名称，如 充值" style="flex:1">
+          <input id="capTarget" placeholder="目标对象，如 Vehicle" style="flex:1">
+        </div>
+        <div class="row">
+          <input id="capDesc" placeholder="描述（可选）" style="flex:2">
+          <select id="capKind" onchange="capKindChanged()">
+            <option value="python">python 源码</option>
+            <option value="workflow">workflow 编排</option>
+            <option value="agent">agent 目标</option>
+          </select>
+        </div>
+        <div class="row">
+          <input id="capInputs" placeholder="参数声明，每行 name:type（如 amount:number），留空则无参数" style="flex:3">
+        </div>
+        <textarea id="capImpl" rows="7" placeholder=""></textarea>
+        <div class="muted" id="capImplHint" style="margin-top:4px"></div>
+        <div class="row" style="margin-top:8px"><button onclick="createCapability()">创建能力</button></div>
+      </div>
+    </div>
+    <div class="card" style="margin-top:16px">
+      <h3>调用能力</h3>
+      <p class="hint">invoke 永不抛异常：结果里带 ok / output / changes / error。变更直接发生在 Kernel。</p>
       <div class="row">
-        <input id="invFn" placeholder="能力，如 Vehicle.recharge">
+        <input id="invFn" list="fnList" placeholder="能力，如 Vehicle.recharge">
+        <datalist id="fnList"></datalist>
         <input id="invTarget" placeholder="目标，如 Vehicle/V001">
         <input id="invArgs" placeholder='参数 JSON，如 {"amount": 100}'>
         <button onclick="invoke()">执行</button>
       </div>
-      <pre id="invOut" style="display:none"></pre>
-    </section>
-  </div>
+      <div id="invOut"></div>
+    </div>
+  </section>
+
+  <section class="tab" id="tab-application">
+    <div class="row">
+      <input id="appName" placeholder="新应用名称，如 运营工作台" style="max-width:280px">
+      <button onclick="createApplication()">创建应用</button>
+    </div>
+    <div id="appList"><div class="empty"><b>尚无应用</b>应用 = 视图 + 查询 + Agent（design.txt §50）。</div></div>
+  </section>
+
+  <section class="tab" id="tab-runtime">
+    <div class="grid cols-2">
+      <div class="card">
+        <h3>查询对象</h3>
+        <p class="hint">Kernel 是唯一事实来源。点击对象引用可查看详情与关系。</p>
+        <div class="row">
+          <input id="findType" list="typeList" placeholder="对象类型，如 TollStation">
+          <datalist id="typeList"></datalist>
+          <input id="findFilter" placeholder="过滤，如 status=congested">
+          <button onclick="findObjects()">查询</button>
+        </div>
+        <div id="stateBody"><div class="empty"><b>输入对象类型开始查询</b>支持 prop=value、prop__gt=1 等过滤。</div></div>
+      </div>
+      <div class="card">
+        <h3>对象详情</h3>
+        <p class="hint">引用格式 <code>Type/Id</code>。关系导航可继续点击跳转。</p>
+        <div class="row">
+          <input id="detailRef" placeholder="如 TollStation/ST001" style="flex:2">
+          <button onclick="showObject()">查看</button>
+        </div>
+        <div id="objectDetail"><div class="empty"><b>未选择对象</b>从左侧查询结果点击，或直接输入引用。</div></div>
+      </div>
+    </div>
+    <div class="card" style="margin-top:16px">
+      <h3>变更流
+        <label class="muted" style="font-weight:400;text-transform:none;letter-spacing:0">
+          <input type="checkbox" id="liveToggle" onchange="toggleLive()" style="margin-right:4px">实时跟随
+        </label>
+      </h3>
+      <p class="hint">所有进入 Kernel 的变更（投影 / 调用）都留痕，按序号递增。</p>
+      <div id="changesBody"><div class="empty"><b>暂无变更</b>运行投影或调用能力后这里会出现记录。</div></div>
+    </div>
+  </section>
+
+  <section class="tab" id="tab-intelligence">
+    <div class="grid cols-2">
+      <div class="card">
+        <h3>Ask · 确定性问答</h3>
+        <p class="hint">术语 → 本体概念 → 运行时状态，一跳关系展开。无需 LLM，全程可审计。</p>
+        <div class="row">
+          <input id="askBox" placeholder="例如：哪些收费站拥堵？" style="flex:3"
+                 onkeydown="if(event.key==='Enter')ask()">
+          <button onclick="ask()">提问</button>
+        </div>
+        <div id="askOut"></div>
+      </div>
+      <div class="card">
+        <h3>Agent · 目标驱动</h3>
+        <p class="hint">LLM 循环：观察本体与状态 → 调用能力行动 → 给出结论（design.txt §28）。</p>
+        <div class="row">
+          <input id="agentGoal" placeholder="目标，如 检查拥堵收费站并给出处置建议" style="flex:3">
+          <button onclick="runAgent()">执行</button>
+        </div>
+        <details>
+          <summary>LLM 配置（默认用平台配置；可临时指定 OpenAI 兼容服务）</summary>
+          <div class="row" style="margin-top:8px">
+            <select id="llmKind" style="flex:1">
+              <option value="platform">平台默认</option>
+              <option value="openai">OpenAI 兼容</option>
+            </select>
+            <input id="llmBase" placeholder="base_url" style="flex:2">
+            <input id="llmModel" placeholder="model" style="flex:1">
+          </div>
+          <div class="row">
+            <input id="llmKey" placeholder="api_key（可选）" type="password" style="flex:2">
+            <input id="agentSteps" placeholder="最大步数" type="number" value="8" min="1" max="24" style="flex:1">
+          </div>
+        </details>
+        <div id="agentOut"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="tab" id="tab-audit">
+    <div class="card">
+      <h3>治理审计
+        <button class="subtle sm" onclick="loadAudit()">刷新</button>
+      </h3>
+      <p class="hint">谁在何时做了什么（design.txt §29）。事件由用例层写入，跨进程持久。</p>
+      <div id="auditBody"><div class="empty"><b>暂无事件</b>任何创建 / 发布 / 调用都会记录在这里。</div></div>
+    </div>
+  </section>
+
 </main>
+
+<div id="toasts"></div>
+
 <script>
-const API = "";
-let state = { workspaces: [], current: null, ontology: null };
+"use strict";
+/* ================= state / helpers ================= */
+const S = {
+  workspaces: [], wid: null, ontology: null, runtime: null,
+  capabilities: [], datasources: [], projections: [],
+  lastSeq: 0, liveTimer: null,
+};
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g,
+  c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const wp = suffix => `/api/workspaces/${S.wid}${suffix}`;
 
 async function jfetch(url, opts) {
   const res = await fetch(url, opts);
@@ -113,111 +473,669 @@ async function jfetch(url, opts) {
   if (!res.ok) throw new Error(data.error || res.statusText);
   return data;
 }
-const jpost = (url, body) => jfetch(API + url, {
+const jget = url => jfetch(url);
+const jpost = (url, body) => jfetch(url, {
   method: "POST", headers: {"Content-Type": "application/json"},
-  body: JSON.stringify(body)
+  body: JSON.stringify(body),
 });
 
+function toast(msg, kind = "") {
+  const el = document.createElement("div");
+  el.className = "toast " + kind;
+  el.textContent = msg;
+  $("toasts").appendChild(el);
+  setTimeout(() => el.remove(), 4200);
+}
+const ok = msg => toast(msg, "ok");
+const fail = e => toast(e.message || String(e), "err");
+const guard = fn => (...a) => fn(...a).catch(fail);
+const busy = (el, text = "加载中") => { el.innerHTML = `<div class="loading">${esc(text)}</div>`; };
+
+/* ================= tabs ================= */
+document.querySelectorAll("#tabs button").forEach(btn => {
+  btn.onclick = () => {
+    document.querySelectorAll("#tabs button").forEach(b => b.classList.remove("active"));
+    document.querySelectorAll("section.tab").forEach(s => s.classList.remove("active"));
+    btn.classList.add("active");
+    $("tab-" + btn.dataset.tab).classList.add("active");
+    renderTab();
+  };
+});
+function renderTab() {
+  if (!S.wid) return;
+  stopLive();
+  ({
+    overview: loadOverview, ontology: loadOntology, data: loadData,
+    capability: loadCapabilities, application: loadApplications,
+    runtime: loadRuntimeTab, audit: loadAudit,
+  }[currentTab()] || (() => {}))();
+}
+const currentTab = () => document.querySelector("#tabs button.active").dataset.tab;
+
+/* ================= workspaces ================= */
 async function loadWorkspaces() {
-  state.workspaces = await jfetch(API + "/api/workspaces?user=admin");
-  const ul = document.getElementById("wsList");
-  ul.innerHTML = "";
-  for (const ws of state.workspaces) {
-    const li = document.createElement("li");
-    li.className = "nav" + (state.current === ws.id ? " active" : "");
-    li.textContent = ws.name;
-    li.onclick = () => { state.current = ws.id; loadWorkspaces(); loadOntology(); };
-    ul.appendChild(li);
-  }
+  S.workspaces = await jget("/api/workspaces?user=admin");
+  const sel = $("wsSelect");
+  sel.innerHTML = S.workspaces.map(w =>
+    `<option value="${esc(w.id)}" ${w.id === S.wid ? "selected" : ""}>${esc(w.name)}</option>`).join("");
+  if (!S.wid && S.workspaces.length) { S.wid = S.workspaces[0].id; sel.value = S.wid; }
 }
-async function createWorkspace() {
-  const name = document.getElementById("wsName").value.trim();
-  if (!name) return;
-  await jpost("/api/workspaces", {name, user: "admin"});
-  document.getElementById("wsName").value = "";
-  loadWorkspaces();
+function switchWorkspace(id) {
+  S.wid = id; S.lastSeq = 0;
+  renderTab();
 }
-async function loadOntology() {
-  const body = document.getElementById("ontBody");
-  const tag = document.getElementById("ontStatus");
-  if (!state.current) { body.textContent = "尚未选择工作空间"; return; }
+const createWorkspace = guard(async () => {
+  const name = $("newWsName").value.trim();
+  if (!name) return toast("请输入工作空间名称", "err");
+  const ws = await jpost("/api/workspaces", { name, user: "admin" });
+  $("newWsName").value = "";
+  S.wid = ws.id;
+  await loadWorkspaces();
+  $("wsSelect").value = S.wid;
+  ok(`工作空间「${name}」已创建`);
+  renderTab();
+});
+
+/* ================= overview ================= */
+async function loadOverview() {
+  const ws = S.workspaces.find(w => w.id === S.wid) || {};
+  $("ovWorkspace").innerHTML = `
+    <dt>名称</dt><dd>${esc(ws.name || "-")}</dd>
+    <dt>ID</dt><dd><code>${esc(S.wid)}</code></dd>
+    <dt>描述</dt><dd>${esc(ws.description || "—")}</dd>`;
+  busy($("ovRuntime"));
   try {
-    state.ontology = await jfetch(`/api/workspaces/${state.current}/ontology?user=admin`);
-    tag.textContent = state.ontology.lifecycle;
-    tag.className = "tag " + (state.ontology.lifecycle === "published" ? "ok" : "warn");
-    let html = "<table><tr><th>对象</th><th>属性</th></tr>";
-    for (const [name, o] of Object.entries(state.ontology.objects || {})) {
-      const props = Object.values(o.properties || {})
-        .map(p => `${p.name}:${p.type}`).join("、") || "-";
-      html += `<tr><td><b>${name}</b><div class="muted">${o.description || ""}</div></td><td>${props}</td></tr>`;
+    const [ont, rt] = await Promise.all([
+      jget(wp("/ontology?user=admin")).catch(() => null),
+      jget(wp("/runtime?user=admin")).catch(() => null),
+    ]);
+    S.ontology = ont; S.runtime = rt;
+    const life = ont ? ont.lifecycle : "none";
+    $("ovLifecycle").textContent = life;
+    $("ovLifecycle").className = "tag " + (life === "published" ? "ok" : life === "none" ? "plain" : "warn");
+    if (!rt) {
+      $("ovRuntime").innerHTML = `<div class="empty"><b>运行时未就绪</b>到「本体」页发布本体后，这里显示 Kernel 索引。</div>`;
+      return;
     }
-    html += "</table>";
-    const rels = Object.entries(state.ontology.relations || {})
-      .map(([n, r]) => `${r.source} --${n}--> ${r.target}`).join("；");
-    if (rels) html += `<div class="muted" style="margin-top:8px">关系：${rels}</div>`;
-    const vocab = Object.entries(state.ontology.vocabulary || {})
-      .map(([t, v]) => `${t}→${v.concept}`).join("、");
-    if (vocab) html += `<div class="muted">业务术语：${vocab}</div>`;
-    body.innerHTML = html;
-  } catch (e) {
-    tag.textContent = "无";
-    body.textContent = "该工作空间还没有本体，先创建一个。";
+    const objs = rt.objects || [], rels = rt.relations || [], fns = rt.functions || [];
+    $("ovRuntime").innerHTML = `
+      <dl class="kv">
+        <dt>对象类型</dt><dd>${objs.map(o => esc(o.name)).join("、") || "—"}</dd>
+        <dt>关系</dt><dd>${rels.map(r => `${esc(r.source)} --${esc(r.name)}--> ${esc(r.target)}`).join("；") || "—"}</dd>
+        <dt>函数</dt><dd>${fns.map(f => `<code>${esc(f.name)}</code>`).join(" ") || "—"}</dd>
+        <dt>本体版本</dt><dd>v${(rt.ontology && rt.ontology.version) ?? "-"}</dd>
+      </dl>`;
+  } catch (e) { $("ovRuntime").innerHTML = `<div class="banner err">${esc(e.message)}</div>`; }
+}
+
+/* ================= ontology ================= */
+async function loadOntology() {
+  busy($("ontBody"));
+  try { S.ontology = await jget(wp("/ontology?user=admin")); }
+  catch { S.ontology = null; }
+  renderOntology();
+}
+function renderOntology() {
+  const body = $("ontBody"), tag = $("ontLifecycle");
+  if (!S.ontology) {
+    tag.textContent = "无"; tag.className = "tag plain";
+    body.innerHTML = `<div class="empty"><b>尚无本体</b>在左侧创建一个。</div>`;
+    return;
   }
-}
-async function createOntology() {
-  const name = document.getElementById("ontName").value.trim();
-  if (!name || !state.current) return;
-  await jpost(`/api/workspaces/${state.current}/ontology`, {name, user: "admin"});
-  loadOntology();
-}
-async function publishOntology() {
-  if (!state.current) return;
-  await jpost(`/api/workspaces/${state.current}/ontology/publish`, {user: "admin"});
-  loadOntology();
-}
-async function findObjects() {
-  const t = document.getElementById("findType").value.trim();
-  if (!t || !state.current) return;
-  const f = document.getElementById("findFilter").value.trim();
-  let url = `/api/workspaces/${state.current}/state/find?type=${encodeURIComponent(t)}&user=admin`;
-  if (f) { const [k, v] = f.split("="); url += `&${encodeURIComponent(k)}=${encodeURIComponent(v)}`; }
-  const objects = await jfetch(url);
-  const body = document.getElementById("stateBody");
-  if (!objects.length) { body.textContent = "无匹配对象"; return; }
-  const cols = [...new Set(objects.flatMap(o => Object.keys(o.properties)))];
-  let html = `<table><tr><th>对象</th>${cols.map(c => `<th>${c}</th>`).join("")}</tr>`;
-  for (const o of objects) {
-    html += `<tr><td><span class="tag">${o.type}/${o.id}</span></td>` +
-      cols.map(c => `<td>${o.properties[c] ?? "-"}</td>`).join("") + "</tr>";
+  const o = S.ontology;
+  tag.textContent = o.lifecycle;
+  tag.className = "tag " + (o.lifecycle === "published" ? "ok" : "warn");
+  let html = `<h4>对象（${Object.keys(o.objects || {}).length}）</h4>
+    <table><thead><tr><th>对象</th><th>业务含义</th><th>属性</th></tr></thead><tbody>`;
+  for (const [name, obj] of Object.entries(o.objects || {})) {
+    const props = Object.values(obj.properties || {})
+      .map(p => `<code>${esc(p.name)}:${esc(p.type)}</code>`).join(" ") || "—";
+    html += `<tr><td><b>${esc(name)}</b></td><td>${esc(obj.description || "—")}</td><td>${props}</td></tr>`;
   }
-  body.innerHTML = html + "</table>";
+  html += "</tbody></table>";
+  const rels = Object.entries(o.relations || {});
+  if (rels.length) {
+    html += `<h4>关系（${rels.length}）</h4><table><thead><tr><th>关系</th><th>源 → 目标</th><th>含义</th></tr></thead><tbody>`;
+    for (const [n, r] of rels)
+      html += `<tr><td><b>${esc(n)}</b></td><td>${esc(r.source)} → ${esc(r.target)}</td><td>${esc(r.description || "—")}</td></tr>`;
+    html += "</tbody></table>";
+  }
+  const vocab = Object.entries(o.vocabulary || {});
+  if (vocab.length) {
+    html += `<h4>业务术语（${vocab.length}）</h4><div class="chips">` +
+      vocab.map(([t, v]) => `<span class="tag">${esc(t)} → ${esc(v.concept)}</span>`).join("") + `</div>`;
+  }
+  body.innerHTML = html;
 }
-async function invoke() {
-  const fn = document.getElementById("invFn").value.trim();
-  if (!fn || !state.current) return;
+const createOntology = guard(async () => {
+  const name = $("ontName").value.trim();
+  if (!name) return toast("请输入本体名称", "err");
+  await jpost(wp("/ontology"), { name, description: $("ontDesc").value.trim(), user: "admin" });
+  $("ontName").value = ""; $("ontDesc").value = "";
+  ok(`本体「${name}」已创建`); loadOntology();
+});
+const addObject = guard(async () => {
+  const name = $("objName").value.trim();
+  if (!name) return toast("请输入对象名", "err");
+  const properties = $("objProps").value.split("\n").map(l => l.trim()).filter(Boolean)
+    .map(l => { const [n, t] = l.split(":"); return { name: (n || "").trim(), type: (t || "string").trim() }; });
+  await jpost(wp("/ontology/objects"),
+    { name, description: $("objDesc").value.trim(), properties, user: "admin" });
+  $("objName").value = ""; $("objDesc").value = ""; $("objProps").value = "";
+  ok(`对象 ${name} 已添加`); loadOntology();
+});
+const addRelation = guard(async () => {
+  const [name, source, target] = ["relName", "relSource", "relTarget"].map(id => $(id).value.trim());
+  if (!name || !source || !target) return toast("关系名 / 源 / 目标都要填", "err");
+  await jpost(wp("/ontology/relations"), { name, source, target, user: "admin" });
+  ["relName", "relSource", "relTarget"].forEach(id => $(id).value = "");
+  ok(`关系 ${name} 已添加`); loadOntology();
+});
+const addTerm = guard(async () => {
+  const term = $("termWord").value.trim(), concept = $("termConcept").value.trim();
+  if (!term || !concept) return toast("术语与概念都要填", "err");
+  await jpost(wp("/ontology/vocabulary"),
+    { term, concept, kind: $("termKind").value, user: "admin" });
+  $("termWord").value = ""; $("termConcept").value = "";
+  ok(`术语「${term}」已添加`); loadOntology();
+});
+const validateOntology = guard(async () => {
+  const r = await jpost(wp("/ontology/validate"), { user: "admin" });
+  $("ontValidate").innerHTML = r.ok
+    ? `<span class="tag ok">校验通过</span>`
+ 
+    : `<span class="tag err">${r.problems.length} 个问题</span>`;
+  if (!r.ok) toast(r.problems.join("；"), "err");
+});
+const publishOntology = guard(async () => {
+  const r = await jpost(wp("/ontology/publish"), { user: "admin" });
+  ok("本体已发布到运行时");
+  S.runtime = r.runtime;
+  loadOntology();
+});
+
+/* ================= data ================= */
+async function loadData() {
+  busy($("dsList")); busy($("projList"));
+  const [ds, pj] = await Promise.all([
+    jget(wp("/datasources?user=admin")).catch(() => []),
+    jget(wp("/projections?user=admin")).catch(() => []),
+  ]);
+  S.datasources = ds; S.projections = pj;
+  renderData();
+}
+function renderData() {
+  const ds = S.datasources;
+  $("dsList").innerHTML = ds.length ? `<table><thead>
+      <tr><th>名称</th><th>类型</th><th>资产</th></tr></thead><tbody>` +
+    ds.map(d => {
+      const names = d.assets ? (Array.isArray(d.assets)
+        ? d.assets.map(a => a.name) : Object.keys(d.assets)) : [];
+      return `<tr><td><b>${esc(d.name)}</b></td><td><span class="tag plain">${esc(d.kind)}</span></td>
+      <td class="muted">${esc(names.join("、") || "—")}</td></tr>`;
+    }).join("") + "</tbody></table>"
+    : `<div class="empty"><b>尚无数据源</b>在下方连接一个。</div>`;
+  const pj = S.projections;
+  $("projList").innerHTML = pj.length ? `<table><thead>
+      <tr><th>投影</th><th>映射</th><th></th></tr></thead><tbody>` +
+    pj.map(p => `<tr><td><b>${esc(p.name)}</b></td>
+      <td class="muted">${(p.object_mappings || []).length} 对象 / ${(p.relation_mappings || []).length} 关系</td>
+      <td><button class="ghost sm" onclick="runProjection('${esc(p.id)}')">运行</button></td></tr>`).join("") +
+    "</tbody></table>"
+    : `<div class="empty"><b>尚无投影</b>创建投影把数据源映射为本体对象。</div>`;
+  $("projDs").innerHTML = ds.map(d => `<option value="${esc(d.id)}">${esc(d.name)}</option>`).join("");
+}
+const connectSource = guard(async () => {
+  const name = $("dsName").value.trim();
+  if (!name) return toast("请输入数据源名称", "err");
+  let config = {}, assets = [];
+  try { config = JSON.parse($("dsConfig").value || "{}"); }
+  catch { return toast("config 不是合法 JSON", "err"); }
+  try { assets = JSON.parse($("dsAssets").value || "[]"); }
+  catch { return toast("资产声明不是合法 JSON", "err"); }
+  await jpost(wp("/datasources"), { name, kind: $("dsKind").value, config, assets, user: "admin" });
+  $("dsName").value = ""; $("dsConfig").value = ""; $("dsAssets").value = "";
+  ok(`数据源「${name}」已连接`); loadData();
+});
+const createProjection = guard(async () => {
+  const name = $("projName").value.trim(), datasource_id = $("projDs").value;
+  if (!name || !datasource_id) return toast("投影名称与数据源都要填", "err");
+  let mappings;
+  try { mappings = JSON.parse($("projMappings").value || "{}"); }
+  catch { return toast("映射不是合法 JSON", "err"); }
+  // 允许直接给数组（视为 object_mappings）或给 {object_mappings, relation_mappings}
+  const object_mappings = Array.isArray(mappings) ? mappings : (mappings.object_mappings || []);
+  const relation_mappings = Array.isArray(mappings) ? [] : (mappings.relation_mappings || []);
+  await jpost(wp("/projections"),
+    { name, datasource_id, object_mappings, relation_mappings, user: "admin" });
+  $("projName").value = ""; $("projMappings").value = "";
+  ok(`投影「${name}」已创建`); loadData();
+});
+const runProjection = guard(async id => {
+  const r = await jpost(wp(`/projections/${id}/run`), { user: "admin" });
+  ok(`投影完成：${r.applied ?? "已执行"}`);
+  if (currentTab() === "data") loadData();
+});
+
+/* ================= capability ================= */
+const CAP_HINTS = {
+  python: "python 源码，必须定义 def execute(ctx)。ctx：object() 目标对象 dict、args 参数、get(ref)、find(type, **f)、related(ref, rel, dir)、set(ref, prop, value)（缓冲变更，原子生效）、link/unlink。return 值即输出。",
+  workflow: "workflow 步骤 JSON 数组：find / related / get / count / set / set_property / invoke，{{path}} 引用上下文。",
+  agent: "一段自然语言目标；平台用 LLM 循环（观察 → 行动 → 结论）实现该能力，{target}/{arg} 会被替换。",
+};
+function capKindChanged() {
+  const k = $("capKind").value;
+  $("capImpl").placeholder = CAP_HINTS[k];
+  $("capImplHint").textContent = CAP_HINTS[k];
+}
+async function loadCapabilities() {
+  busy($("capList"));
+  S.capabilities = await jget(wp("/capabilities?user=admin")).catch(() => []);
+  renderCapabilities();
+}
+function renderCapabilities() {
+  const caps = S.capabilities;
+  $("capList").innerHTML = caps.length ? `<table><thead>
+      <tr><th>能力</th><th>函数</th><th>实现</th><th>状态</th><th></th></tr></thead><tbody>` +
+    caps.map(c => {
+      const fn = `${c.target_type}.${c.key}`;
+      const kind = (c.implementation && c.implementation.kind) || "-";
+      const life = c.lifecycle;
+      return `<tr>
+        <td><b>${esc(c.name)}</b><div class="muted">${esc(c.description || "")}</div></td>
+        <td><code>${esc(fn)}</code></td>
+        <td><span class="tag plain">${esc(kind)}</span></td>
+        <td><span class="tag ${life === "published" ? "ok" : "warn"}">${esc(life)}</span></td>
+        <td>${life !== "published"
+          ? `<button class="ghost sm" onclick="publishCapability('${esc(c.id)}')">发布</button>` : ""}</td>
+      </tr>`;
+    }).join("") + "</tbody></table>"
+    : `<div class="empty"><b>尚无能力</b>在右侧创建：python / workflow / agent 三种实现。</div>`;
+  const fns = caps.filter(c => c.lifecycle === "published")
+    .map(c => `${c.target_type}.${c.key}`);
+  $("fnList").innerHTML = fns.map(f => `<option value="${esc(f)}">`).join("");
+}
+const createCapability = guard(async () => {
+  const key = $("capKey").value.trim(), name = $("capName").value.trim(),
+        target_type = $("capTarget").value.trim(), kind = $("capKind").value;
+  if (!key || !name || !target_type) return toast("key / 名称 / 目标对象都要填", "err");
+  let implementation;
+  const raw = $("capImpl").value;
+  if (kind === "python") {
+    if (!raw.trim()) return toast("请粘贴 python 源码", "err");
+    implementation = { kind, source: raw };
+  } else if (kind === "workflow") {
+    let steps; try { steps = JSON.parse(raw || "[]"); }
+    catch { return toast("workflow 步骤不是合法 JSON", "err"); }
+    implementation = { kind, steps };
+  } else {
+    if (!raw.trim()) return toast("请填写 agent 目标", "err");
+    implementation = { kind, goal: raw.trim() };
+  }
+  await jpost(wp("/capabilities"),
+    { key, name, target_type, description: $("capDesc").value.trim(), implementation, user: "admin",
+      inputs: $("capInputs").value.split("\n").map(l => l.trim()).filter(Boolean)
+        .map(l => { const [n, t] = l.split(":"); return { name: (n || "").trim(), type: (t || "string").trim() }; }) });
+  ["capKey", "capName", "capDesc", "capInputs"].forEach(id => $(id).value = "");
+  ok(`能力「${name}」已创建，发布后可调用`); loadCapabilities();
+});
+const publishCapability = guard(async id => {
+  await jpost(wp(`/capabilities/${id}/publish`), { user: "admin" });
+  ok("能力已发布为运行时函数"); loadCapabilities();
+});
+const invoke = guard(async () => {
+  const fn = $("invFn").value.trim();
+  if (!fn) return toast("请输入要调用的能力函数", "err");
   let args = {};
-  try { args = JSON.parse(document.getElementById("invArgs").value || "{}"); }
-  catch (e) { alert("参数不是合法 JSON"); return; }
-  const out = await jpost(`/api/workspaces/${state.current}/invoke`, {
-    function: fn, target: document.getElementById("invTarget").value.trim() || null,
-    args, user: "admin"});
-  const pre = document.getElementById("invOut");
-  pre.style.display = "block";
-  pre.textContent = JSON.stringify(out, null, 2);
-  findObjects();
+  try { args = JSON.parse($("invArgs").value || "{}"); }
+  catch { return toast("参数不是合法 JSON", "err"); }
+  const target = $("invTarget").value.trim() || null;
+  const out = await jpost(wp("/invoke"), { function: fn, target, args, user: "admin" });
+  renderInvokeResult(out);
+  refreshChanges();
+});
+function renderInvokeResult(r) {
+  const el = $("invOut");
+  const head = r.ok
+    ? `<span class="tag ok">成功</span>`
+    : `<span class="tag err">失败</span> <code>${esc(r.error || "")}</code>`;
+  let changes = "";
+  if ((r.changes || []).length) {
+    changes = `<h4>状态变更（${r.changes.length}）</h4><table><tbody>` +
+      r.changes.map(c => {
+        if (c.kind === "set_property")
+          return `<tr><td><code>set_property</code></td><td>${esc(c.object)}.${esc(c.property)}</td>
+            <td>${esc(c.old)} → <b>${esc(c.new)}</b></td></tr>`;
+        if (c.kind === "link")
+          return `<tr><td><code>link</code></td><td>${esc(c.source)} --${esc(c.relation)}--> ${esc(c.target)}</td><td></td></tr>`;
+        if (c.kind === "create_object")
+          return `<tr><td><code>create</code></td><td>${esc(c.object)}</td><td class="muted">${esc(JSON.stringify(c.properties))}</td></tr>`;
+        return `<tr><td colspan="3"><code>${esc(JSON.stringify(c))}</code></td></tr>`;
+      }).join("") + "</tbody></table>";
+  }
+  el.innerHTML = `<div class="row" style="margin-top:10px">${head}
+      <span class="muted">execution ${esc(r.execution_id || "")}</span></div>` +
+    (r.output != null ? `<h4>输出</h4><pre>${esc(JSON.stringify(r.output, null, 2))}</pre>` : "") +
+    changes;
 }
-async function ask() {
-  const q = document.getElementById("askBox").value.trim();
-  if (!q || !state.current) return;
-  const pre = document.getElementById("askOut");
-  pre.style.display = "block";
-  pre.textContent = "思考中…";
+
+/* ================= application ================= */
+async function loadApplications() {
+  busy($("appList"));
+  const [apps, caps] = await Promise.all([
+    jget(wp("/applications?user=admin")).catch(() => []),
+    jget(wp("/capabilities?user=admin")).catch(() => []),
+  ]);
+  S.capabilities = caps;
+  const details = await Promise.all(apps.map(a =>
+    jget(wp(`/applications/${a.id}?user=admin`)).catch(() => a)));
+  renderApplications(details);
+}
+function renderApplications(apps) {
+  const el = $("appList");
+  if (!apps.length) {
+    el.innerHTML = `<div class="empty"><b>尚无应用</b>应用 = 视图 + 查询 + Agent（design.txt §50）。</div>`;
+    return;
+  }
+  el.innerHTML = apps.map(a => {
+    const views = Object.values(a.views || {});
+    const queries = Object.values(a.queries || {});
+    const agents = a.agents || [];
+    const aid = esc(a.id);
+    const capNames = (a.capabilities || [])
+      .map(id => { const c = S.capabilities.find(x => x.id === id); return c ? `${c.target_type}.${c.key}` : id; });
+    return `<div class="card" style="margin-top:14px">
+      <h3>${esc(a.name)} <span class="tag ${a.lifecycle === "published" ? "ok" : "warn"}">${esc(a.lifecycle)}</span>
+        ${a.lifecycle !== "published" ? `<button class="ghost sm" onclick="publishApplication('${aid}')">发布应用</button>` : ""}
+      </h3>
+      <div class="grid cols-3">
+        <div>
+          <h4>视图（${views.length}）</h4>
+          ${views.length ? views.map(v => `<div class="muted"><span class="tag plain">${esc(v.kind)}</span> ${esc(v.title || v.alias)} → ${esc(v.object_type || v.query_alias || "")}</div>`).join("") : `<div class="muted">—</div>`}
+          <div class="row" style="margin-top:6px">
+            <input id="v-${aid}" placeholder="别名" style="min-width:64px">
+            <select id="vk-${aid}"><option>table</option><option>card</option><option>chart</option><option>map</option></select>
+            <input id="vo-${aid}" placeholder="对象类型" style="min-width:84px">
+            <button class="subtle sm" onclick="addView('${aid}')">加视图</button>
+          </div>
+        </div>
+        <div>
+          <h4>查询（${queries.length}）</h4>
+          ${queries.length ? queries.map(q => `<div class="muted">${esc(q.title || q.alias)} → ${esc(q.object_type)}
+              <button class="subtle sm" onclick="runAppQuery('${aid}','${esc(q.alias)}')">运行</button></div>`).join("") : `<div class="muted">—</div>`}
+          <div class="row" style="margin-top:6px">
+            <input id="q-${aid}" placeholder="别名" style="min-width:64px">
+            <input id="qo-${aid}" placeholder="对象类型" style="min-width:84px">
+            <input id="qf-${aid}" placeholder='过滤 {"status":"congested"}' style="min-width:104px">
+            <button class="subtle sm" onclick="addAppQuery('${aid}')">加查询</button>
+          </div>
+          <div id="qr-${aid}"></div>
+        </div>
+        <div>
+          <h4>Agent（${agents.length}）</h4>
+          ${agents.length ? agents.map(g => `<div class="muted"><b>${esc(g.alias)}</b> · ${esc(g.goal)}
+              <button class="ghost sm" onclick="runAppAgent('${aid}','${esc(g.alias)}')">运行</button></div>`).join("") : `<div class="muted">—</div>`}
+          <div class="row" style="margin-top:6px">
+            <input id="ga-${aid}" placeholder="别名" style="min-width:64px">
+            <input id="gg-${aid}" placeholder="目标" style="min-width:104px">
+            <button class="subtle sm" onclick="addAppAgent('${aid}')">加 Agent</button>
+          </div>
+          <div id="ar-${aid}"></div>
+        </div>
+      </div>
+      <h4>挂载能力（${capNames.length}）</h4>
+      <div class="row">
+        ${capNames.length ? capNames.map(n => `<span class="tag">${esc(n)}</span>`).join("") : `<span class="muted">—</span>`}
+        <select id="ac-${aid}" style="max-width:220px">
+          ${S.capabilities.filter(c => c.lifecycle === "published")
+            .map(c => `<option value="${esc(c.id)}">${esc(c.target_type)}.${esc(c.key)}</option>`).join("")}
+        </select>
+        <button class="subtle sm" onclick="attachCapability('${aid}')">挂载</button>
+      </div>
+    </div>`;
+  }).join("");
+}
+const createApplication = guard(async () => {
+  const name = $("appName").value.trim();
+  if (!name) return toast("请输入应用名称", "err");
+  await jpost(wp("/applications"), { name, user: "admin" });
+  $("appName").value = ""; ok(`应用「${name}」已创建`); loadApplications();
+});
+const publishApplication = guard(async id => {
+  await jpost(wp(`/applications/${id}/publish`), { user: "admin" });
+  ok("应用已发布"); loadApplications();
+});
+const addView = guard(async aid => {
+  const alias = $(`v-${aid}`).value.trim();
+  if (!alias) return toast("请输入视图别名", "err");
+  await jpost(wp(`/applications/${aid}/views`), {
+    alias, kind: $(`vk-${aid}`).value, object_type: $(`vo-${aid}`).value.trim(), user: "admin" });
+  ok("视图已添加"); loadApplications();
+});
+const addAppQuery = guard(async aid => {
+  const alias = $(`q-${aid}`).value.trim(), object_type = $(`qo-${aid}`).value.trim();
+  if (!alias || !object_type) return toast("查询别名与对象类型都要填", "err");
+  let filters = {};
+  try { filters = JSON.parse($(`qf-${aid}`).value || "{}"); }
+  catch { return toast("过滤不是合法 JSON", "err"); }
+  await jpost(wp(`/applications/${aid}/queries`), { alias, object_type, filters, user: "admin" });
+  ok("查询已添加"); loadApplications();
+});
+const runAppQuery = guard(async (aid, alias) => {
+  const r = await jpost(wp(`/applications/${aid}/query`), { alias, user: "admin" });
+  const expanded = (r.expand || []).reduce((n, e) => n + (e.objects || []).length, 0);
+  $(`qr-${aid}`).innerHTML = `<div class="banner ok">「${esc(alias)}」返回 ${r.objects.length} 个对象` +
+    (expanded ? `，展开 ${expanded} 个关联` : "") + `</div>`;
+});
+const addAppAgent = guard(async aid => {
+  const alias = $(`ga-${aid}`).value.trim(), goal = $(`gg-${aid}`).value.trim();
+  if (!alias || !goal) return toast("Agent 别名与目标都要填", "err");
+  await jpost(wp(`/applications/${aid}/agents`), { alias, goal, user: "admin" });
+  ok("应用 Agent 已添加"); loadApplications();
+});
+const runAppAgent = guard(async (aid, alias) => {
+  const el = $(`ar-${aid}`);
+  busy(el, "Agent 运行中");
+  const body = { user: "admin" };
+  const llm = readLlmConfig();
+  if (llm) body.llm = llm;
+  const r = await jpost(wp(`/applications/${aid}/agents/${encodeURIComponent(alias)}/agent`), body);
+  el.innerHTML = `<div class="final-answer">${esc(r.answer || "")}</div>
+    <div class="muted" style="margin-top:4px">${(r.steps || []).length} 步 · ${r.ok ? "完成" : "未完成"}</div>`;
+});
+const attachCapability = guard(async aid => {
+  const cid = $(`ac-${aid}`).value;
+  if (!cid) return toast("没有可挂载的已发布能力", "err");
+  await jpost(wp(`/applications/${aid}/capabilities`), { capability_id: cid, user: "admin" });
+  ok("能力已挂载到应用"); loadApplications();
+});
+
+/* ================= runtime ================= */
+async function loadRuntimeTab() {
   try {
-    const ans = await jpost(`/api/workspaces/${state.current}/ask`, {question: q, user: "admin"});
-    pre.textContent = ans.answer;
-  } catch (e) { pre.textContent = "出错：" + e.message; }
+    const ont = await jget(wp("/ontology?user=admin"));
+    const types = Object.keys(ont.objects || {});
+    $("typeList").innerHTML = types.map(t => `<option value="${esc(t)}">`).join("");
+    if (!$("findType").value && types.length) $("findType").value = types[0];
+  } catch { /* no ontology yet */ }
+  refreshChanges();
 }
-loadWorkspaces();
+const findObjects = guard(async () => {
+  const t = $("findType").value.trim();
+  const el = $("stateBody");
+  if (!t) return toast("请输入对象类型", "err");
+  busy(el);
+  const f = $("findFilter").value.trim();
+  let url = wp(`/state/find?type=${encodeURIComponent(t)}&user=admin`);
+  if (f) {
+    const i = f.indexOf("=");
+    if (i < 1) return toast("过滤格式：prop=value", "err");
+    url += `&${encodeURIComponent(f.slice(0, i))}=${encodeURIComponent(f.slice(i + 1))}`;
+  }
+  const objects = await jget(url);
+  if (!objects.length) { el.innerHTML = `<div class="empty"><b>无匹配对象</b>换个过滤条件试试。</div>`; return; }
+  const cols = [...new Set(objects.flatMap(o => Object.keys(o.properties || {})))];
+  el.innerHTML = `<table><thead><tr><th>引用</th>${cols.map(c => `<th>${esc(c)}</th>`).join("")}</tr></thead><tbody>` +
+    objects.map(o => `<tr><td><span class="tag ref" style="cursor:pointer"
+        onclick="showObject('${esc(o.type)}/${esc(o.id)}')">${esc(o.type)}/${esc(o.id)}</span></td>` +
+      cols.map(c => `<td>${esc(o.properties[c] ?? "-")}</td>`).join("") + `</tr>`).join("") +
+    `</tbody></table>`;
+});
+const showObject = guard(async ref => {
+  if (!ref) ref = $("detailRef").value.trim();
+  if (!ref) return toast("请输入对象引用", "err");
+  $("detailRef").value = ref;
+  const el = $("objectDetail");
+  busy(el);
+  const obj = await jget(wp(`/state/get?ref=${encodeURIComponent(ref)}&user=admin`));
+  if (!obj) { el.innerHTML = `<div class="empty"><b>对象不存在</b>${esc(ref)}</div>`; return; }
+  let html = `<dl class="kv">` +
+    Object.entries(obj.properties || {}).map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("") +
+    `</dl>`;
+  const rels = (S.runtime && S.runtime.relations) || [];
+  const related = rels.filter(r => r.source === obj.type || r.target === obj.type);
+  if (related.length) {
+    html += `<h4>关系导航</h4>`;
+    for (const r of related) {
+      const direction = r.source === obj.type ? "out" : "in";
+      const edges = await jget(wp(`/state/related?ref=${encodeURIComponent(ref)}&relation=${encodeURIComponent(r.name)}&direction=${direction}&user=admin`));
+      html += `<div class="row"><span class="tag plain">${esc(r.name)} ${direction === "out" ? "→" : "←"}</span>` +
+        (edges.length ? edges.map(e => {
+          const [t, id] = String(e).split("/");
+          return `<span class="tag ref" style="cursor:pointer" onclick="showObject('${esc(t)}/${esc(id)}')">${esc(e)}</span>`;
+        }).join(" ") : `<span class="muted">无</span>`) + `</div>`;
+    }
+  }
+  el.innerHTML = html;
+});
+function renderChanges(events) {
+  const el = $("changesBody");
+  if (!events.length) {
+    el.innerHTML = `<div class="empty"><b>暂无变更</b>运行投影或调用能力后这里会出现记录。</div>`;
+    return;
+  }
+  el.innerHTML = `<table><thead><tr><th>#</th><th>来源</th><th>变更</th></tr></thead><tbody>` +
+    events.slice().reverse().map(e => {
+      const desc = (e.changes || []).map(c => {
+        if (c.kind === "set_property") return `${esc(c.object)}.${esc(c.property)}: ${esc(c.old)} → ${esc(c.new)}`;
+        if (c.kind === "link") return `${esc(c.source)} --${esc(c.relation)}--> ${esc(c.target)}`;
+        if (c.kind === "create_object") return `create ${esc(c.object)}`;
+        return esc(JSON.stringify(c));
+      }).join("；");
+      return `<tr><td>${e.seq}</td>
+        <td><span class="tag ${e.source === "invoke" ? "" : "plain"}">${esc(e.source)}${e.function ? " · " + esc(e.function) : ""}</span></td>
+        <td class="muted">${desc}</td></tr>`;
+    }).join("") + "</tbody></table>";
+}
+async function refreshChanges() {
+  if (!S.wid) return;
+  try {
+    const events = await jget(wp(`/changes?after=${S.lastSeq}&user=admin`));
+    if (events.length) S.lastSeq = events[events.length - 1].seq;
+    if (currentTab() === "runtime") renderChanges(events);
+  } catch { /* workspace gone */ }
+}
+function toggleLive() {
+  stopLive();
+  if ($("liveToggle").checked) S.liveTimer = setInterval(refreshChanges, 2500);
+}
+function stopLive() {
+  if (S.liveTimer) { clearInterval(S.liveTimer); S.liveTimer = null; }
+  const t = $("liveToggle"); if (t) t.checked = false;
+}
+
+/* ================= intelligence ================= */
+const ask = guard(async () => {
+  const q = $("askBox").value.trim();
+  const el = $("askOut");
+  if (!q) return toast("请输入问题", "err");
+  busy(el, "思考中");
+  const r = await jpost(wp("/ask"), { question: q, user: "admin" });
+  let html = `<div class="answer">${esc(r.answer)}</div>`;
+  if ((r.concepts || []).length)
+    html += `<div class="chips">` + r.concepts.map(c =>
+      `<span class="tag">${esc(c.term)} → ${esc(c.concept)}</span>`).join("") + `</div>`;
+  if ((r.objects || []).length) {
+    html += `<h4>命中的对象（${r.objects.length}）</h4><table><tbody>` +
+      r.objects.slice(0, 8).map(o => `<tr><td><span class="tag">${esc(o.type)}/${esc(o.id)}</span></td>
+        <td class="muted">${esc(JSON.stringify(o.properties))}</td></tr>`).join("") + `</tbody></table>`;
+  }
+  if ((r.related || []).length)
+    html += `<h4>关联（${r.related.length}）</h4><div class="chips">` +
+      r.related.slice(0, 12).map(x =>
+        `<span class="tag plain">${esc(x.from)} --${esc(x.relation)}--> ${esc(x.object.type)}/${esc(x.object.id)}</span>`).join("") + `</div>`;
+  el.innerHTML = html;
+});
+function readLlmConfig() {
+  if ($("llmKind").value !== "openai") return null;
+  const cfg = { provider: "openai" };
+  if ($("llmBase").value.trim()) cfg.base_url = $("llmBase").value.trim();
+  if ($("llmModel").value.trim()) cfg.model = $("llmModel").value.trim();
+  if ($("llmKey").value.trim()) cfg.api_key = $("llmKey").value.trim();
+  return cfg;
+}
+const runAgent = guard(async () => {
+  const goal = $("agentGoal").value.trim();
+  const el = $("agentOut");
+  if (!goal) return toast("请输入目标", "err");
+  busy(el, "Agent 推理中");
+  const body = { goal, user: "admin", max_steps: parseInt($("agentSteps").value || "8", 10) };
+  const llm = readLlmConfig();
+  if (llm) body.llm = llm;
+  const r = await jpost(wp("/agent"), body);
+  renderAgentRun(el, r);
+  refreshChanges();
+});
+function renderAgentRun(el, r) {
+  const steps = (r.steps || []).map(s => {
+    const action = s.action || {};
+    const args = action.args && Object.keys(action.args).length
+      ? esc(JSON.stringify(action.args)) : "";
+    return `<li>
+      <div class="thought">${esc(s.thought || "")}</div>
+      <div><span class="tag">${esc(action.tool || "?")}</span> <code>${args}</code></div>
+      ${s.observation ? `<div class="obs muted">${esc(String(s.observation).slice(0, 220))}</div>` : ""}
+    </li>`;
+  }).join("");
+  el.innerHTML = (steps ? `<ul class="timeline">${steps}</ul>` : "") +
+    `<div class="final-answer">${esc(r.answer || "")}</div>
+     <div class="muted" style="margin-top:4px">${(r.steps || []).length} 步 · ${r.ok ? "完成" : "未完成"}</div>`;
+}
+
+/* ================= audit ================= */
+async function loadAudit() {
+  const el = $("auditBody");
+  busy(el);
+  const events = await jget(wp("/audit?user=admin&limit=100")).catch(() => []);
+  if (!events.length) {
+    el.innerHTML = `<div class="empty"><b>暂无事件</b>任何创建 / 发布 / 调用都会记录在这里。</div>`;
+    return;
+  }
+  el.innerHTML = `<table><thead><tr><th>时间</th><th>操作者</th><th>动作</th><th>目标</th><th>详情</th></tr></thead><tbody>` +
+    events.slice().reverse().map(e => `<tr>
+      <td class="muted" style="white-space:nowrap">${esc((e.ts || "").replace("T", " ").slice(0, 19))}</td>
+      <td>${esc(e.actor || "")}</td>
+      <td><span class="tag plain">${esc(e.action || "")}</span></td>
+      <td>${esc(e.target || "")}</td>
+      <td class="muted">${esc(JSON.stringify(e.detail || {})).slice(0, 120)}</td>
+    </tr>`).join("") + "</tbody></table>";
+}
+
+/* ================= health & boot ================= */
+async function ping() {
+  try {
+    const h = await jget("/api/health");
+    $("health").innerHTML = `<b>●</b> ${esc(h.status)} · v${esc(h.version)}`;
+  } catch { $("health").textContent = "● 服务不可达"; }
+}
+(async function boot() {
+  capKindChanged();
+  ping();
+  try {
+    await loadWorkspaces();
+    if (S.wid) renderTab();
+  } catch (e) { fail(e); }
+})();
 </script>
 </body>
 </html>
