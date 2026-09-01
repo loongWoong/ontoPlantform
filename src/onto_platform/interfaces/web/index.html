@@ -179,8 +179,8 @@
   <button data-tab="data">数据</button>
   <button data-tab="capability">能力</button>
   <button data-tab="application">应用</button>
-  <button data-tab="runtime">运行时</button>
-  <button data-tab="intelligence">智能</button>
+  <button data-tab="runtime">业务数据</button>
+  <button data-tab="intelligence">AI 助手</button>
   <button data-tab="audit">审计</button>
 </nav>
 
@@ -227,15 +227,18 @@
     <div class="grid cols-2">
       <div class="card">
         <h3>本体定义 <span id="ontLifecycle" class="tag plain">-</span></h3>
-        <p class="hint">对象 / 关系 / 业务术语。published 后不可修改，需新建版本。</p>
+        <p class="hint">对象 / 关系 / 业务术语。发布后定义锁定不可修改（v0.1：如需演进请新建工作空间）。</p>
+        <div id="ontFrozen" class="banner warn" style="display:none">
+          本体已发布，定义已锁定。运行时以发布版本为准；如需修改对象 / 关系 / 术语，请创建新的工作空间（v0.1 边界）。
+        </div>
         <div class="row">
           <input id="ontName" placeholder="本体名称，如 traffic" style="flex:2">
           <input id="ontDesc" placeholder="描述（可选）">
-          <button onclick="createOntology()">创建本体</button>
+          <button id="btnCreateOntology" onclick="createOntology()">创建本体</button>
         </div>
         <div class="row">
           <button class="subtle" onclick="validateOntology()">校验</button>
-          <button onclick="publishOntology()">发布到运行时</button>
+          <button id="btnPublishOntology" onclick="publishOntology()">发布到运行时</button>
           <span id="ontValidate" class="muted"></span>
         </div>
         <div id="ontBody"><div class="empty"><b>尚无本体</b>创建一个，或选择已有工作空间。</div></div>
@@ -249,7 +252,7 @@
             <input id="objDesc" placeholder="业务含义，如 车辆">
           </div>
           <textarea id="objProps" rows="3" placeholder="plate:string&#10;balance:number"></textarea>
-          <div class="row"><button onclick="addObject()">添加对象</button></div>
+          <div class="row"><button id="btnAddObject" onclick="addObject()">添加对象</button></div>
         </div>
         <div class="card" style="margin-top:16px">
           <h3>添加关系</h3>
@@ -258,7 +261,7 @@
             <input id="relSource" placeholder="源对象，如 Vehicle">
             <input id="relTarget" placeholder="目标对象，如 TollStation">
           </div>
-          <div class="row"><button onclick="addRelation()">添加关系</button></div>
+          <div class="row"><button id="btnAddRelation" onclick="addRelation()">添加关系</button></div>
         </div>
         <div class="card" style="margin-top:16px">
           <h3>添加业务术语</h3>
@@ -272,7 +275,7 @@
               <option value="relation">关系</option>
             </select>
           </div>
-          <div class="row"><button onclick="addTerm()">添加术语</button></div>
+          <div class="row"><button id="btnAddTerm" onclick="addTerm()">添加术语</button></div>
         </div>
       </div>
     </div>
@@ -309,6 +312,7 @@
         <textarea id="projMappings" rows="5" placeholder='映射 JSON：{"object_mappings": [{"asset": "vehicles", "object_type": "Vehicle", "id_field": "vid", "fields": [{"source_field": "plate", "property": "plate"}]}], "relation_mappings": [{"asset": "tx", "relation": "passes", "source_field": "vid", "target_field": "sid"}]}'></textarea>
         <div class="row">
           <button onclick="createProjection()">创建投影</button>
+          <button class="subtle" onclick="fillProjTemplate()">生成模板</button>
           <span class="muted">创建后点「运行」写入运行时</span>
         </div>
       </div>
@@ -342,7 +346,10 @@
         </div>
         <textarea id="capImpl" rows="7" placeholder=""></textarea>
         <div class="muted" id="capImplHint" style="margin-top:4px"></div>
-        <div class="row" style="margin-top:8px"><button onclick="createCapability()">创建能力</button></div>
+        <div class="row" style="margin-top:8px">
+          <button onclick="createCapability()">创建能力</button>
+          <button class="subtle" onclick="fillCapTemplate()">插入模板</button>
+        </div>
       </div>
     </div>
     <div class="card" style="margin-top:16px">
@@ -375,10 +382,10 @@
         <div class="row">
           <input id="findType" list="typeList" placeholder="对象类型，如 TollStation">
           <datalist id="typeList"></datalist>
-          <input id="findFilter" placeholder="过滤，如 status=congested">
+          <input id="findFilter" placeholder="过滤，如 status=congested 或 balance__gt=50">
           <button onclick="findObjects()">查询</button>
         </div>
-        <div id="stateBody"><div class="empty"><b>输入对象类型开始查询</b>支持 prop=value、prop__gt=1 等过滤。</div></div>
+        <div id="stateBody"><div class="empty"><b>输入对象类型开始查询</b>支持 prop=value、prop__gt=1、prop__contains=关键词 等过滤。</div></div>
       </div>
       <div class="card">
         <h3>对象详情</h3>
@@ -402,6 +409,9 @@
   </section>
 
   <section class="tab" id="tab-intelligence">
+    <div id="llmWarn" class="banner warn" style="display:none">
+      未配置默认 LLM：下面的 Agent 需要一个 OpenAI 兼容服务才能运行（在 Agent 卡片中展开「LLM 配置」填写）。<b>Ask 确定性问答不需要 LLM</b，可直接使用。
+    </div>
     <div class="grid cols-2">
       <div class="card">
         <h3>Ask · 确定性问答</h3>
@@ -460,7 +470,7 @@
 const S = {
   workspaces: [], wid: null, ontology: null, runtime: null,
   capabilities: [], datasources: [], projections: [],
-  lastSeq: 0, liveTimer: null,
+  appsById: {}, changes: [], lastSeq: 0, liveTimer: null, llm: false,
 };
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"']/g,
@@ -487,13 +497,47 @@ function toast(msg, kind = "") {
   setTimeout(() => el.remove(), 4200);
 }
 const ok = msg => toast(msg, "ok");
-const fail = e => toast(e.message || String(e), "err");
+/* 把后端常见错误翻译成业务语言 + 下一步指引（design.txt §42 第一原则） */
+function friendly(msg) {
+  const m = String(msg || "");
+  if (m.includes("no LLM provider configured"))
+    return "未配置 LLM：请在「AI 助手」页展开「LLM 配置」填写 OpenAI 兼容服务后重试（Ask 问答不需要 LLM）。";
+  if (m.includes("published ontology is immutable"))
+    return "本体已发布，定义不可再修改；如需演进请新建工作空间（v0.1 边界）。";
+  if (m.includes("cannot publish from") || m.includes("cannot validate from"))
+    return "生命周期不允许该操作：已发布的本体不能重复发布或修改。";
+  if (m.includes("no schema published"))
+    return "运行时未就绪：请先到「本体」页发布本体。";
+  if (m.includes("has no ontology"))
+    return "该工作空间还没有本体：请先到「本体」页创建。";
+  if (m.includes("ontology validation failed"))
+    return "本体校验未通过：" + m.replace("ontology validation failed: ", "");
+  if (m.includes("already has an ontology"))
+    return "该工作空间已有本体（v0.1 每空间一个）。";
+  return m;
+}
+const fail = e => toast(friendly(e.message || String(e)), "err");
 const guard = fn => (...a) => fn(...a).catch(fail);
 const busy = (el, text = "加载中") => { el.innerHTML = `<div class="loading">${esc(text)}</div>`; };
+
+/* 对象表格：运行时查询 / 应用查询 / 视图预览共用（点击引用跳详情） */
+function objectTable(objects) {
+  if (!objects || !objects.length) return `<div class="empty">无对象</div>`;
+  const cols = [...new Set(objects.flatMap(o => Object.keys(o.properties || {})))];
+  return `<table><thead><tr><th>引用</th>${cols.map(c => `<th>${esc(c)}</th>`).join("")}</tr></thead><tbody>` +
+    objects.map(o => `<tr><td><span class="tag" style="cursor:pointer"
+        onclick="showObject('${esc(o.type)}/${esc(o.id)}')">${esc(o.type)}/${esc(o.id)}</span></td>` +
+      cols.map(c => `<td>${esc(o.properties[c] ?? "-")}</td>`).join("") + `</tr>`).join("") +
+    `</tbody></table>`;
+}
 
 /* ================= tabs ================= */
 document.querySelectorAll("#tabs button").forEach(btn => {
   btn.onclick = () => {
+    if (!S.wid && btn.dataset.tab !== "overview") {
+      toast("请先在「概览」页创建或选择一个工作空间", "err");
+      return;
+    }
     document.querySelectorAll("#tabs button").forEach(b => b.classList.remove("active"));
     document.querySelectorAll("section.tab").forEach(s => s.classList.remove("active"));
     btn.classList.add("active");
@@ -501,14 +545,22 @@ document.querySelectorAll("#tabs button").forEach(btn => {
     renderTab();
   };
 });
+function activateTab(name) {
+  const btn = document.querySelector(`#tabs button[data-tab="${name}"]`);
+  if (btn) btn.click();
+}
 function renderTab() {
-  if (!S.wid) return;
   stopLive();
+  const tab = currentTab();
+  if (!S.wid) {
+    if (tab === "overview") renderOverviewEmpty();
+    return;
+  }
   ({
     overview: loadOverview, ontology: loadOntology, data: loadData,
     capability: loadCapabilities, application: loadApplications,
     runtime: loadRuntimeTab, audit: loadAudit,
-  }[currentTab()] || (() => {}))();
+  }[tab] || (() => {}))();
 }
 const currentTab = () => document.querySelector("#tabs button.active").dataset.tab;
 
@@ -521,7 +573,11 @@ async function loadWorkspaces() {
   if (!S.wid && S.workspaces.length) { S.wid = S.workspaces[0].id; sel.value = S.wid; }
 }
 function switchWorkspace(id) {
-  S.wid = id; S.lastSeq = 0;
+  S.wid = id; S.lastSeq = 0; S.changes = [];
+  // 清空上一空间残留的输出与查询输入，避免数据串页
+  ["invOut", "askOut", "agentOut", "stateBody", "objectDetail", "changesBody"]
+    .forEach(x => { const el = $(x); if (el) el.innerHTML = ""; });
+  ["findType", "findFilter", "detailRef"].forEach(x => { const el = $(x); if (el) el.value = ""; });
   renderTab();
 }
 const createWorkspace = guard(async () => {
@@ -537,7 +593,13 @@ const createWorkspace = guard(async () => {
 });
 
 /* ================= overview ================= */
+function renderOverviewEmpty() {
+  $("ovWorkspace").innerHTML = `<div class="empty"><b>还没有工作空间</b>在上方输入名称，创建第一个工作空间开始建模。</div>`;
+  const life = $("ovLifecycle"); life.textContent = "-"; life.className = "tag plain";
+  $("ovRuntime").innerHTML = `<div class="empty"><b>运行时未就绪</b>创建工作空间并发布本体后，这里显示 Kernel 索引。</div>`;
+}
 async function loadOverview() {
+  if (!S.wid) return renderOverviewEmpty();
   const ws = S.workspaces.find(w => w.id === S.wid) || {};
   $("ovWorkspace").innerHTML = `
     <dt>名称</dt><dd>${esc(ws.name || "-")}</dd>
@@ -579,12 +641,17 @@ function renderOntology() {
   const body = $("ontBody"), tag = $("ontLifecycle");
   if (!S.ontology) {
     tag.textContent = "无"; tag.className = "tag plain";
+    $("ontFrozen").style.display = "none";
+    setOntologyFrozen(false);
     body.innerHTML = `<div class="empty"><b>尚无本体</b>在左侧创建一个。</div>`;
     return;
   }
   const o = S.ontology;
+  const frozen = o.lifecycle === "published";
   tag.textContent = o.lifecycle;
-  tag.className = "tag " + (o.lifecycle === "published" ? "ok" : "warn");
+  tag.className = "tag " + (frozen ? "ok" : "warn");
+  $("ontFrozen").style.display = frozen ? "" : "none";
+  setOntologyFrozen(frozen);
   let html = `<h4>对象（${Object.keys(o.objects || {}).length}）</h4>
     <table><thead><tr><th>对象</th><th>业务含义</th><th>属性</th></tr></thead><tbody>`;
   for (const [name, obj] of Object.entries(o.objects || {})) {
@@ -614,6 +681,13 @@ const createOntology = guard(async () => {
   $("ontName").value = ""; $("ontDesc").value = "";
   ok(`本体「${name}」已创建`); loadOntology();
 });
+/* 已发布的本体不可变（领域规则）：锁定全部编辑入口，避免点击后才报错 */
+function setOntologyFrozen(frozen) {
+  ["btnCreateOntology", "btnPublishOntology", "btnAddObject", "btnAddRelation", "btnAddTerm",
+   "ontName", "ontDesc", "objName", "objDesc", "objProps",
+   "relName", "relSource", "relTarget", "termWord", "termConcept", "termKind"]
+    .forEach(id => { const el = $(id); if (el) el.disabled = frozen; });
+}
 const addObject = guard(async () => {
   const name = $("objName").value.trim();
   if (!name) return toast("请输入对象名", "err");
@@ -662,18 +736,44 @@ async function loadData() {
     jget(wp("/projections?user=admin")).catch(() => []),
   ]);
   S.datasources = ds; S.projections = pj;
+  // 投影模板生成需要本体对象类型；静默拉取，失败不阻塞页面
+  S.ontology = await jget(wp("/ontology?user=admin")).catch(() => S.ontology);
   renderData();
+}
+function dsAssetNames(d) {
+  return d.assets ? (Array.isArray(d.assets)
+    ? d.assets.map(a => a.name) : Object.keys(d.assets)) : [];
+}
+/* 按所选数据源的资产 + 本体对象类型生成映射骨架，避免从空白 JSON 猜字段 */
+function fillProjTemplate() {
+  const ds = S.datasources.find(d => d.id === $("projDs").value);
+  const assets = ds ? dsAssetNames(ds) : [];
+  const objTypes = Object.keys((S.ontology && S.ontology.objects) || {});
+  const rels = Object.keys((S.ontology && S.ontology.relations) || {});
+  const tmpl = { object_mappings: [], relation_mappings: [] };
+  if (assets[0]) {
+    tmpl.object_mappings.push({
+      asset: assets[0], object_type: objTypes[0] || "对象类型",
+      id_field: "id 字段名", filter: {},
+      fields: [{ source_field: "源字段名", property: (objTypes[0] || "对象") + ".属性名" }],
+    });
+  }
+  if (assets[1] && rels[0]) {
+    tmpl.relation_mappings.push({
+      asset: assets[1], relation: rels[0],
+      source_field: "源对象ID字段", target_field: "目标对象ID字段",
+    });
+  }
+  $("projMappings").value = JSON.stringify(tmpl, null, 2);
+  toast("已生成映射骨架，请按实际字段修改", "ok");
 }
 function renderData() {
   const ds = S.datasources;
   $("dsList").innerHTML = ds.length ? `<table><thead>
       <tr><th>名称</th><th>类型</th><th>资产</th></tr></thead><tbody>` +
-    ds.map(d => {
-      const names = d.assets ? (Array.isArray(d.assets)
-        ? d.assets.map(a => a.name) : Object.keys(d.assets)) : [];
-      return `<tr><td><b>${esc(d.name)}</b></td><td><span class="tag plain">${esc(d.kind)}</span></td>
-      <td class="muted">${esc(names.join("、") || "—")}</td></tr>`;
-    }).join("") + "</tbody></table>"
+    ds.map(d => `<tr><td><b>${esc(d.name)}</b></td><td><span class="tag plain">${esc(d.kind)}</span></td>
+      <td class="muted">${esc(dsAssetNames(d).join("、") || "—")}</td></tr>`).join("") +
+    "</tbody></table>"
     : `<div class="empty"><b>尚无数据源</b>在下方连接一个。</div>`;
   const pj = S.projections;
   $("projList").innerHTML = pj.length ? `<table><thead>
@@ -713,20 +813,39 @@ const createProjection = guard(async () => {
 });
 const runProjection = guard(async id => {
   const r = await jpost(wp(`/projections/${id}/run`), { user: "admin" });
-  ok(`投影完成：${r.applied ?? "已执行"}`);
+  ok(`投影完成：${r.objects_upserted ?? 0} 对象 / ${r.links_asserted ?? 0} 关系 / ${r.changes ?? 0} 变更`);
   if (currentTab() === "data") loadData();
 });
 
 /* ================= capability ================= */
 const CAP_HINTS = {
-  python: "python 源码，必须定义 def execute(ctx)。ctx：object() 目标对象 dict、args 参数、get(ref)、find(type, **f)、related(ref, rel, dir)、set(ref, prop, value)（缓冲变更，原子生效）、link/unlink。return 值即输出。",
-  workflow: "workflow 步骤 JSON 数组：find / related / get / count / set / set_property / invoke，{{path}} 引用上下文。",
-  agent: "一段自然语言目标；平台用 LLM 循环（观察 → 行动 → 结论）实现该能力，{target}/{arg} 会被替换。",
+  python: "python 源码，必须定义 def execute(ctx)。ctx：object() 目标对象（支持 .get('属性') 与 .ref）、args 参数、get(ref)、find(type, **过滤)、related(ref, rel, dir)、set(ref, 属性, 值)（缓冲变更，原子生效）、link/unlink、ref(type, id)。return 值即输出。",
+  workflow: "步骤 JSON 数组，每个步骤：{ \"kind\": \"find|related|get|count|set|set_property|invoke\", \"as\": \"别名\", ... }。各 kind 所需字段：find: object_type+filter；related: ref+relation+direction；get: ref；count: list；set: name+value；set_property: ref+properties(对象)；invoke: function+target+args。{{path}} 引用 args/target/steps/vars 四个根。别名为 output 的步骤即最终输出。",
+  agent: "一段自然语言目标；平台用 LLM 循环（观察 → 行动 → 结论）实现该能力，{target}/{arg} 会被替换。需已配置 LLM。",
+};
+const CAP_TEMPLATES = {
+  python: `def execute(ctx):
+    obj = ctx.object()                      # 目标对象，如 Vehicle/V001
+    current = obj.get("balance") or 0       # 按属性名取值
+    new_balance = current + ctx.args["amount"]
+    ctx.set(obj.ref, "balance", new_balance)  # 缓冲变更，原子生效
+    return {"balance": new_balance}`,
+  workflow: `[
+  {"kind": "related", "ref": "{{target}}", "relation": "passes",
+   "direction": "in", "as": "vehicles"},
+  {"kind": "count", "list": "{{steps.vehicles}}", "as": "total"},
+  {"kind": "set", "name": "report",
+   "value": "共 {{steps.total}} 条关联记录", "as": "output"}
+]`,
+  agent: "检查目标对象的当前状态，发现问题则给出处置建议。",
 };
 function capKindChanged() {
   const k = $("capKind").value;
   $("capImpl").placeholder = CAP_HINTS[k];
   $("capImplHint").textContent = CAP_HINTS[k];
+}
+function fillCapTemplate() {
+  $("capImpl").value = CAP_TEMPLATES[$("capKind").value] || "";
 }
 async function loadCapabilities() {
   busy($("capList"));
@@ -829,6 +948,8 @@ async function loadApplications() {
   S.capabilities = caps;
   const details = await Promise.all(apps.map(a =>
     jget(wp(`/applications/${a.id}?user=admin`)).catch(() => a)));
+  S.appsById = {};
+  details.forEach(a => { S.appsById[a.id] = a; });
   renderApplications(details);
 }
 function renderApplications(apps) {
@@ -851,7 +972,8 @@ function renderApplications(apps) {
       <div class="grid cols-3">
         <div>
           <h4>视图（${views.length}）</h4>
-          ${views.length ? views.map(v => `<div class="muted"><span class="tag plain">${esc(v.kind)}</span> ${esc(v.title || v.alias)} → ${esc(v.object_type || v.query_alias || "")}</div>`).join("") : `<div class="muted">—</div>`}
+          ${views.length ? views.map(v => `<div class="muted"><span class="tag plain">${esc(v.kind)}</span> ${esc(v.title || v.alias)} → ${esc(v.object_type || v.query_alias || "")}
+              <button class="ghost sm" onclick="openView('${aid}','${esc(v.alias)}')">打开</button></div>`).join("") : `<div class="muted">—</div>`}
           <div class="row" style="margin-top:6px">
             <input id="v-${aid}" placeholder="别名" style="min-width:64px">
             <select id="vk-${aid}"><option>table</option><option>card</option><option>chart</option><option>map</option></select>
@@ -867,6 +989,7 @@ function renderApplications(apps) {
             <input id="q-${aid}" placeholder="别名" style="min-width:64px">
             <input id="qo-${aid}" placeholder="对象类型" style="min-width:84px">
             <input id="qf-${aid}" placeholder='过滤 {"status":"congested"}' style="min-width:104px">
+            <input id="qe-${aid}" placeholder="展开关系(选填,逗号分隔)" style="min-width:104px">
             <button class="subtle sm" onclick="addAppQuery('${aid}')">加查询</button>
           </div>
           <div id="qr-${aid}"></div>
@@ -892,6 +1015,7 @@ function renderApplications(apps) {
         </select>
         <button class="subtle sm" onclick="attachCapability('${aid}')">挂载</button>
       </div>
+      <div id="pv-${aid}"></div>
     </div>`;
   }).join("");
 }
@@ -918,14 +1042,41 @@ const addAppQuery = guard(async aid => {
   let filters = {};
   try { filters = JSON.parse($(`qf-${aid}`).value || "{}"); }
   catch { return toast("过滤不是合法 JSON", "err"); }
-  await jpost(wp(`/applications/${aid}/queries`), { alias, object_type, filters, user: "admin" });
+  const expand = $(`qe-${aid}`).value.split(",").map(s => s.trim()).filter(Boolean);
+  await jpost(wp(`/applications/${aid}/queries`),
+    { alias, object_type, filters, expand, user: "admin" });
   ok("查询已添加"); loadApplications();
 });
+/* 运行应用查询：渲染对象表格 + 展开关系分组（不再只报数字） */
 const runAppQuery = guard(async (aid, alias) => {
+  const el = $(`qr-${aid}`);
+  busy(el, "查询中");
   const r = await jpost(wp(`/applications/${aid}/query`), { alias, user: "admin" });
-  const expanded = (r.expand || []).reduce((n, e) => n + (e.objects || []).length, 0);
-  $(`qr-${aid}`).innerHTML = `<div class="banner ok">「${esc(alias)}」返回 ${r.objects.length} 个对象` +
-    (expanded ? `，展开 ${expanded} 个关联` : "") + `</div>`;
+  let html = `<h4>「${esc(alias)}」 · ${r.objects.length} 个对象</h4>` + objectTable(r.objects);
+  for (const e of (r.expand || [])) {
+    html += `<h4>展开 ${esc(e.relation)}（${(e.objects || []).length}）</h4>` + objectTable(e.objects);
+  }
+  el.innerHTML = html;
+});
+/* 打开视图：View = Ontology → UI 的投影（design.txt §23）。
+   v0.1：table/card 直接渲染对象表格；chart/map 以表格呈现并注明。 */
+const openView = guard(async (aid, alias) => {
+  const app = S.appsById[aid];
+  const v = app && (app.views || {})[alias];
+  const el = $(`pv-${aid}`);
+  if (!v) return toast("视图定义不存在，请刷新", "err");
+  busy(el, "加载视图");
+  let objects = [];
+  if (v.query_alias) {
+    const r = await jpost(wp(`/applications/${aid}/query`), { alias: v.query_alias, user: "admin" });
+    objects = r.objects || [];
+  } else if (v.object_type) {
+    objects = await jget(wp(`/state/find?type=${encodeURIComponent(v.object_type)}&user=admin`));
+  }
+  el.innerHTML = `<h4>视图 · ${esc(v.title || v.alias)} <span class="tag plain">${esc(v.kind)}</span></h4>` +
+    objectTable(objects) +
+    (v.kind === "chart" || v.kind === "map"
+      ? `<div class="muted" style="margin-top:6px">v0.1：${esc(v.kind)} 视图暂以表格呈现数据。</div>` : "");
 });
 const addAppAgent = guard(async aid => {
   const alias = $(`ga-${aid}`).value.trim(), goal = $(`gg-${aid}`).value.trim();
@@ -935,9 +1086,11 @@ const addAppAgent = guard(async aid => {
 });
 const runAppAgent = guard(async (aid, alias) => {
   const el = $(`ar-${aid}`);
+  const llm = readLlmConfig();
+  if (!S.llm && !llm)
+    return toast("未配置 LLM：请在「AI 助手」页展开「LLM 配置」填写后重试", "err");
   busy(el, "Agent 运行中");
   const body = { user: "admin" };
-  const llm = readLlmConfig();
   if (llm) body.llm = llm;
   const r = await jpost(wp(`/applications/${aid}/agents/${encodeURIComponent(alias)}/agent`), body);
   el.innerHTML = `<div class="final-answer">${esc(r.answer || "")}</div>
@@ -952,12 +1105,18 @@ const attachCapability = guard(async aid => {
 
 /* ================= runtime ================= */
 async function loadRuntimeTab() {
-  try {
-    const ont = await jget(wp("/ontology?user=admin"));
-    const types = Object.keys(ont.objects || {});
-    $("typeList").innerHTML = types.map(t => `<option value="${esc(t)}">`).join("");
-    if (!$("findType").value && types.length) $("findType").value = types[0];
-  } catch { /* no ontology yet */ }
+  // 关系导航依赖 runtime schema：本页必须自己拉取，不能依赖概览页的残留状态
+  try { S.runtime = await jget(wp("/runtime?user=admin")); }
+  catch { S.runtime = null; }
+  let types = ((S.runtime && S.runtime.objects) || []).map(o => o.name);
+  if (!types.length) {
+    try {
+      const ont = await jget(wp("/ontology?user=admin"));
+      types = Object.keys(ont.objects || {});
+    } catch { /* no ontology yet */ }
+  }
+  $("typeList").innerHTML = types.map(t => `<option value="${esc(t)}">`).join("");
+  if (!$("findType").value && types.length) $("findType").value = types[0];
   refreshChanges();
 }
 const findObjects = guard(async () => {
@@ -974,19 +1133,19 @@ const findObjects = guard(async () => {
   }
   const objects = await jget(url);
   if (!objects.length) { el.innerHTML = `<div class="empty"><b>无匹配对象</b>换个过滤条件试试。</div>`; return; }
-  const cols = [...new Set(objects.flatMap(o => Object.keys(o.properties || {})))];
-  el.innerHTML = `<table><thead><tr><th>引用</th>${cols.map(c => `<th>${esc(c)}</th>`).join("")}</tr></thead><tbody>` +
-    objects.map(o => `<tr><td><span class="tag ref" style="cursor:pointer"
-        onclick="showObject('${esc(o.type)}/${esc(o.id)}')">${esc(o.type)}/${esc(o.id)}</span></td>` +
-      cols.map(c => `<td>${esc(o.properties[c] ?? "-")}</td>`).join("") + `</tr>`).join("") +
-    `</tbody></table>`;
+  el.innerHTML = objectTable(objects);
 });
 const showObject = guard(async ref => {
   if (!ref) ref = $("detailRef").value.trim();
   if (!ref) return toast("请输入对象引用", "err");
+  // 从应用页等其它页点击引用时，先切到业务数据页再渲染
+  if (currentTab() !== "runtime") activateTab("runtime");
   $("detailRef").value = ref;
   const el = $("objectDetail");
   busy(el);
+  if (!S.runtime) {
+    try { S.runtime = await jget(wp("/runtime?user=admin")); } catch { S.runtime = null; }
+  }
   const obj = await jget(wp(`/state/get?ref=${encodeURIComponent(ref)}&user=admin`));
   if (!obj) { el.innerHTML = `<div class="empty"><b>对象不存在</b>${esc(ref)}</div>`; return; }
   let html = `<dl class="kv">` +
@@ -1031,8 +1190,12 @@ async function refreshChanges() {
   if (!S.wid) return;
   try {
     const events = await jget(wp(`/changes?after=${S.lastSeq}&user=admin`));
-    if (events.length) S.lastSeq = events[events.length - 1].seq;
-    if (currentTab() === "runtime") renderChanges(events);
+    if (events.length) {
+      S.lastSeq = events[events.length - 1].seq;
+      // 累积而非替换：实时轮询只拉增量，但展示必须保留历史（上限 200 条）
+      S.changes = [...(S.changes || []), ...events].slice(-200);
+    }
+    if (currentTab() === "runtime") renderChanges(S.changes || []);
   } catch { /* workspace gone */ }
 }
 function toggleLive() {
@@ -1078,9 +1241,13 @@ const runAgent = guard(async () => {
   const goal = $("agentGoal").value.trim();
   const el = $("agentOut");
   if (!goal) return toast("请输入目标", "err");
+  const llm = readLlmConfig();
+  if (!S.llm && !llm) {
+    $("llmWarn").style.display = "";
+    return toast("未配置 LLM：请展开下方「LLM 配置」填写 OpenAI 兼容服务后重试", "err");
+  }
   busy(el, "Agent 推理中");
   const body = { goal, user: "admin", max_steps: parseInt($("agentSteps").value || "8", 10) };
-  const llm = readLlmConfig();
   if (llm) body.llm = llm;
   const r = await jpost(wp("/agent"), body);
   renderAgentRun(el, r);
@@ -1122,10 +1289,18 @@ async function loadAudit() {
 }
 
 /* ================= health & boot ================= */
+function updateLlmWarn() {
+  const w = $("llmWarn");
+  if (w) w.style.display = S.llm ? "none" : "";
+}
 async function ping() {
   try {
     const h = await jget("/api/health");
-    $("health").innerHTML = `<b>●</b> ${esc(h.status)} · v${esc(h.version)}`;
+    S.llm = !!h.llm_configured;
+    $("health").innerHTML = `<b>●</b> ${esc(h.status)} · v${esc(h.version)}` +
+      (S.llm ? ` · <span title="平台已配置默认 LLM" style="color:#7fd3a8">LLM ✓</span>`
+             : ` · <span title="平台未配置默认 LLM，Agent 需临时指定" style="color:#e8b96a">LLM ✗</span>`);
+    updateLlmWarn();
   } catch { $("health").textContent = "● 服务不可达"; }
 }
 (async function boot() {
@@ -1133,7 +1308,7 @@ async function ping() {
   ping();
   try {
     await loadWorkspaces();
-    if (S.wid) renderTab();
+    renderTab();
   } catch (e) { fail(e); }
 })();
 </script>

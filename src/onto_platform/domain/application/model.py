@@ -57,6 +57,28 @@ class QuerySpec:
     filters: dict = field(default_factory=dict)
     expand: list[dict] = field(default_factory=list)  # [{relation, direction}]
 
+    @staticmethod
+    def coerce_expand(expand) -> list[dict]:
+        """Accept the convenient shapes clients actually send.
+
+        "passes" / ["passes"] -> [{"relation": "passes", "direction": "out"}];
+        dicts are normalized to exactly relation+direction so to_dict can
+        never crash on a stray string (a plain dict("passes") raises).
+        """
+        normalized: list[dict] = []
+        for entry in expand or []:
+            if isinstance(entry, str):
+                if entry.strip():
+                    normalized.append(
+                        {"relation": entry.strip(), "direction": "out"}
+                    )
+            elif isinstance(entry, dict) and str(entry.get("relation", "")).strip():
+                normalized.append({
+                    "relation": str(entry["relation"]).strip(),
+                    "direction": str(entry.get("direction", "out")) or "out",
+                })
+        return normalized
+
     def to_dict(self) -> dict:
         return {
             "alias": self.alias,
@@ -73,7 +95,7 @@ class QuerySpec:
             title=data.get("title", ""),
             object_type=data.get("object_type", ""),
             filters=dict(data.get("filters", {})),
-            expand=[dict(e) for e in data.get("expand", [])],
+            expand=cls.coerce_expand(data.get("expand", [])),
         )
 
 

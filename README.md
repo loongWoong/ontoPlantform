@@ -112,13 +112,17 @@ Web 控制台按七大领域分页，完整覆盖设计（design.txt §4-§29）
 | 页签 | 覆盖能力 |
 |------|----------|
 | 概览 | 工作空间管理、运行时索引、三链路说明 |
-| 本体 | 对象/关系/术语的增查、校验、发布（§5-§8） |
-| 数据 | 数据源连接、投影创建与运行（§11-§16） |
-| 能力 | python/workflow/agent 三种实现创建、发布、调用（§17-§20） |
-| 应用 | 视图/查询/Agent 组成、运行查询与 Agent、挂载能力（§21-§23, §50） |
-| 运行时 | 对象查询/详情/关系导航、变更流实时跟随（§30-§33） |
-| 智能 | Ask 确定性问答、Agent 循环（可临时指定 OpenAI 兼容 LLM）（§24-§28） |
-| 审计 | 治理事件流水（§29） |
+| 本体 | 对象/关系/术语的增查、校验、发布（发布后定义锁定，UI 同步禁用编辑） |
+| 数据 | 数据源连接、投影创建（含映射模板生成）与运行 |
+| 能力 | python/workflow/agent 三种实现创建（含可运行模板）、发布、调用 |
+| 应用 | 视图/查询/Agent 组成、查询结果与视图渲染为对象表格、挂载能力 |
+| 业务数据 | 对象查询/详情/关系导航、变更流实时跟随（变更日志持久化，跨重启保留） |
+| AI 助手 | Ask 确定性问答、Agent 循环（LLM 配置状态在顶栏与页内预检提示） |
+| 审计 | 治理事件流水 |
+
+Web 控制台的可用性细节：常见后端错误映射为中文指引（未配置 LLM / 本体已发布
+不可变 / 运行时未就绪等）；无工作空间时全站引导创建；对象引用可在应用页与
+业务数据页之间点击跳转。完整审计见 `docs/frontend-audit.md`。
 
 ### 作为库使用
 
@@ -180,9 +184,10 @@ workspace_ask / capability_invoke / agent_run` 七个工具——MCP 只翻译�
 ## 开发
 
 ```bash
-python -m pytest tests/ -q        # 72 个测试：compiler / gateway / projection /
+python -m pytest tests/ -q        # 79 个测试：compiler / gateway / projection /
                                   # capability / application / governance /
-                                  # intelligence / persistence / api / cli / mcp
+                                  # intelligence / persistence / api / cli / mcp /
+                                  # frontend-fixes（expand/contains/变更日志持久化）
 ```
 
 测试覆盖三条链路的端到端断言、防腐层契约（编译产物必须能被 Kernel 的

@@ -24,13 +24,16 @@ class WorkspaceGatewayProvider:
         if workspace_id not in self._gateways:
             store_kind = runtime_config.get("store") or self._default_store
             db_path = runtime_config.get("db_path")
+            change_log_path = None
             if store_kind == "sqlite" and not db_path:
                 data_dir = Path(self._runtime_data_dir or ".onto/runtime")
                 data_dir.mkdir(parents=True, exist_ok=True)
                 db_path = str(data_dir / f"runtime_{workspace_id}.db")
+                change_log_path = str(data_dir / f"changes_{workspace_id}.jsonl")
             try:
                 self._gateways[workspace_id] = KernelRuntimeGateway(
-                    store_kind=store_kind, db_path=db_path
+                    store_kind=store_kind, db_path=db_path,
+                    change_log_path=change_log_path,
                 )
             except ValidationError:
                 raise

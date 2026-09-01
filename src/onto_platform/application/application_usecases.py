@@ -79,7 +79,8 @@ class AddQuery(_AppMixin):
         self._check_object_type(self._ctx, workspace_id, object_type)
         app.queries[alias] = QuerySpec(
             alias=alias, title=title or alias, object_type=object_type,
-            filters=dict(filters or {}), expand=list(expand or []),
+            filters=dict(filters or {}),
+            expand=QuerySpec.coerce_expand(expand),
         )
         app.updated_at = self._ctx.clock()
         self._ctx.save("application", app.to_dict())

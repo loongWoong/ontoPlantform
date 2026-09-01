@@ -126,12 +126,16 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
                 if parts == [] or parts == ["index.html"]:
                     return self._serve_web()
                 if parts == ["api", "health"]:
-                    return self._send(200, {"status": "ok", "version": "0.1.0"})
+                    return self._send(200, {
+                        "status": "ok",
+                        "version": "0.1.0",
+                        "llm_configured": platform.ctx.llm is not None,
+                    })
                 if parts[:2] != ["api", "workspaces"]:
                     raise ValidationError(f"no route for {self.path}")
                 wid = parts[2] if len(parts) > 2 else None
                 rest = parts[3:]
-                return self._get(wid, rest, query)
+                return self._get(wid, rest, query, parsed.query)
             except PlatformError as exc:
                 return self._error(exc)
             except Exception as exc:  # pragma: no cover
@@ -149,7 +153,8 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
             self.end_headers()
             self.wfile.write(body)
 
-        def _get(self, wid: str | None, rest: list[str], query: dict) -> None:
+        def _get(self, wid: str | None, rest: list[str], query: dict,
+                 raw_query: str = "") -> None:
             user = query.get("user", "admin")
             if wid is None:
                 if rest == []:
@@ -176,7 +181,20 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
                 if not object_type:
                     raise ValidationError("query param 'type' is required")
                 reserved = {"type", "user"}
-                filters = {k: v for k, v in query.items() if k not in reserved}
+                raw_pairs = {k: v[-1] for k, v in parse_qs(raw_query).items()}
+                filters = {}
+                for k, v in query.items():
+                    if k in reserved:
+                        continue
+                    op = k.partition("__")[2] or "eq"
+                    if op in ("contains", "in") and isinstance(v, (int, float)):
+                        # text operators must receive the raw string: a
+                        # numeric-looking needle (plate__contains=1001) must
+                        # not become an int, or matching a string property
+                        # raises TypeError inside the kernel and yields 0 rows
+                        filters[k] = raw_pairs.get(k, str(v))
+                    else:
+                        filters[k] = v
                 return self._send(200, gateway_of(platform, wid).find_objects(object_type, filters))
             if rest == ["state", "get"]:
                 return self._send(200, gateway_of(platform, wid).get_object(query.get("ref", "")))

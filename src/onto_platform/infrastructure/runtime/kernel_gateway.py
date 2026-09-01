@@ -21,8 +21,10 @@ both behind schema validation performed here, first.
 
 from __future__ import annotations
 
+import json
 import threading
 from datetime import datetime, timezone
+from pathlib import Path
 from types import SimpleNamespace
 
 from ...errors import RuntimeUnavailableError, ValidationError
@@ -95,7 +97,8 @@ def _now() -> str:
 class KernelRuntimeGateway(RuntimeGateway):
     """One workspace, one kernel runtime."""
 
-    def __init__(self, store_kind: str = "memory", db_path: str | None = None) -> None:
+    def __init__(self, store_kind: str = "memory", db_path: str | None = None,
+                 change_log_path: str | None = None) -> None:
         k = _kernel()
         if store_kind == "sqlite":
             if not db_path:
@@ -108,6 +111,12 @@ class KernelRuntimeGateway(RuntimeGateway):
         self._runtime = None
         self._changes: list[dict] = []
         self._seq = 0
+        # persistent runtimes persist their change log too: the change stream
+        # is the observation channel for UIs/agents (design.txt §29) and must
+        # survive restarts just like the semantic state it describes
+        self._change_log_path = Path(change_log_path) if change_log_path else None
+        if self._change_log_path is not None and self._change_log_path.is_file():
+            self._replay_change_log()
         # one lock for every runtime touch: the HTTP layer is multi-threaded
         # while the kernel runtime/store are single-threaded by design
         self._lock = threading.RLock()
@@ -395,3 +404,26 @@ class KernelRuntimeGateway(RuntimeGateway):
             entry = {"seq": self._seq, "ts": _now(), "source": source, "changes": changes}
             entry.update(extra)
             self._changes.append(entry)
+            if self._change_log_path is not None:
+                try:
+                    self._change_log_path.parent.mkdir(parents=True, exist_ok=True)
+                    with self._change_log_path.open("a", encoding="utf-8") as fh:
+                        fh.write(json.dumps(entry, ensure_ascii=False, default=str) + "\n")
+                except OSError:
+                    pass  # observation must never break the write path
+
+    def _replay_change_log(self) -> None:
+        try:
+            with self._change_log_path.open("r", encoding="utf-8") as fh:
+                for line in fh:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        entry = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue  # torn tail write from a crash: skip
+                    self._changes.append(entry)
+                    self._seq = max(self._seq, int(entry.get("seq", 0)))
+        except OSError:
+            pass
