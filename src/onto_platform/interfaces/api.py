@@ -38,7 +38,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
-from ..bootstrap import Platform
+from ..bootstrap import Platform, PlatformConfig, build_platform
 from ..errors import (
     AccessDeniedError,
     ConnectorError,
