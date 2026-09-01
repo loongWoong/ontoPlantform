@@ -1,5 +1,10 @@
 # frontend/ React 控制台实现评审
 
+> **⏱ 已失效（2026-09）**：本文评审的是重构**中途**的快照。文中 5 个 P0（1.1–1.5）
+> 与结构偏差 2.2/2.3、健壮性 3.1–3.7、工程 4.1/4.3 均已修复并实测；
+> 结论「不宜作为默认控制台发布」不再成立。逐条处置与仍未完成项见
+> `docs/frontend-react-implementation.md` §4。本文保留为评审记录。
+
 > 评审对象：`frontend/`（React 18 + TS + Vite，约 3900 行，未提交 git）。
 > 对照基准：`docs/frontend-redesign-react.md`（设计方案）、`docs/frontend-layout-plan.md`（布局验收）、
 > `docs/completeness-review.md`（A1/A2/A3 缺口）、后端 `api.py` 实际契约。
@@ -158,3 +163,48 @@ React 化方向正确、骨架健康（类型层、防重复提交、确认框�
 但**当前状态不宜作为默认控制台发布**：演示模式坏、页签记忆失效、跨空间数据污染
 三个 P0 都是用户第一次使用就会撞上的。P0 三项修复成本都很低（合计约半天），
 修完并补上失效一致性与 wid 深链后，即可按 4.2 的计划让 dist 版转正、legacy 下线。
+
+## 9. 修复回执（2025-XX-XX 复查后修复）
+
+复查发现第 1–5 节列出的问题**绝大部分已在后续迭代中修复**，逐项验证如下：
+
+| 原编号 | 状态 | 证据 |
+|--------|------|------|
+| 1.1 演示模式脚本 | ✅ 已修 | `store.tsx` `toChoice`：`describe_ontology`/`find`，顶层 `think/answer` 收束；无已发布类型时跳过 find 步；`__FIRST_TYPE__` 占位符由调用方传 `objectTypes[0]` |
+| 1.2 LS.nav 键冲突 | ✅ 已修 | `collapsed: "onto.nav-collapsed"` 独立键，`LS.nav` 只存页签 |
+| 1.3 wid 切换不重置 | ✅ 已修 | StateView/ChangesPanel 均 `useEffect(..., [wid])` 清 query/openRef/filters/seq/events |
+| 1.4 环境变量文案失实 | ✅ 已修 | 后端 `api.py` 实现 `provider_from_env()` 读 `ONTO_LLM_BASE_URL/MODEL/API_KEY`，文案与实现一致 |
+| 1.5 徽标用 llmReady | ✅ 已修 | TopBar 用 `llmReady` |
+| 2.1 发布后不刷 runtime | ✅ 已修 | Capability/Application/Data/Ontology 发布与创建路径均调 `refreshRuntime` |
+| 2.2 wid 进 hash | ✅ 已修 | `#/w/<wid>/<page>` + `hashFor`/`readHash`，兼容旧格式 |
+| 3.1/3.2/3.3 死代码/ErrorBoundary | ✅ 已修 | `alive` ref 投入使用；`ErrorBoundary` 已加 |
+| 3.4 变更过滤子串误命中 | ✅ 已修 | `touches` 精确匹配 object/source/target |
+| 3.5 in 操作符发数组 | ✅ 已修（含后端） | 前端 `buildFilters` 拆数组；后端 `api.py` state/find 把 `in` 的逗号串拆回标量列表（否则内核退化成子串匹配）——新增回归测试 `test_in_filter_receives_parsed_list_over_http`，实测子串陷阱不再误命中 |
+| 3.6 轮询漂移 | ✅ 已修 | seq 放 ref，interval 稳定 |
+| 3.5 guessScalar 前导零 | ✅ 已修 | 正则 `/^-?(0\|[1-9]\d*)(\.\d+)?$/` 保留前导零字符串 |
+| 4.1 端口不一致 | ✅ 已修 | vite proxy → 8100 |
+| 5 emoji 图标 | ✅ 已修 | ⚡→↯、⚙→☰ |
+| 4.4 未提交 git | ✅ 已修 | 本轮随修复一并提交 |
+
+**本轮新增修复（复查中新发现的问题）：**
+
+1. **`in` 操作符端到端断裂**（3.5 的后端半边）：URL 里列表被压平成 `"a,b"` 字符串，
+   内核 `actual not in "a,b"` 退化为子串匹配。已在 `api.py` state/find 过滤循环中
+   对 `in` 拆逗号回列表（逐元素 `_parse_scalar`），`contains` 保持原字符串行为。
+2. **setWorkspace 携带旧空间作用域参数**：`#/w/A/state?ref=Vehicle/V001` 切到 B 后
+   ref 指向不存在的对象。已改为切换时只保留 `tab`，丢弃 `ref`/`type`/`app`。
+3. **CreateCapability/CreateApp 创建后不刷 runtime**：侧栏计数不同步。已补 `refreshRuntime`。
+4. **RunDrawer 数字参数无校验**：`Number("abc")` → NaN → JSON 序列化成 null 报后端错。
+   已加 `Number.isNaN` 前置校验并提示。
+5. **AddView/AddQuery 无 form 包裹**：回车不能提交。已包 `<form onSubmit>`。
+
+**遗留（有意不做，已记录）：**
+
+- 4.2 legacy 控制台下线时间点（需产品决策）；4.3 wheel 构建加 dist 存在性断言（CI 侧）
+- 3.8 已部分解决：新增 `frontend/src/logic.test.ts`（Vitest，9 用例：friendly 映射、
+  buildFilters 类型推断、演示脚本与后端契约守护），`npm test`；布局探针仍未进 CI
+- ObjectDrawer 全量拉变更（P2 性能项）：v0.1 规模下可接受
+
+**验证**：`pytest` 80 通过（+1 新回归）；`tsc --noEmit` 通过；`vite build` 产出 dist；
+`vitest run` 9 用例通过；`tests/manual/e2e_probe.py` 32 断言全过（对 8100 实测）；
+`in` 子串陷阱在真实服务上复验通过。

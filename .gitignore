@@ -3,6 +3,12 @@ __pycache__/
 *.egg-info/
 build/
 dist/
+!src/onto_platform/interfaces/web/dist/
+!src/onto_platform/interfaces/web/dist/**
+
+# 前端源码依赖：只在改前端时才需要，运行期不需要 Node
+frontend/node_modules/
+.probe/
 .pytest_cache/
 .onto/
 *.db

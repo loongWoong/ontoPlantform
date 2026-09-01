@@ -107,22 +107,46 @@ onto-api --port 8100
 capabilities / invoke / applications / state / changes / ask / agent / audit），
 平台错误映射为 HTTP 状态码（400/403/404/409/502/503）。
 
-Web 控制台按七大领域分页，完整覆盖设计（design.txt §4-§29）：
+Web 控制台是 **React + TypeScript + Vite** 单页应用（`frontend/`），构建产物
+提交进包内 `src/onto_platform/interfaces/web/dist/`，因此**运行期不需要 Node**：
+`python -m onto_platform.interfaces.api` 一条命令即同时提供 API 与界面
+（`GET /api/health` 的 `console` 字段会告诉你是 `react` 还是 `legacy`）。
 
-| 页签 | 覆盖能力 |
-|------|----------|
-| 概览 | 工作空间管理、运行时索引、三链路说明 |
-| 本体 | 对象/关系/术语的增查、校验、发布（发布后定义锁定，UI 同步禁用编辑） |
-| 数据 | 数据源连接、投影创建（含映射模板生成）与运行 |
-| 能力 | python/workflow/agent 三种实现创建（含可运行模板）、发布、调用 |
-| 应用 | 视图/查询/Agent 组成、查询结果与视图渲染为对象表格、挂载能力 |
-| 业务数据 | 对象查询/详情/关系导航、变更流实时跟随（变更日志持久化，跨重启保留） |
-| AI 助手 | Ask 确定性问答、Agent 循环（LLM 配置状态在顶栏与页内预检提示） |
-| 审计 | 治理事件流水 |
+左侧栏信息架构（design.txt §41），右侧是自适应功能区：
 
-Web 控制台的可用性细节：常见后端错误映射为中文指引（未配置 LLM / 本体已发布
-不可变 / 运行时未就绪等）；无工作空间时全站引导创建；对象引用可在应用页与
-业务数据页之间点击跳转。完整审计见 `docs/frontend-audit.md`。
+| 分区 | 页面 | 覆盖能力 |
+|------|------|----------|
+| — | 工作台 | 五步主流程（定义→发布→同步→能力→应用）＋真实计数与下一步 |
+| 业务世界 | 本体 | 对象/关系/术语（含别名）编辑、校验、发布（发布前二次确认） |
+| 业务世界 | 数据 | 数据源连接与预览、投影（映射行编辑器）、同步（确认后再改状态） |
+| 业务世界 | 能力 | python/workflow/agent 三种实现、按 inputs 自动生成的执行表单、改动清单 |
+| 业务世界 | 应用 | 视图/查询/智能体/挂载能力；定义区与结果区分离，改定义不清结果 |
+| 业务世界 | 对象实例 | 过滤查询、详情抽屉（属性/关系/相关记录）、变更流水实时跟随 |
+| 平台 | AI 助手 | 检索问答（不调模型，明确注明）＋目标式智能体（推理链时间线） |
+| 平台 | 设置 | 模型来源（平台/OpenAI 兼容/演示）、工作空间、系统自检、操作记录 |
+
+改前端（只有改前端时才需要 Node）：
+
+```bash
+npm --prefix frontend install
+npm --prefix frontend run dev      # 5173 开发，/api 代理到 127.0.0.1:8100
+npm --prefix frontend run build    # 产物写入 src/onto_platform/interfaces/web/dist/
+```
+
+布局与交互用真实浏览器量化验收（`node tests/manual/react_layout_probe.mjs`，
+需先起服务与 headless Edge）：8 个页面 × 3 种视口，检查横向溢出、控件尺寸、
+字段常驻 label、表格滚动容器与吸顶表头、重复提交、结果被清、关系导航并发度。
+当前门槛全部通过；实测数字与遗留项见 `docs/frontend-react-implementation.md`。
+未构建 `dist` 时后端会打印 WARN 并回落到旧版单文件控制台
+（`web/index.html`，仅作兜底，不再新增功能）。
+
+常见后端错误统一映射为中文指引＋下一步动作（未配置模型 / 本体已发布不可变 /
+运行时未就绪等）；无工作空间时全站引导创建；对象引用在应用页与对象实例页之间
+可跳转。完整可用性审计见 `docs/frontend-audit.md`，重构实施记录见
+`docs/frontend-react-implementation.md`。
+
+模型服务也可以只用环境变量固定（无需改代码）：`ONTO_LLM_BASE_URL` /
+`ONTO_LLM_MODEL` / `ONTO_LLM_API_KEY`。
 
 ### 作为库使用
 
@@ -202,6 +226,7 @@ src/onto_platform/
 ├── domain/                    # 七大领域 + ontology/compiler.py
 ├── application/               # 用例 + SchemaPublisher + AgentRunner + bootstrap
 ├── infrastructure/            # kernel 网关 / 持久化 / 连接器 / LLM / 执行器
-└── interfaces/                # cli.py · api.py · mcp.py · web/index.html
+└── interfaces/                # cli.py · api.py · mcp.py · web/dist(React 构建产物) · web/index.html(兜底)
+frontend/                      # React + TS + Vite 控制台源码（构建产物提交进包内，运行期零 Node）
 examples/traffic/demo.py       # design.txt §48 完整业务实例
 ```

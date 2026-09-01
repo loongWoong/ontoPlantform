@@ -26,5 +26,18 @@ onto-mcp = "onto_platform.interfaces.mcp:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools]
+include-package-data = true
+
+# The React console is built into the package (frontend/ -> interfaces/web/dist),
+# so an installed wheel serves the full console with no Node at runtime.
+[tool.setuptools.package-data]
+"onto_platform.interfaces" = [
+  "web/index.html",
+  "web/dist/index.html",
+  "web/dist/assets/*",
+  "web/dist/*",
+]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]

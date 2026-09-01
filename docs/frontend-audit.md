@@ -1,5 +1,9 @@
 # OntoPlatform 前端完整性与可用性审计报告
 
+> 本文件记录**第一轮**（接口正确性 + 功能缺口）修复。
+> 界面完整性 / 布局尺寸 / 交互可用性问题的实测证据与优化方案见
+> [`frontend-layout-plan.md`](frontend-layout-plan.md)，验收脚本 `tests/manual/layout_probe.mjs`。
+
 > 审计方式：通读 design.txt 全文 + 前后端全部源码；启动真实服务（sqlite 模式），
 > 用与前端完全相同的 HTTP 调用跑通「建模 → 发布 → 投影 → 能力 → 应用 → 智能 → 治理」
 > 全旅程，逐项核对前端渲染所需字段与后端实际返回。

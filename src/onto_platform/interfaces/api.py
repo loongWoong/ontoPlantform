@@ -61,6 +61,26 @@ _STATUS_BY_ERROR = (
 )
 
 WEB_DIR = Path(__file__).resolve().parent / "web"
+# The React console is built into ``web/dist`` (see frontend/). Serving it from
+# the package keeps ``python -m onto_platform.interfaces.api`` the one-command
+# startup: no Node, no separate dev server, no second process at runtime.
+DIST_DIR = WEB_DIR / "dist"
+
+_MIME = {
+    ".html": "text/html; charset=utf-8",
+    ".js": "text/javascript; charset=utf-8",
+    ".mjs": "text/javascript; charset=utf-8",
+    ".css": "text/css; charset=utf-8",
+    ".json": "application/json; charset=utf-8",
+    ".map": "application/json; charset=utf-8",
+    ".svg": "image/svg+xml",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".ico": "image/x-icon",
+    ".woff": "font/woff",
+    ".woff2": "font/woff2",
+    ".txt": "text/plain; charset=utf-8",
+}
 
 
 def _status_for(exc: Exception) -> int:
@@ -123,13 +143,18 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
             parts = [unquote(p) for p in parsed.path.split("/") if p]
             query = {k: _parse_scalar(v[-1]) for k, v in parse_qs(parsed.query).items()}
             try:
-                if parts == [] or parts == ["index.html"]:
-                    return self._serve_web()
+                if not parts or parts[0] != "api":
+                    return self._serve_web(parts)
                 if parts == ["api", "health"]:
+                    provider = platform.ctx.llm
                     return self._send(200, {
                         "status": "ok",
                         "version": "0.1.0",
-                        "llm_configured": platform.ctx.llm is not None,
+                        "llm_configured": provider is not None,
+                        "backend": platform.config.store,
+                        "runtime_store": platform.config.runtime_store or platform.config.store,
+                        "llm_provider": type(provider).__name__ if provider else "none",
+                        "console": "react" if (DIST_DIR / "index.html").is_file() else "legacy",
                     })
                 if parts[:2] != ["api", "workspaces"]:
                     raise ValidationError(f"no route for {self.path}")
@@ -141,14 +166,36 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
             except Exception as exc:  # pragma: no cover
                 return self._error(exc)
 
-        def _serve_web(self) -> None:
-            index = WEB_DIR / "index.html"
-            if not index.is_file():
-                return self._send(404, {"error": "web console not found"})
-            body = index.read_bytes()
+        def _serve_web(self, parts: list[str]) -> None:
+            """Serve the built React console from ``web/dist``.
+
+            Any non-``/api`` path resolves inside ``dist``; unknown paths fall
+            back to ``dist/index.html`` so client-side routes work. When the
+            bundle has not been built we fall back to the legacy single-file
+            console so the platform still starts and stays usable.
+            """
+            index = DIST_DIR / "index.html"
+            if index.is_file():
+                root = DIST_DIR.resolve()
+                if parts:
+                    candidate = (root / "/".join(parts)).resolve()
+                    if candidate.is_file() and str(candidate).startswith(str(root)):
+                        return self._send_file(candidate)
+                return self._send_file(index)
+            legacy = WEB_DIR / "index.html"
+            if legacy.is_file():
+                return self._send_file(legacy)
+            return self._send(404, {"error": "web console not found"})
+
+        def _send_file(self, path: Path) -> None:
+            body = path.read_bytes()
             self.send_response(200)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Type", _MIME.get(path.suffix.lower(), "application/octet-stream"))
             self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control",
+                             "public, max-age=31536000, immutable"
+                             if "assets" in path.parts and path.suffix != ".html"
+                             else "no-cache")
             self._cors()
             self.end_headers()
             self.wfile.write(body)
@@ -187,7 +234,13 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
                     if k in reserved:
                         continue
                     op = k.partition("__")[2] or "eq"
-                    if op in ("contains", "in") and isinstance(v, (int, float)):
+                    if op == "in":
+                        # 集合语义：客户端把列表序列化成 "a,b"；必须拆回列表，
+                        # 否则内核的 "actual not in expected" 对字符串退化成子串匹配
+                        text = raw_pairs.get(k, "") if isinstance(v, (int, float)) else str(v)
+                        items = [_parse_scalar(p.strip()) for p in text.split(",") if p.strip()]
+                        filters[k] = items or [text]
+                    elif op == "contains" and isinstance(v, (int, float)):
                         # text operators must receive the raw string: a
                         # numeric-looking needle (plate__contains=1001) must
                         # not become an int, or matching a string property
@@ -354,7 +407,13 @@ def _provider_from(body: dict):
 
 def serve(platform: Platform, host: str = "127.0.0.1", port: int = 8100) -> None:
     server = ThreadingHTTPServer((host, port), build_handler(platform))
-    print(f"onto-platform api on http://{host}:{port}  (web console at /)")
+    console = "React (web/dist)" if (DIST_DIR / "index.html").is_file() else "legacy (web/index.html)"
+    if not (DIST_DIR / "index.html").is_file():
+        # 打包/克隆后没先 build 前端时会静默降级，这里必须说清楚，
+        # 否则用户以为跑的是新版控制台。
+        print("WARN  web/dist not found - serving the legacy console. "
+              "Run `npm --prefix frontend run build` to enable the React console.")
+    print(f"onto-platform api on http://{host}:{port}  (web console at /, {console})")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
@@ -370,7 +429,31 @@ def main() -> None:  # pragma: no cover
     parser.add_argument("--port", type=int, default=8100)
     args = parser.parse_args()
     platform = build_platform(PlatformConfig(store="sqlite", db_path=args.db))
+    provider = provider_from_env()
+    if provider is not None:
+        platform.configure_llm(provider)
+        print(f"llm: {type(provider).__name__} (from environment)")
     serve(platform, host=args.host, port=args.port)
+
+
+def provider_from_env():
+    """Configure the default LLM from the environment (no code change needed):
+
+        ONTO_LLM_BASE_URL   OpenAI-compatible endpoint (implies provider on)
+        ONTO_LLM_MODEL      model name          (default gpt-4o-mini)
+        ONTO_LLM_API_KEY    bearer key          (also accepts ONTO_LLM_KEY)
+    """
+    import os
+
+    base_url = os.environ.get("ONTO_LLM_BASE_URL", "").strip()
+    api_key = (os.environ.get("ONTO_LLM_API_KEY") or os.environ.get("ONTO_LLM_KEY") or "").strip()
+    if not base_url and not api_key:
+        return None
+    return OpenAICompatProvider(
+        base_url=base_url or "https://api.openai.com/v1",
+        model=os.environ.get("ONTO_LLM_MODEL", "gpt-4o-mini").strip() or "gpt-4o-mini",
+        api_key=api_key,
+    )
 
 
 if __name__ == "__main__":  # pragma: no cover

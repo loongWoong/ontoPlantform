@@ -74,6 +74,41 @@ def test_numeric_eq_filter_still_parses():
     assert [o["id"] for o in gateway.find_objects("Vehicle", {"balance__gt": 50})] == ["V001"]
 
 
+def test_in_filter_receives_parsed_list_over_http():
+    """The console serializes an `in` list as "V001,V002" in the query string;
+    the API layer must split it back into a real list, otherwise the kernel's
+    `actual not in expected` degrades to substring matching ("V00" would hit)."""
+    import threading
+    import urllib.request
+    from urllib.parse import quote
+
+    from onto_platform.interfaces.api import build_handler
+
+    platform = make_platform()
+    wid = seed_workspace(platform)
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), build_handler(platform))
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{httpd.server_address[1]}"
+
+    def find(query: str):
+        with urllib.request.urlopen(
+                f"{base}/api/workspaces/{wid}/state/find?{query}&user=admin") as res:
+            return json.loads(res.read().decode("utf-8"))
+
+    try:
+        hits = find(f"type=Vehicle&plate__in={quote('鲁A12345,鲁B67890')}")
+        assert sorted(o["id"] for o in hits) == ["V001", "V002"]
+
+        # substring trap: "鲁" is contained in both plates but matches nothing
+        assert find(f"type=Vehicle&plate__in={quote('鲁')}") == []
+
+        # numeric members survive the round-trip
+        hits = find("type=Vehicle&balance__in=20,100")
+        assert sorted(o["id"] for o in hits) == ["V001", "V002"]
+    finally:
+        httpd.shutdown()
+
+
 # ---------------------------------------------------------------- B1 changes
 
 def test_change_log_survives_gateway_recreation(tmp_path):
