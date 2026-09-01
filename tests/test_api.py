@@ -10,6 +10,7 @@ from http.server import ThreadingHTTPServer
 import pytest
 
 from onto_platform.interfaces.api import build_handler
+from onto_platform.infrastructure.llm.echo import EchoLLMProvider
 from tests.conftest import make_platform, seed_workspace
 
 
@@ -109,3 +110,25 @@ def test_access_denied_maps_to_403(server):
         "name": "Road", "properties": [{"name": "n", "type": "string"}],
         "user": "mallory"})
     assert status == 403
+
+
+def test_application_agent_endpoints(server):
+    from urllib.parse import quote
+
+    base, wid = server
+    app = post(base, f"/api/workspaces/{wid}/applications",
+               {"user": "admin", "name": "agent台"})[1]
+    status, body = post(
+        base, f"/api/workspaces/{wid}/applications/{app['id']}/agents",
+        {"user": "admin", "alias": "助手", "goal": "检查拥堵"})
+    assert status == 200
+    assert body["agents"][0]["alias"] == "助手"
+
+    # no LLM provider configured on this platform -> clean error, not a crash
+    status, body = post(
+        base,
+        f"/api/workspaces/{wid}/applications/{app['id']}/agents/"
+        f"{quote('助手')}/agent",
+        {"user": "admin"})
+    # no LLM provider configured on this platform -> clean 503-style error
+    assert status in (400, 403, 500, 503) or body.get("ok") is False

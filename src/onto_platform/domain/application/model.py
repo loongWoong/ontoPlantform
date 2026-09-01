@@ -86,6 +86,10 @@ class Application:
     views: dict[str, View] = field(default_factory=dict)
     queries: dict[str, QuerySpec] = field(default_factory=dict)
     capabilities: list[str] = field(default_factory=list)  # capability ids
+    # agent entry points (design.txt §50: Application = View/Query/Agent;
+    # one Agent domain lives in Intelligence - the application only
+    # references it, never duplicates it)
+    agents: list[dict] = field(default_factory=list)
     lifecycle: str = "draft"
     created_at: str = ""
     updated_at: str = ""
@@ -99,6 +103,7 @@ class Application:
             "views": {k: v.to_dict() for k, v in self.views.items()},
             "queries": {k: q.to_dict() for k, q in self.queries.items()},
             "capabilities": list(self.capabilities),
+            "agents": [dict(a) for a in self.agents],
             "lifecycle": self.lifecycle,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
@@ -114,6 +119,7 @@ class Application:
             views={k: View.from_dict(v) for k, v in data.get("views", {}).items()},
             queries={k: QuerySpec.from_dict(q) for k, q in data.get("queries", {}).items()},
             capabilities=list(data.get("capabilities", [])),
+            agents=[dict(a) for a in data.get("agents", [])],
             lifecycle=data.get("lifecycle", "draft"),
             created_at=data.get("created_at", ""),
             updated_at=data.get("updated_at", ""),

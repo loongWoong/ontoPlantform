@@ -104,6 +104,52 @@ class AttachCapability(_AppMixin):
         return app.to_dict()
 
 
+class AddAgent(_AppMixin):
+    """Attach an agent entry point to the application (design.txt §50).
+
+    The Agent domain lives in Intelligence; the application only stores a
+    named reference with its own goal phrasing - never a second domain.
+    """
+
+    def __init__(self, ctx: ApplicationContext) -> None:
+        self._ctx = ctx
+
+    def __call__(self, workspace_id: str, app_id: str, actor: str, alias: str,
+                 goal: str, description: str = "") -> dict:
+        self._ctx.require(actor, workspace_id, "editor")
+        app = self._load(self._ctx, workspace_id, app_id)
+        if not goal.strip():
+            raise ValidationError("application agent needs a goal")
+        app.agents = [a for a in app.agents if a.get("alias") != alias]
+        app.agents.append({
+            "alias": alias,
+            "goal": goal.strip(),
+            "description": description,
+        })
+        app.updated_at = self._ctx.clock()
+        self._ctx.save("application", app.to_dict())
+        return app.to_dict()
+
+
+class RunAppAgent(_AppMixin):
+    """Run one of the application's agent entry points."""
+
+    def __init__(self, ctx: ApplicationContext) -> None:
+        self._ctx = ctx
+
+    def __call__(self, workspace_id: str, app_id: str, actor: str, alias: str,
+                 goal_override: str = "") -> dict:
+        self._ctx.require(actor, workspace_id, "viewer")
+        app = self._load(self._ctx, workspace_id, app_id)
+        agent = next((a for a in app.agents if a.get("alias") == alias), None)
+        if agent is None:
+            raise NotFoundError(f"agent {alias!r} not found in application {app_id!r}")
+        goal = goal_override.strip() or agent["goal"]
+        from .intelligence_usecases import RunAgent
+
+        return RunAgent(self._ctx)(workspace_id, actor, goal)
+
+
 class PublishApplication(_AppMixin):
     def __init__(self, ctx: ApplicationContext) -> None:
         self._ctx = ctx

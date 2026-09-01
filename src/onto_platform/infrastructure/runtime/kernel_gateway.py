@@ -45,10 +45,12 @@ def _kernel() -> SimpleNamespace:
             return _KERNEL
         try:
             from ontology_runtime.adapters.serialize import to_jsonable
+            from ontology_runtime.core.errors import FunctionExecutionError
             from ontology_runtime.core.execution import (
                 MUTATION_LINK,
                 MUTATION_SET_PROPERTY,
                 MUTATION_UNLINK,
+                FunctionResult,
                 Mutation,
             )
             from ontology_runtime.core.refs import ObjectRef
@@ -71,6 +73,8 @@ def _kernel() -> SimpleNamespace:
             Mutation=Mutation,
             Object=Object,
             ObjectRef=ObjectRef,
+            FunctionExecutionError=FunctionExecutionError,
+            FunctionResult=FunctionResult,
             MUTATION_LINK=MUTATION_LINK,
             MUTATION_SET_PROPERTY=MUTATION_SET_PROPERTY,
             MUTATION_UNLINK=MUTATION_UNLINK,
@@ -104,7 +108,13 @@ class KernelRuntimeGateway(RuntimeGateway):
         self._runtime = None
         self._changes: list[dict] = []
         self._seq = 0
-        self._lock = threading.Lock()
+        # one lock for every runtime touch: the HTTP layer is multi-threaded
+        # while the kernel runtime/store are single-threaded by design
+        self._lock = threading.RLock()
+        # agent-implemented capabilities register their runner here after
+        # publish; the dict is passed by reference so late registrations
+        # are visible to the executor
+        self._agent_runners: dict[str, object] = {}
 
     # ------------------------------------------------------------------
     # schema publishing (Design Time -> Run Time)
@@ -123,9 +133,15 @@ class KernelRuntimeGateway(RuntimeGateway):
             raise ValidationError(f"kernel rejected schema payload: {exc}") from exc
 
         # late-bound executor: python bindings go to the kernel's executor,
-        # workflow bindings come back into the platform's runner
+        # workflow bindings come back into the platform's runner, agent
+        # bindings dispatch to runners registered via register_agent_runner.
+        # Kernel types are constructed HERE and injected as factories so the
+        # rest of the platform never imports the kernel (design.txt §47 原则三).
         from ..execution.platform_executor import PlatformExecutor
         from ..execution.workflow_runner import GatewayWorkflowRunner
+
+        def execution_error(message: str):
+            return k.FunctionExecutionError(message)
 
         runner = GatewayWorkflowRunner(self)
         executor = PlatformExecutor(
@@ -133,6 +149,11 @@ class KernelRuntimeGateway(RuntimeGateway):
             workflows=dict(payload.workflows),
             python_executor=k.PythonFunctionExecutor(bindings),
             runner=runner,
+            agents=self._agent_runners,
+            execution_error=execution_error,
+            make_result=lambda execution_id, output=None, error=None: k.FunctionResult(
+                execution_id=execution_id, output=output, error=error
+            ),
         )
         # state store is preserved across republish: definitions change,
         # semantic state does not (design.txt §9: Schema immutable, State mutable)
@@ -153,16 +174,20 @@ class KernelRuntimeGateway(RuntimeGateway):
         return self._runtime
 
     def describe(self) -> dict:
-        return self._require_runtime().describe()
+        with self._lock:
+            return self._require_runtime().describe()
 
     def describe_object(self, name: str) -> dict:
-        return self._require_runtime().describe_object(name)
+        with self._lock:
+            return self._require_runtime().describe_object(name)
 
     def describe_relation(self, name: str) -> dict:
-        return self._require_runtime().describe_relation(name)
+        with self._lock:
+            return self._require_runtime().describe_relation(name)
 
     def describe_function(self, name: str) -> dict:
-        return self._require_runtime().describe_function(name)
+        with self._lock:
+            return self._require_runtime().describe_function(name)
 
     # ------------------------------------------------------------------
     # semantic state read
@@ -180,15 +205,18 @@ class KernelRuntimeGateway(RuntimeGateway):
         return {"type": obj.ref.type, "id": obj.ref.id, "properties": dict(obj.properties)}
 
     def get_object(self, ref: str) -> dict | None:
-        obj = self._require_runtime().store.get_object(self._ref(ref))
+        with self._lock:
+            obj = self._require_runtime().store.get_object(self._ref(ref))
         return self._object_dict(obj) if obj else None
 
     def find_objects(self, object_type: str, filters: dict | None = None) -> list[dict]:
-        objects = self._require_runtime().find(object_type, **(filters or {}))
+        with self._lock:
+            objects = self._require_runtime().find(object_type, **(filters or {}))
         return [self._object_dict(o) for o in objects]
 
     def related(self, ref: str, relation: str, direction: str = "out") -> list[str]:
-        refs = self._require_runtime().related(self._ref(ref), relation, direction)
+        with self._lock:
+            refs = self._require_runtime().related(self._ref(ref), relation, direction)
         return [str(r) for r in refs]
 
     # ------------------------------------------------------------------
@@ -199,21 +227,22 @@ class KernelRuntimeGateway(RuntimeGateway):
         self, function: str, target: str | None = None, args: dict | None = None
     ) -> InvocationResult:
         k = _kernel()
-        try:
-            runtime = self._require_runtime()
-        except RuntimeUnavailableError as exc:
-            return InvocationResult(execution_id="", error=str(exc))
-        object_ref = None
-        if target is not None:
+        with self._lock:
             try:
-                object_ref = self._ref(target)
-            except ValidationError as exc:
+                runtime = self._require_runtime()
+            except RuntimeUnavailableError as exc:
                 return InvocationResult(execution_id="", error=str(exc))
-        result = runtime.invoke(function=function, target=object_ref, args=dict(args or {}))
-        error = None
-        if result.error is not None:
-            error = f"{type(result.error).__name__}: {result.error}"
-        changes = tuple(k.to_jsonable(c) for c in result.changes)
+            object_ref = None
+            if target is not None:
+                try:
+                    object_ref = self._ref(target)
+                except ValidationError as exc:
+                    return InvocationResult(execution_id="", error=str(exc))
+            result = runtime.invoke(function=function, target=object_ref, args=dict(args or {}))
+            error = None
+            if result.error is not None:
+                error = f"{type(result.error).__name__}: {result.error}"
+            changes = tuple(k.to_jsonable(c) for c in result.changes)
         if changes:
             self._record(source="invoke", changes=list(changes), function=function)
         return InvocationResult(
@@ -227,8 +256,17 @@ class KernelRuntimeGateway(RuntimeGateway):
     # semantic state write (Projection -> Kernel)
     # ------------------------------------------------------------------
 
-    def apply_delta(self, delta: SemanticDelta) -> list[dict]:
+    def apply_delta(self, delta: SemanticDelta,
+                    source: str = "projection") -> list[dict]:
+        """Apply a validated semantic delta.  ``source`` labels the audit
+        entry: projections default to "projection"; workflow steps running
+        inside a capability invocation pass "invoke"."""
         k = _kernel()
+        with self._lock:
+            return self._apply_delta_locked(k, delta, source)
+
+    def _apply_delta_locked(self, k, delta: SemanticDelta,
+                            source: str = "projection") -> list[dict]:
         runtime = self._require_runtime()
         schema = runtime.schema
 
@@ -306,7 +344,7 @@ class KernelRuntimeGateway(RuntimeGateway):
                 applied.append(k.to_jsonable(change))
 
         if applied:
-            self._record(source="projection", changes=applied)
+            self._record(source=source, changes=applied)
         return applied
 
     def _validate_edge(self, schema, relation: str, source: str, target: str) -> None:
@@ -328,6 +366,20 @@ class KernelRuntimeGateway(RuntimeGateway):
             raise ValidationError(
                 f"relation {rdef.name} target must be {rdef.target}, got {tgt_type}"
             )
+
+    # ------------------------------------------------------------------
+    # agent-implemented capabilities (design.txt §19: Agent / AI+Function)
+    # ------------------------------------------------------------------
+
+    def register_agent_runner(self, entrypoint: str, runner) -> None:
+        """Register the platform-side runner for one agent capability.
+
+        ``runner(target: str | None, args: dict) -> dict`` is called by the
+        executor when a function bound to ``agent://...`` is invoked.  The
+        registration lives on the gateway (not in the compiled payload) so
+        no LLM provider ever needs to be serializable.
+        """
+        self._agent_runners[entrypoint] = runner
 
     # ------------------------------------------------------------------
     # change log (Audit 消费 Kernel Change)

@@ -196,6 +196,13 @@ class SchemaPublisher:
         payload = OntologyCompiler().compile(
             ontology, [Capability.from_dict(c) for c in capabilities]
         )
+        workspace = self._ctx.repo.get("workspace", None, workspace_id)
+        runtime_config = (workspace or {}).get("runtime_config", {})
+        gateway = self._ctx.gateway_for(workspace_id)
+        # publish first; only a successfully compiled+accepted payload is
+        # persisted for cross-process self-healing (see gateway_for)
+        gateway.publish_schema(payload)
+        self._register_agent_runners(workspace_id, gateway, capabilities)
         # persist the compiled payload so a new process can rebuild the
         # runtime without a re-publish (see ApplicationContext.gateway_for)
         self._ctx.save("schema_payload", {
@@ -205,10 +212,6 @@ class SchemaPublisher:
             "bindings": payload.bindings,
             "workflows": payload.workflows,
         })
-        workspace = self._ctx.repo.get("workspace", None, workspace_id)
-        runtime_config = (workspace or {}).get("runtime_config", {})
-        gateway = self._ctx.gateway_for(workspace_id)
-        gateway.publish_schema(payload)
         self._ctx.audit_event(
             actor, workspace_id, action, ontology.id,
             {
@@ -218,6 +221,32 @@ class SchemaPublisher:
             },
         )
         return gateway.describe()
+
+    def _register_agent_runners(self, workspace_id: str, gateway,
+                                capabilities: list[dict]) -> None:
+        """Agent-kind capabilities need a live runner (goal + LLM provider);
+        it cannot live in the compiled payload, so it is attached here."""
+        from .agent_runner import make_agent_runner
+
+        from ..domain.intelligence.model import SemanticIndex
+
+        ontology = _load_workspace_ontology(self._ctx, workspace_id)
+        assert ontology is not None
+        context_text = SemanticIndex.from_ontology(ontology).context_text(ontology)
+        for data in capabilities:
+            impl = data.get("implementation", {})
+            if impl.get("kind") != "agent":
+                continue
+            function_name = f"{data['target_type']}.{data['key']}"
+            gateway.register_agent_runner(
+                f"agent://{data['id']}",
+                make_agent_runner(
+                    gateway,
+                    lambda: self._ctx.llm,
+                    context_text,
+                    impl.get("goal", ""),
+                ),
+            )
 
 
 class DescribeRuntime:

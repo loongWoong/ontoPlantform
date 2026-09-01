@@ -282,6 +282,14 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
             if len(rest) == 3 and rest[0] == "applications" and rest[2] == "capabilities":
                 return self._send(200, platform.applications.attach_capability(
                     wid, rest[1], user, body["capability_id"]))
+            if len(rest) == 3 and rest[0] == "applications" and rest[2] == "agents":
+                return self._send(200, platform.applications.add_agent(
+                    wid, rest[1], user, body["alias"], goal=body.get("goal", ""),
+                    description=body.get("description", "")))
+            if len(rest) == 4 and rest[0] == "applications" and rest[3] == "agent":
+                return self._send(200, platform.applications.run_agent(
+                    wid, rest[1], user, rest[2],
+                    goal_override=body.get("goal", "")))
             if len(rest) == 4 and rest[0] == "applications" and rest[3] == "query":
                 return self._send(200, platform.applications.run_query(
                     wid, rest[1], user, body.get("alias", "")))

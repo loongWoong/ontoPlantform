@@ -139,3 +139,117 @@ def test_runner_direct(platform, workspace_id):
           "filter": {"status": "congested"}, "as": "output"}],
         {"args": {}, "target": None})
     assert [o["id"] for o in ctx["output"]] == ["ST001"]
+
+
+# ----------------------------------------------------------------------
+# workflow set_property: the bounded mutation primitive (design.txt §49)
+# ----------------------------------------------------------------------
+
+
+def test_workflow_set_property_mutates_state(platform, workspace_id):
+    platform.capabilities.create(
+        workspace_id, "admin", key="mark_busy", name="标记繁忙",
+        target_type="TollStation", description="写回通行计数",
+        implementation={"kind": "workflow", "steps": [
+            {"kind": "related", "ref": "{{target}}", "relation": "passes",
+             "direction": "in", "as": "vehicles"},
+            {"kind": "count", "list": "{{steps.vehicles}}", "as": "n"},
+            {"kind": "set_property", "ref": "{{target}}",
+             "properties": {"status": "busy"}},
+        ]})
+    published = platform.capabilities.list(workspace_id, "admin")
+    platform.capabilities.publish(workspace_id, published[-1]["id"], "admin")
+
+    result = platform.capabilities.invoke(
+        workspace_id, "admin", "TollStation.mark_busy",
+        target="TollStation/ST001", args={})
+    assert result["ok"] is True
+    station = platform.ctx.gateways.for_workspace(workspace_id, {}).get_object(
+        "TollStation/ST001")
+    assert station["properties"]["status"] == "busy"
+    # the mutation is recorded as a proper kernel change
+    assert any(c["source"] == "invoke" for c in
+               platform.ctx.gateways.for_workspace(workspace_id, {}).observe_changes())
+
+
+def test_workflow_set_property_rejects_bad_ref(platform, workspace_id):
+    platform.capabilities.create(
+        workspace_id, "admin", key="bad_write", name="坏写",
+        target_type="TollStation", description="",
+        implementation={"kind": "workflow", "steps": [
+            {"kind": "set_property", "ref": "not-a-ref",
+             "properties": {"status": "free"}}]})
+    published = platform.capabilities.list(workspace_id, "admin")
+    platform.capabilities.publish(workspace_id, published[-1]["id"], "admin")
+    result = platform.capabilities.invoke(
+        workspace_id, "admin", "TollStation.bad_write",
+        target="TollStation/ST001", args={})
+    assert result["ok"] is False
+    assert "set_property" in result["error"]
+
+
+# ----------------------------------------------------------------------
+# agent-implemented capability (design.txt §19: Agent / AI + Function)
+# ----------------------------------------------------------------------
+
+
+def test_agent_capability_end_to_end(platform, workspace_id):
+    from onto_platform.infrastructure.llm.echo import EchoLLMProvider
+
+    platform.configure_llm(EchoLLMProvider([
+        '{"think": "查看站点", "action": {"tool": "get", "args": {"ref": "TollStation/ST001"}}}',
+        '{"think": "结论", "answer": "ST001 正在拥堵"}',
+    ]))
+    capability = platform.capabilities.create(
+        workspace_id, "admin", key="explain", name="拥堵解释",
+        target_type="TollStation", description="解释站点状态",
+        implementation={"kind": "agent", "goal": "解释 {target} 的运行状态"})
+    platform.capabilities.publish(workspace_id, capability["id"], "admin")
+
+    result = platform.capabilities.invoke(
+        workspace_id, "admin", "TollStation.explain",
+        target="TollStation/ST001", args={})
+    assert result["ok"] is True
+    assert result["output"]["answer"] == "ST001 正在拥堵"
+
+
+def test_agent_capability_without_llm_is_a_clean_error(platform, workspace_id):
+    capability = platform.capabilities.create(
+        workspace_id, "admin", key="explain", name="拥堵解释",
+        target_type="TollStation", description="",
+        implementation={"kind": "agent", "goal": "解释 {target}"})
+    platform.capabilities.publish(workspace_id, capability["id"], "admin")
+    result = platform.capabilities.invoke(
+        workspace_id, "admin", "TollStation.explain",
+        target="TollStation/ST001", args={})
+    assert result["ok"] is False
+    assert "LLM provider" in result["error"]
+
+
+def test_agent_capability_survives_process_restart(tmp_path):
+    """New platform instance over the same db: gateway self-heals and
+    re-attaches agent runners (definitions in repo, runner rebuilt)."""
+    from onto_platform.bootstrap import PlatformConfig, build_platform
+    from onto_platform.infrastructure.llm.echo import EchoLLMProvider
+    from tests.conftest import seed_workspace
+
+    db = str(tmp_path / "restart.db")
+    script = [
+        '{"think": "看", "action": {"tool": "get", "args": {"ref": "Vehicle/V001"}}}',
+        '{"think": "答", "answer": "V001 余额 100"}',
+    ]
+    platform = build_platform(PlatformConfig(store="sqlite", db_path=db))
+    wid = seed_workspace(platform)
+    platform.configure_llm(EchoLLMProvider(script))
+    capability = platform.capabilities.create(
+        wid, "admin", key="explain", name="解释", target_type="Vehicle",
+        description="", implementation={"kind": "agent", "goal": "解释 {target}"})
+    platform.capabilities.publish(wid, capability["id"], "admin")
+
+    # simulate a fresh process: new platform over the same database
+    platform2 = build_platform(PlatformConfig(store="sqlite", db_path=db))
+    platform2.configure_llm(EchoLLMProvider(script))
+    result = platform2.capabilities.invoke(
+        wid, "admin", "Vehicle.explain", target="Vehicle/V001", args={})
+    assert result["ok"] is True
+    assert result["output"]["answer"] == "V001 余额 100"

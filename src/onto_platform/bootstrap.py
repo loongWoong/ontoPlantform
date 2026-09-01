@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .application.application_usecases import (
+    AddAgent,
     AddQuery,
     AddView,
     AttachCapability,
@@ -24,6 +25,7 @@ from .application.application_usecases import (
     GetApplication,
     ListApplications,
     PublishApplication,
+    RunAppAgent,
     RunAppQuery,
 )
 from .application.capability_usecases import (
@@ -87,6 +89,14 @@ class Platform:
 
     config: PlatformConfig
     ctx: ApplicationContext
+
+    def configure_llm(self, provider: "LLMProvider") -> None:
+        """Attach (or replace) the default LLM provider at runtime.
+
+        Agent-kind capabilities resolve the provider at call time, so this
+        works before or after they are published."""
+        self.config.llm = provider
+        self.ctx.llm = provider
     workspaces: "WorkspaceUseCases"
     ontologies: "OntologyUseCases"
     data: "DataUseCases"
@@ -138,8 +148,10 @@ class ApplicationUseCases:
         self.add_view = AddView(ctx)
         self.add_query = AddQuery(ctx)
         self.attach_capability = AttachCapability(ctx)
+        self.add_agent = AddAgent(ctx)
         self.publish = PublishApplication(ctx)
         self.run_query = RunAppQuery(ctx)
+        self.run_agent = RunAppAgent(ctx)
         self.get = GetApplication(ctx)
         self.list = ListApplications(ctx)
 

@@ -83,7 +83,9 @@ class ApplicationContext:
     def gateway_for(self, workspace_id: str):
         """The workspace's gateway, republishing the stored schema payload
         when this process has never seen it (process restart / new instance).
-        Definitions live in the repository; the kernel rebuilds from them."""
+        Definitions live in the repository; the kernel rebuilds from them.
+        Agent-kind capability runners are re-attached as well (they hold a
+        live LLM provider and can never be part of the stored payload)."""
         workspace = self.repo.get("workspace", None, workspace_id)
         runtime_config = (workspace or {}).get("runtime_config", {})
         gateway = self.gateways.for_workspace(workspace_id, runtime_config)
@@ -99,4 +101,25 @@ class ApplicationContext:
                         workflows=payload.get("workflows", {}),
                     )
                 )
+                self._reattach_agent_runners(workspace_id, gateway)
         return gateway
+
+    def _reattach_agent_runners(self, workspace_id: str, gateway) -> None:
+        from .agent_runner import make_agent_runner
+        from ..domain.intelligence.model import SemanticIndex
+        from ..domain.ontology.model import Ontology
+
+        ontologies = self.repo.list("ontology", workspace_id)
+        if not ontologies:
+            return
+        ontology = Ontology.from_dict(ontologies[0])
+        context_text = SemanticIndex.from_ontology(ontology).context_text(ontology)
+        for data in self.repo.list("capability", workspace_id):
+            impl = data.get("implementation", {})
+            if data.get("lifecycle") != "published" or impl.get("kind") != "agent":
+                continue
+            gateway.register_agent_runner(
+                f"agent://{data['id']}",
+                make_agent_runner(gateway, lambda: self.llm, context_text,
+                                  impl.get("goal", "")),
+            )

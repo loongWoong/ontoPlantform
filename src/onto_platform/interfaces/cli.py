@@ -177,6 +177,15 @@ def build_parser() -> argparse.ArgumentParser:
     app_run = app.add_parser("run-query")
     app_run.add_argument("app_id")
     app_run.add_argument("alias")
+    app_agent = app.add_parser("add-agent")
+    app_agent.add_argument("app_id")
+    app_agent.add_argument("alias")
+    app_agent.add_argument("--goal", required=True)
+    app_agent.add_argument("--description", default="")
+    app_runagent = app.add_parser("run-agent")
+    app_runagent.add_argument("app_id")
+    app_runagent.add_argument("alias")
+    app_runagent.add_argument("--goal", default="")
 
     # runtime state
     p = sub.add_parser("state")
@@ -321,6 +330,13 @@ def main(argv: list[str] | None = None) -> int:
                 _emit(platform.applications.publish(wid, args.app_id, user))
             elif args.subcommand == "run-query":
                 _emit(platform.applications.run_query(wid, args.app_id, user, args.alias))
+            elif args.subcommand == "add-agent":
+                _emit(platform.applications.add_agent(
+                    wid, args.app_id, user, args.alias, goal=args.goal,
+                    description=args.description))
+            elif args.subcommand == "run-agent":
+                _emit(platform.applications.run_agent(
+                    wid, args.app_id, user, args.alias, goal_override=args.goal))
         elif args.command == "state":
             wid = _need_workspace(args)
             gateway = platform.ctx.gateway_for(wid)

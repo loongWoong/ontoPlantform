@@ -8,9 +8,10 @@
 A Capability is implemented by ONE of:
     - a single python function  (kind="python")
     - a workflow of steps       (kind="workflow")
+    - an LLM agent run          (kind="agent", design.txt §19 Agent/AI+Function)
 
-Users only ever see the capability; workflow DAGs and function bindings
-stay inside the platform (design.txt §19/§42 第二原则).
+Users only ever see the capability; workflow DAGs, agent loops and
+function bindings stay inside the platform (design.txt §19/§42 第二原则).
 """
 
 from __future__ import annotations
@@ -19,12 +20,13 @@ from dataclasses import dataclass, field
 
 from ...errors import ValidationError
 
-IMPLEMENTATION_KINDS = ("python", "workflow")
+IMPLEMENTATION_KINDS = ("python", "workflow", "agent")
 
-# Workflow step kinds (v0.1): observation + invocation + tiny reductions.
-# State changes always go through ``invoke`` - a workflow never mutates
-# semantic state directly.
-STEP_KINDS = ("invoke", "find", "related", "get", "count", "set")
+# Workflow step kinds (v0.1): observation, invocation, tiny reductions and
+# one bounded mutation primitive (set_property -> gateway.apply_delta).
+# Everything a workflow does goes through the RuntimeGateway - never the
+# kernel store directly (design.txt §15/§49).
+STEP_KINDS = ("invoke", "find", "related", "get", "count", "set", "set_property")
 
 _STEP_REQUIRED = {
     "invoke": ("function",),
@@ -33,6 +35,7 @@ _STEP_REQUIRED = {
     "get": ("ref",),
     "count": ("list",),
     "set": ("name", "value"),
+    "set_property": ("ref", "properties"),
 }
 
 
@@ -44,6 +47,7 @@ class Implementation:
     source: str | None = None      # python: inline source code
     entrypoint: str | None = None  # python: materialized path (set at publish)
     steps: tuple[dict, ...] = ()   # workflow: ordered step specs
+    goal: str = ""                 # agent: the goal the LLM pursues
 
     def to_dict(self) -> dict:
         return {
@@ -51,6 +55,7 @@ class Implementation:
             "source": self.source,
             "entrypoint": self.entrypoint,
             "steps": [dict(s) for s in self.steps],
+            "goal": self.goal,
         }
 
     @classmethod
@@ -60,6 +65,7 @@ class Implementation:
             source=data.get("source"),
             entrypoint=data.get("entrypoint"),
             steps=tuple(dict(s) for s in data.get("steps", [])),
+            goal=data.get("goal", ""),
         )
 
 
@@ -155,6 +161,8 @@ def validate_capability(capability: Capability) -> list[str]:
         problems.append("python implementation needs 'source' or 'entrypoint'")
     elif impl.kind == "workflow":
         problems.extend(validate_steps(list(impl.steps)))
+    elif impl.kind == "agent" and not impl.goal.strip():
+        problems.append("agent implementation needs a 'goal'")
     return problems
 
 

@@ -193,3 +193,49 @@ def _parse_json(text: str) -> dict | None:
         except json.JSONDecodeError:
             return None
     return data if isinstance(data, dict) else None
+
+
+# ----------------------------------------------------------------------
+# agent-implemented capabilities (design.txt §19: Agent / AI + Function)
+# ----------------------------------------------------------------------
+
+
+def make_agent_runner(gateway: RuntimeGateway, provider_resolver,
+                      ontology_context: str, goal: str, max_steps: int = 8):
+    """Build the platform-side runner for one agent-kind capability.
+
+    The returned callable is registered on the gateway (see
+    ``KernelRuntimeGateway.register_agent_runner``) and invoked by the
+    kernel's executor when the capability's function is called:
+
+        runner(target: str | None, args: dict) -> dict
+
+    ``provider_resolver`` is a zero-arg callable returning the current LLM
+    provider (or None) - resolved at call time so late platform
+    configuration and process restarts pick up the configured provider.
+    ``{target}`` / ``{arg_name}`` placeholders in the goal are substituted
+    before the loop starts.  A missing provider surfaces as an invocation
+    error (the kernel never lets executor exceptions escape).
+    """
+
+    def run(target: str | None, args: dict) -> dict:
+        provider = provider_resolver()
+        if provider is None:
+            raise RuntimeError(
+                "capability is implemented by an agent but no LLM provider "
+                "is configured on the platform"
+            )
+        text = goal
+        if target is not None:
+            text = text.replace("{target}", target)
+        for key, value in (args or {}).items():
+            text = text.replace("{" + str(key) + "}", str(value))
+        agent_run = AgentRunner(gateway, provider, ontology_context,
+                                max_steps=max_steps).run(text)
+        return {
+            "ok": agent_run.ok,
+            "answer": agent_run.answer,
+            "steps": len(agent_run.steps),
+        }
+
+    return run

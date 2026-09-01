@@ -126,17 +126,50 @@ LLM 通过 Port 接入：内置 `EchoLLMProvider`（脚本化，测试/演示用
 
 ## Workflow 能力
 
-不写代码的能力：用 `find / related / get / count / set / invoke` 六种步骤编排，
-`{{path}}` 模板引用 `args / target / steps / vars`，别名为 `output` 的步骤即最终输出。
-Workflow 由平台执行（`GatewayWorkflowRunner`），其中 invoke 步骤回到 Kernel 执行——
-编排逻辑在平台，世界突变在 Kernel。
+不写代码的能力：用 `find / related / get / count / set / set_property / invoke`
+七种步骤编排，`{{path}}` 模板引用 `args / target / steps / vars`，别名为 `output`
+的步骤即最终输出。Workflow 由平台执行（`GatewayWorkflowRunner`），其中 invoke
+步骤回到 Kernel 执行——编排逻辑在平台，世界突变在 Kernel。
+
+`set_property` 是唯一的有界变更原语：工作流可以写回**已存在对象**的属性，
+且必须经过网关的校验变更门（属性必须已在本体中定义）——design.txt §49 的
+Action → Change → State 闭环由此对无代码用户开放。
+
+## Agent 能力与应用 Agent
+
+- **Agent 能力**（§19）：`implementation.kind = "agent"`，只需一段 `goal`。
+  编译为 kernel 函数绑定 `agent://{capability_id}`；运行时由平台侧 runner
+  执行（goal + 本体上下文 + LLM），Agent 循环观察世界、调用其它能力行动。
+  未配置 LLM 时调用返回干净的错误结果，不会崩溃。
+- **应用 Agent**（§50）：`Application = View/Query/Agent`。应用通过
+  `add-agent` 挂载命名 Agent 入口（只存引用与目标措辞，领域仍在
+  Intelligence），`run-agent` 即可执行。
+
+## MCP 接入（§36/§46）
+
+```bash
+pip install "onto-platform[mcp]"
+onto-mcp --db .onto/platform.db --workspace <wid>   # stdio JSON-RPC
+```
+
+暴露 `workspace_describe / workspace_find / workspace_get / workspace_related /
+workspace_ask / capability_invoke / agent_run` 七个工具——MCP 只翻译协议，
+逻辑全部留在用例层（§40）。
+
+## v0.1 的有意简化（design.txt §9/§20/§38）
+
+- **Review 步骤**折入 publish（发布即编译 + 校验 + 审计）；
+- **Test 步骤**（§20 能力测试）未建——测试由 pytest 套件承担；
+- **CreateMapping**（§38）折入 create_projection（投影即映射）。
+
+这些是 v0.1 的边界而非遗漏，升级路径已在治理模型中预留。
 
 ## 开发
 
 ```bash
-python -m pytest tests/ -q        # 58 个测试：compiler / gateway / projection /
-                                  # capability / governance / intelligence /
-                                  # persistence / api / cli
+python -m pytest tests/ -q        # 72 个测试：compiler / gateway / projection /
+                                  # capability / application / governance /
+                                  # intelligence / persistence / api / cli / mcp
 ```
 
 测试覆盖三条链路的端到端断言、防腐层契约（编译产物必须能被 Kernel 的
@@ -151,6 +184,6 @@ src/onto_platform/
 ├── domain/                    # 七大领域 + ontology/compiler.py
 ├── application/               # 用例 + SchemaPublisher + AgentRunner + bootstrap
 ├── infrastructure/            # kernel 网关 / 持久化 / 连接器 / LLM / 执行器
-└── interfaces/                # cli.py · api.py · web/index.html
+└── interfaces/                # cli.py · api.py · mcp.py · web/index.html
 examples/traffic/demo.py       # design.txt §48 完整业务实例
 ```

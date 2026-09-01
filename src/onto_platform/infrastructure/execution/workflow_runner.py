@@ -95,6 +95,27 @@ class GatewayWorkflowRunner:
             ctx["vars"][str(step["name"])] = value
             return value
 
+        if kind == "set_property":
+            # the one bounded mutation primitive: a workflow may write
+            # properties of an existing object through the gateway's
+            # validated delta door (design.txt §49: Action -> Change -> State)
+            ref = _resolve(step["ref"], ctx)
+            obj_type, _, obj_id = str(ref).partition("/")
+            if not obj_id:
+                raise WorkflowStepError(f"set_property needs a 'Type/Id' ref, got {ref!r}")
+            properties = {
+                str(k): _resolve(v, ctx)
+                for k, v in (step.get("properties") or {}).items()
+            }
+            if not properties:
+                raise WorkflowStepError("set_property needs a non-empty 'properties' mapping")
+            from ...ports.runtime import ObjectUpsert, SemanticDelta
+
+            self._gateway.apply_delta(SemanticDelta(
+                upserts=(ObjectUpsert(type=obj_type, id=obj_id, properties=properties),),
+            ), source="invoke")
+            return dict(properties)
+
         raise WorkflowStepError(f"unknown step kind {kind!r}")  # pragma: no cover
 
 

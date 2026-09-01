@@ -100,6 +100,12 @@ class OntologyCompiler:
             uri = f"workflow://{capability.id}"
             bindings[function_name] = {"executor": "workflow", "entrypoint": uri}
             workflows[uri] = [dict(step) for step in impl.steps]
+        elif impl.kind == "agent":
+            uri = f"agent://{capability.id}"
+            bindings[function_name] = {"executor": "agent", "entrypoint": uri}
+            # the runner itself is registered by the application layer at
+            # publish time (it needs the LLM provider, which is never
+            # part of the compiled payload)
         else:  # pragma: no cover - guarded by capability validation
             raise CompilerError(
                 f"capability {capability.name!r}: unknown implementation kind "
