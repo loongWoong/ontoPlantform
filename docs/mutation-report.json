@@ -1,0 +1,128 @@
+{
+  "score": 1.0,
+  "killed": 12,
+  "total": 12,
+  "threshold": 0.6,
+  "results": [
+    {
+      "name": "value-category-identity-rejected",
+      "killed": true,
+      "status": "KILLED",
+      "detail": "",
+      "tests": [
+        "tests/test_modeling_lint.py"
+      ],
+      "seconds": 1.45
+    },
+    {
+      "name": "dangling-relation-target-rejected",
+      "killed": true,
+      "status": "KILLED",
+      "detail": "",
+      "tests": [
+        "tests/test_plan_acceptance.py"
+      ],
+      "seconds": 0.76
+    },
+    {
+      "name": "unit-mismatch-rejected",
+      "killed": true,
+      "status": "KILLED",
+      "detail": "",
+      "tests": [
+        "tests/test_modeling_lint.py"
+      ],
+      "seconds": 1.27
+    },
+    {
+      "name": "fingerprint-mismatch-detected",
+      "killed": true,
+      "status": "KILLED",
+      "detail": "",
+      "tests": [
+        "tests/test_revision_contract.py"
+      ],
+      "seconds": 1.5
+    },
+    {
+      "name": "history-window-refused",
+      "killed": true,
+      "status": "KILLED",
+      "detail": "",
+      "tests": [
+        "tests/test_history.py"
+      ],
+      "seconds": 0.72
+    },
+    {
+      "name": "illegal-lifecycle-transition-rejected",
+      "killed": true,
+      "status": "KILLED",
+      "detail": "",
+      "tests": [
+        "tests/test_governance.py"
+      ],
+      "seconds": 0.66
+    },
+    {
+      "name": "objective-band-respected",
+      "killed": true,
+      "status": "KILLED",
+      "detail": "",
+      "tests": [
+        "tests/test_objective.py"
+      ],
+      "seconds": 0.72
+    },
+    {
+      "name": "objective-breach-opens-todo",
+      "killed": true,
+      "status": "KILLED",
+      "detail": "",
+      "tests": [
+        "tests/test_objective.py"
+      ],
+      "seconds": 0.7
+    },
+    {
+      "name": "idempotent-replay-returns-before-execute",
+      "killed": true,
+      "status": "KILLED",
+      "detail": "",
+      "tests": [
+        "tests/test_idempotency.py"
+      ],
+      "seconds": 0.72
+    },
+    {
+      "name": "projection-watermark-skips-unchanged",
+      "killed": true,
+      "status": "KILLED",
+      "detail": "",
+      "tests": [
+        "tests/test_contract_verifier.py"
+      ],
+      "seconds": 0.81
+    },
+    {
+      "name": "as-of-does-not-undo-future-changes",
+      "killed": true,
+      "status": "KILLED",
+      "detail": "",
+      "tests": [
+        "tests/test_history.py"
+      ],
+      "seconds": 0.77
+    },
+    {
+      "name": "viewer-cannot-write",
+      "killed": true,
+      "status": "KILLED",
+      "detail": "",
+      "tests": [
+        "tests/test_governance.py"
+      ],
+      "seconds": 0.69
+    }
+  ]
+}

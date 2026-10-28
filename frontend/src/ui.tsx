@@ -1,12 +1,14 @@
-/** 展示原语：所有页面只用这些组件，保证尺寸/间距一致、label 常驻、表格永远可横滚。 */
+/** 展示原语：所有页面的排版、间距、表单、表格、抽屉都只用这里的组件。
+ *  视觉规则：1px 结构线、无渐变、无重阴影、标签常驻、表格永远可横滚。 */
 import {
   Children, cloneElement, isValidElement, useEffect, useRef, useState,
-  type ReactElement,
-  type ReactNode, type SelectHTMLAttributes, type InputHTMLAttributes,
-  type TextareaHTMLAttributes, type ButtonHTMLAttributes,
+  type ReactElement, type ReactNode, type SelectHTMLAttributes,
+  type InputHTMLAttributes, type TextareaHTMLAttributes, type ButtonHTMLAttributes,
 } from "react";
+import { Check, Copy, WarningCircle } from "@phosphor-icons/react";
 import type { AgentStep, Obj } from "./api";
 import { usePlatform } from "./store";
+import { ValueView } from "./components/ValueView";
 
 /* ---------------- 数据加载 ---------------- */
 export function useLoad<T>(loader: () => Promise<T>, deps: unknown[], label = "加载中") {
@@ -28,16 +30,35 @@ export function useLoad<T>(loader: () => Promise<T>, deps: unknown[], label = "�
   return { data, error, loading, reload: () => setNonce(n => n + 1), label };
 }
 
-/* ---------------- 布局 ---------------- */
-export function Card({ title, sub, aside, children, tight }: {
-  title?: ReactNode; sub?: ReactNode; aside?: ReactNode; children: ReactNode; tight?: boolean;
+/* ---------------- 页头 ---------------- */
+export function PageHead({ kicker, title, desc, actions, meta }: {
+  kicker?: ReactNode; title: ReactNode; desc?: ReactNode;
+  actions?: ReactNode; meta?: ReactNode;
 }) {
   return (
-    <section className="card" style={undefined} data-tight={tight ? "true" : undefined}>
+    <header className="page-head">
+      <div className="page-head-main">
+        {kicker && <div className="page-kicker">{kicker}</div>}
+        <h1>{title}</h1>
+        {desc && <p className="page-desc">{desc}</p>}
+        {meta && <div className="page-meta">{meta}</div>}
+      </div>
+      {actions && <div className="page-actions">{actions}</div>}
+    </header>
+  );
+}
+
+/* ---------------- 布局 ---------------- */
+export function Card({ title, sub, aside, children, tight, tone, id }: {
+  title?: ReactNode; sub?: ReactNode; aside?: ReactNode; children: ReactNode;
+  tight?: boolean; tone?: "sunken" | "green" | "amber" | "red" | "blue"; id?: string;
+}) {
+  return (
+    <section className="card" id={id} data-tight={tight ? "true" : undefined} data-tone={tone}>
       {(title || aside) && (
         <div className="card-head">
           <div className="card-head-main">
-            {title && <h3 className="card-title">{title}</h3>}
+            {title && <h2 className="card-title">{title}</h2>}
             {sub && <p className="card-sub">{sub}</p>}
           </div>
           {aside && <div className="card-aside">{aside}</div>}
@@ -52,7 +73,7 @@ export function Section({ title, children, aside }: { title: ReactNode; children
   return (
     <>
       <div className="h4-row">
-        <h4 className="h4">{title}</h4>
+        <h3 className="h4">{title}</h3>
         {aside}
       </div>
       {children}
@@ -71,8 +92,48 @@ export function Collapsible({ label, children, defaultOpen = false }: {
   );
 }
 
+export function Stat({ label, value, foot, tone, unit }: {
+  label: ReactNode; value: ReactNode; foot?: ReactNode;
+  tone?: "sunken" | "green" | "amber" | "red" | "blue"; unit?: ReactNode;
+}) {
+  return (
+    <div className="stat" data-tone={tone}>
+      <span className="stat-label">{label}</span>
+      <span className="stat-value">{value}{unit && <small>{unit}</small>}</span>
+      {foot && <span className="stat-foot">{foot}</span>}
+    </div>
+  );
+}
+
+/** 极简折线：只画真实样本，不画网格与坐标轴。 */
+export function Sparkline({ points, width = 220, height = 46, tone = "ink" }: {
+  points: number[]; width?: number; height?: number; tone?: "ink" | "green" | "red";
+}) {
+  const values = points.filter(v => Number.isFinite(v));
+  if (values.length < 2) return <span className="muted mono">样本不足</span>;
+  const min = Math.min(...values), max = Math.max(...values);
+  const span = max - min || 1;
+  const step = width / (values.length - 1);
+  const coords = values.map((v, i) => `${(i * step).toFixed(1)},${(height - 4 - ((v - min) / span) * (height - 8)).toFixed(1)}`);
+  const stroke = tone === "green" ? "#3d6744" : tone === "red" ? "#98372e" : "#1a1814";
+  return (
+    <svg viewBox={`0 0 ${width} ${height}`} width={width} height={height} role="img" aria-label="趋势折线">
+      <polyline points={coords.join(" ")} fill="none" stroke={stroke} strokeWidth="1.4"
+                strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+/** 一条 4px 的比率条，用于 SLO / 完成度；轨道只做底，不抢视觉。 */
+export function Meter({ value, max = 1, tone }: {
+  value: number; max?: number; tone?: "ok" | "warn" | "err";
+}) {
+  const pct = Math.max(0, Math.min(1, max ? value / max : 0)) * 100;
+  return <span className={`meter${tone ? " " + tone : ""}`}><span style={{ width: `${pct}%` }} /></span>;
+}
+
 /* ---------------- 表单 ---------------- */
-/** 控件没写 aria-label 时，用字段标签兜底 —— 屏幕阅读器与探针都只认常驻标签。 */
+/** 控件没写 aria-label 时，用字段标签兜底 –– 屏幕阅读器与探针都只认常驻标签。 */
 function labelControls(children: ReactNode, label: string): ReactNode {
   if (!label) return children;
   return Children.map(children, (c: ReactNode) => {
@@ -93,8 +154,8 @@ export function Field({ label, hint, error, children, top }: {
     <div className={"field" + (top ? " field-top" : "")}>
       <label>{label}</label>
       <div className="field-ctl">{labelControls(children, typeof label === "string" ? label : "")}</div>
-      {hint && <span className="field-hint">{hint}</span>}
       {error && <span className="field-error">{error}</span>}
+      {hint && <span className="field-hint">{hint}</span>}
     </div>
   );
 }
@@ -154,12 +215,27 @@ export function Empty({ title, hint, action }: { title: string; hint?: ReactNode
 }
 
 export function Loading({ text = "加载中" }: { text?: string }) {
-  return <div className="loading">{text}…</div>;
+  return (
+    <div className="loading" role="status" aria-label={text}>
+      <span className="skeleton" style={{ flex: 1 }}>
+        <span /><span /><span />
+      </span>
+    </div>
+  );
+}
+
+export function Skeleton({ rows = 3 }: { rows?: number }) {
+  return (
+    <div className="skeleton" aria-hidden="true">
+      {Array.from({ length: rows }, (_, i) => <span key={i} />)}
+    </div>
+  );
 }
 
 export function ErrorNote({ text, onRetry }: { text: string; onRetry?: () => void }) {
   return (
     <div className="banner err">
+      <WarningCircle size={14} weight="bold" className="inline-icon" aria-hidden="true" />
       {text}
       {onRetry && <button type="button" className="link" onClick={onRetry}>重试</button>}
     </div>
@@ -168,7 +244,27 @@ export function ErrorNote({ text, onRetry }: { text: string; onRetry?: () => voi
 
 /* ---------------- 表格 ---------------- */
 export function TableWrap({ children, auto }: { children: ReactNode; auto?: boolean }) {
-  return <div className={"tablewrap" + (auto ? " auto" : "")}>{children}</div>;
+  return <div className={"tablewrap" + (auto ? " auto" : "")} tabIndex={0}>{children}</div>;
+}
+
+/** 属性列表：把 name:type 渲染成可换行的小代码块，避免把 JSX 当字符串拼接。 */
+export type PropertyLike = { name?: string; type?: string; description?: string };
+
+export function PropertyList({ properties, empty = "–" }: {
+  properties?: Array<PropertyLike | string> | Record<string, PropertyLike> | null;
+  empty?: string;
+}) {
+  const list = Array.isArray(properties) ? properties : Object.values(properties || {});
+  if (!list.length) return <>{empty}</>;
+  return (
+    <span className="prop-list">
+      {list.map((raw, i) => {
+        const p: PropertyLike = typeof raw === "string" ? { name: raw } : (raw || {});
+        const label = [p.name, p.type].filter(Boolean).join(":");
+        return <code key={`${p.name || "prop"}-${i}`} title={p.description || label}>{label || "?"}</code>;
+      })}
+    </span>
+  );
 }
 
 /** 对象表格：引用可点，长属性省略 + 悬浮全文；14 列也不会撑破页面 */
@@ -184,7 +280,7 @@ export function ObjectTable({ objects, onOpen }: { objects: Obj[]; onOpen?: (ref
           <tr>
             <th>对象</th>
             {cols.map(c => <th key={c}>{c}</th>)}
-            <th> </th>
+            <th>操作</th>
           </tr>
         </thead>
         <tbody>
@@ -195,8 +291,11 @@ export function ObjectTable({ objects, onOpen }: { objects: Obj[]; onOpen?: (ref
                 <td className="nowrap"><button type="button" className="link" onClick={() => open(ref)}>{ref}</button></td>
                 {cols.map(c => {
                   const v = o.properties[c];
-                  const text = v === null || v === undefined ? "—" : String(v);
-                  return <td key={c} title={text}>{text}</td>;
+                  return (
+                    <td key={c} className="wrap">
+                      <ValueView value={v} field={c} compact limit={26} />
+                    </td>
+                  );
                 })}
                 <td className="nowrap"><button type="button" className="link" onClick={() => open(ref)}>详情</button></td>
               </tr>
@@ -215,18 +314,21 @@ export function Drawer({ title, sub, onClose, children, wide, footer }: {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { window.removeEventListener("keydown", onKey); document.body.style.overflow = previous; };
   }, [onClose]);
   return (
     <div className="scrim" role="dialog" aria-modal="true" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
       <div className={"drawer" + (wide ? " wide" : "")}>
         <div className="drawer-head">
-          <h2>{title}</h2>
-          {sub && <span className="muted">{sub}</span>}
-          <span className="grow" />
+          <div className="grow">
+            <h2>{title}</h2>
+            {sub && <div className="muted">{sub}</div>}
+          </div>
           <button type="button" className="subtle sm" onClick={onClose}>关闭</button>
         </div>
-        {children}
+        <div className="drawer-body">{children}</div>
         {footer && <div className="drawer-foot">{footer}</div>}
       </div>
     </div>
@@ -241,7 +343,7 @@ export function Timeline({ steps }: { steps: AgentStep[] }) {
       {steps.map((st, i) => (
         <li key={i}>
           <div className="thought">
-            <b>{i + 1}.</b> {st.thought || "（这一步没有写想法）"}
+            <b>{String(i + 1).padStart(2, "0")}</b> {st.thought || "（这一步没有写想法）"}
           </div>
           <div className="mono muted">
             <Tag kind="plain">{st.action?.tool || "action"}</Tag>{" "}
@@ -374,15 +476,15 @@ export function JsonField({ label, value, onChange, hint, rows = 8, required }: 
 }
 
 /** 复制按钮：长 JSON / 引用都用它 */
-export function CopyBtn({ text }: { text: string }) {
+export function CopyBtn({ text, label = "复制" }: { text: string; label?: string }) {
   const { toast } = usePlatform();
+  const [done, setDone] = useState(false);
   return (
     <Btn variant="subtle" size="sm"
          onClick={() => navigator.clipboard?.writeText(text)
-           .then(() => toast("已复制", "ok"))
+           .then(() => { setDone(true); setTimeout(() => setDone(false), 1500); toast("已复制", "ok"); })
            .catch(() => toast("浏览器不允许复制，请手动选择", "err"))}>
-      复制
+      {done ? <Check size={13} weight="bold" /> : <Copy size={13} />} {done ? "已复制" : label}
     </Btn>
   );
 }
-

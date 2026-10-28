@@ -111,6 +111,13 @@ def build_parser() -> argparse.ArgumentParser:
     onto_term.add_argument("concept")
     onto_term.add_argument("--kind", default="object",
                            choices=["object", "property", "relation"])
+    onto_draft = onto.add_parser("draft")
+    onto_draft.add_argument("--text", default="", help="业务说明文本")
+    onto_draft.add_argument("--file", help="从文件读取业务说明（markdown/txt）")
+    onto_draft.add_argument("--apply", action="store_true",
+                            help="写入草稿本体（默认只解析预览）")
+    onto_draft.add_argument("--name", default="ai-draft",
+                            help="工作空间尚无本体时新建的本体名")
     onto.add_parser("show")
     onto.add_parser("validate")
     onto.add_parser("publish")
@@ -256,6 +263,15 @@ def main(argv: list[str] | None = None) -> int:
             elif args.subcommand == "add-term":
                 _emit(platform.ontologies.add_term(
                     wid, user, args.term, args.concept, kind=args.kind))
+            elif args.subcommand == "draft":
+                text = args.text
+                if args.file:
+                    text = Path(args.file).read_text(encoding="utf-8")
+                from .api import provider_from_env
+
+                _emit(platform.ontologies.draft(
+                    wid, user, text, apply=args.apply,
+                    provider=provider_from_env(), name=args.name))
             elif args.subcommand == "show":
                 _emit(platform.ontologies.get(wid, user))
             elif args.subcommand == "validate":

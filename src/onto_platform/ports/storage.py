@@ -13,16 +13,48 @@ from typing import Protocol
 
 class Repository(Protocol):
 
-    def put(self, kind: str, workspace_id: str | None, entity_id: str, data: dict) -> None:
-        """Insert or overwrite one document."""
+    def put(self, kind: str, workspace_id: str | None, entity_id: str, data: dict) -> int:
+        """Insert or overwrite one document; return the new aggregate version."""
         ...
 
     def get(self, kind: str, workspace_id: str | None, entity_id: str) -> dict | None: ...
+
+    def get_versioned(
+        self, kind: str, workspace_id: str | None, entity_id: str
+    ) -> tuple[dict, int] | None:
+        """Like ``get`` but also returns the aggregate version (0 = absent)."""
+        ...
+
+    def put_if_version(
+        self,
+        kind: str,
+        workspace_id: str | None,
+        entity_id: str,
+        data: dict,
+        expected_version: int | None,
+    ) -> int:
+        """Optimistic-lock write.
+
+        ``expected_version=None`` means unconditional.  Otherwise the write
+        only succeeds when the stored version equals ``expected_version``;
+        a stale version raises ``ConcurrencyConflictError``.  Returns the new
+        version.
+        """
+        ...
 
     def delete(self, kind: str, workspace_id: str | None, entity_id: str) -> bool: ...
 
     def list(self, kind: str, workspace_id: str | None = None) -> list[dict]:
         """All documents of a kind, optionally scoped to a workspace."""
+        ...
+
+    def transaction(self):
+        """Context manager grouping writes into one atomic commit.
+
+        Used for aggregate + outbox event (memory: copy-on-write snapshot;
+        sqlite: one BEGIN IMMEDIATE transaction).  Nested use is allowed and
+        joins the outer transaction.
+        """
         ...
 
 

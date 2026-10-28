@@ -41,6 +41,14 @@ def test_agent_full_loop_with_scripted_llm(platform, workspace_id):
     # observations actually flowed back into the loop
     assert "ST001" in run["steps"][0]["observation"]
     assert "Vehicle/V001" in run["steps"][1]["observation"]
+    # the run and every step are persisted, not just returned to the caller
+    stored = platform.ctx.repo.get("agent_run", workspace_id, run["run_id"])
+    assert stored["ok"] is True
+    assert stored["duration_ms"] >= 0
+    assert stored["usage"] is None  # the echo provider reports no tokens
+    steps = [s for s in platform.ctx.repo.list("agent_step", workspace_id)
+             if s.get("run_id") == run["run_id"]]
+    assert len(steps) == len(run["steps"]) == 3
 
 
 def test_agent_can_invoke_capabilities(platform, workspace_id):
@@ -77,14 +85,20 @@ def test_agent_handles_bad_json_and_tool_errors(platform, workspace_id):
 
 
 def test_agent_max_steps_guard(platform, workspace_id):
+    """A tool-loop that never answers is cut at max_steps and reported as an
+    explicit unverified failure, not a manufactured answer."""
     script = [
         '{"think": "继续", "action": {"tool": "describe_ontology", "args": {}}}',
-    ] * 5
+        '{"think": "继续", "action": {"tool": "describe_ontology", "args": {}}}',
+        '{"think": "收尾", "answer": "观察够了，给出结论"}',
+    ]
     run = platform.intelligence.agent(
         workspace_id, "admin", "无限循环",
-        provider=EchoLLMProvider(script), max_steps=3)
+        provider=EchoLLMProvider(script), max_steps=2)
     assert run["ok"] is False
-    assert "最大推理步数" in run["answer"]
+    assert run["termination"] == "max_steps"
+    assert run["verified"] is False
+    assert len(run["steps"]) == 2
 
 
 def test_agent_requires_provider(platform, workspace_id):

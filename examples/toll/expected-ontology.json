@@ -1,0 +1,93 @@
+{
+  "workspace_name": "高速收费站样例",
+  "ontology_name": "toll",
+  "description": "高速收费站业务本体：收费站、车道、车辆、通行交易与计费/拥堵状态。",
+  "objects": [
+    {
+      "name": "TollStation",
+      "description": "高速公路收费站，按实时通行状态分为畅通/繁忙/拥堵",
+      "properties": [
+        {"name": "name", "type": "string", "description": "收费站名称"},
+        {"name": "status", "type": "string", "description": "通行状态：free / busy / congested"},
+        {"name": "province", "type": "string", "description": "所属省份"}
+      ]
+    },
+    {
+      "name": "Lane",
+      "description": "收费站下的一条收费车道",
+      "properties": [
+        {"name": "direction", "type": "string", "description": "方向：entry（入口）/ exit（出口）"},
+        {"name": "lane_type", "type": "string", "description": "收费方式：ETC / MTC（人工或混合）"},
+        {"name": "station_id", "type": "string", "description": "所属收费站编号"}
+      ]
+    },
+    {
+      "name": "Vehicle",
+      "description": "通行高速公路的车辆",
+      "properties": [
+        {"name": "plate", "type": "string", "description": "车牌号"},
+        {"name": "type", "type": "string", "description": "车型：客车 / 货车"},
+        {"name": "owner_type", "type": "string", "description": "归属类型：个人 / 企业 / 物流公司"}
+      ]
+    },
+    {
+      "name": "TollTransaction",
+      "description": "一次完整的通行交易（入口进、出口出并计费）",
+      "properties": [
+        {"name": "plate", "type": "string", "description": "车牌号"},
+        {"name": "entry_station", "type": "string", "description": "入口收费站编号"},
+        {"name": "exit_station", "type": "string", "description": "出口收费站编号"},
+        {"name": "lane_id", "type": "string", "description": "驶出时通过的出口车道编号"},
+        {"name": "fee", "type": "number", "description": "应收通行费（元）"},
+        {"name": "ts", "type": "datetime", "description": "通行时间"}
+      ]
+    }
+  ],
+  "relations": [
+    {
+      "name": "has_lane",
+      "source": "TollStation",
+      "target": "Lane",
+      "description": "收费站下辖收费车道",
+      "cardinality": "one_to_many"
+    },
+    {
+      "name": "enters",
+      "source": "Vehicle",
+      "target": "TollStation",
+      "description": "车辆从入口收费站驶入高速",
+      "cardinality": "many_to_many"
+    },
+    {
+      "name": "exits",
+      "source": "TollTransaction",
+      "target": "TollStation",
+      "description": "通行记录对应的出口收费站",
+      "cardinality": "many_to_one"
+    },
+    {
+      "name": "passes",
+      "source": "Vehicle",
+      "target": "TollStation",
+      "description": "车辆通行（驶出）收费站",
+      "cardinality": "many_to_many"
+    }
+  ],
+  "vocabulary": [
+    {"term": "收费站", "concept": "TollStation", "kind": "object", "aliases": ["高速收费站", "站"]},
+    {"term": "车辆", "concept": "Vehicle", "kind": "object", "aliases": ["车", "汽车"]},
+    {"term": "车道", "concept": "Lane", "kind": "object", "aliases": ["收费车道", "ETC车道"]},
+    {"term": "通行交易", "concept": "TollTransaction", "kind": "object", "aliases": ["通行记录", "交易"]},
+    {"term": "拥堵", "concept": "TollStation.status", "kind": "property", "aliases": ["拥堵状态"]},
+    {"term": "通行费", "concept": "TollTransaction.fee", "kind": "property", "aliases": ["过路费", "收费额"]},
+    {"term": "车牌", "concept": "Vehicle.plate", "kind": "property", "aliases": ["车牌号"]},
+    {"term": "车型", "concept": "Vehicle.type", "kind": "property", "aliases": []},
+    {"term": "入口站", "concept": "TollTransaction.entry_station", "kind": "property", "aliases": ["入口收费站"]},
+    {"term": "出口站", "concept": "TollTransaction.exit_station", "kind": "property", "aliases": ["出口收费站"]},
+    {"term": "通行时间", "concept": "TollTransaction.ts", "kind": "property", "aliases": []},
+    {"term": "通行", "concept": "passes", "kind": "relation", "aliases": ["通过"]},
+    {"term": "驶入", "concept": "enters", "kind": "relation", "aliases": ["上高速"]},
+    {"term": "驶出", "concept": "exits", "kind": "relation", "aliases": ["下高速"]},
+    {"term": "包含车道", "concept": "has_lane", "kind": "relation", "aliases": ["下辖车道"]}
+  ]
+}

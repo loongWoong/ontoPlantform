@@ -1,4 +1,4 @@
-"""OntoPlatform v0.1.
+"""OntoPlatform v0.2.
 
     OntoPlatform  = Design + Compose + Govern + Intelligence
     Runtime Kernel = Semantic Execution + Runtime State
@@ -9,4 +9,4 @@ RuntimeGateway (ports/runtime.py), implemented against the Ontology
 Runtime Kernel in infrastructure/runtime/kernel_gateway.py.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.3.0"

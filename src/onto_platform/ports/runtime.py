@@ -64,6 +64,9 @@ class SemanticDelta:
     upserts: tuple[ObjectUpsert, ...] = ()
     links: tuple[LinkAssert, ...] = ()
     unlinks: tuple[UnlinkAssert, ...] = ()
+    #: objects that disappeared from the source of truth; applied in the same
+    #: gateway transaction group as the upserts (projection v3 / P1-10)
+    deletes: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,16 +88,30 @@ class SchemaPayload:
 
 @dataclass(frozen=True, slots=True)
 class InvocationResult:
-    """Standardized capability invocation result (kernel FunctionResult)."""
+    """Standardized capability invocation result (kernel FunctionResult).
+
+    ``status`` is three-valued (K6): ``succeeded`` / ``failed`` /
+    ``unknown``.  ``unknown`` means the effect may or may not have
+    happened (e.g. a timeout) - callers must not treat it as a failure;
+    they retry with the same idempotency key or reconcile via
+    ``execution_id``.
+    """
 
     execution_id: str
     output: object = None
     changes: tuple[dict, ...] = ()
     error: str | None = None
+    status: str = "succeeded"
 
     @property
     def ok(self) -> bool:
-        return self.error is None
+        """Only a deterministic success is ``ok``.
+
+        ``unknown`` is a deliberately separate third state: the effect may or
+        may not have happened, so it must never be rendered or counted as
+        success (control-loop report P0-2).
+        """
+        return self.status == "succeeded"
 
 
 # ----------------------------------------------------------------------
@@ -128,21 +145,48 @@ class RuntimeGateway(Protocol):
         """``"Type/Id"`` -> ``{"type","id","properties"}`` or None."""
         ...
 
-    def find_objects(self, object_type: str, filters: dict | None = None) -> list[dict]: ...
+    def find_objects(self, object_type: str, filters: dict | None = None,
+                     report: bool = False):
+        """Filter objects.  With ``report=True`` return
+        ``{"objects": [...], "excluded_missing": n}`` (open-world unknown
+        count); otherwise a plain list."""
+        ...
     def related(self, ref: str, relation: str, direction: str = "out") -> list[str]: ...
 
     # -- capability execution --
 
     def invoke(
-        self, function: str, target: str | None = None, args: dict | None = None
+        self, function: str, target: str | None = None, args: dict | None = None,
+        timeout: float | None = None, actor: str | None = None,
     ) -> InvocationResult:
-        """Execute a published capability.  Never raises."""
+        """Execute a published capability.  Never raises.
+
+        With ``timeout`` seconds an unfinished execution yields
+        ``status="unknown"`` (retryable), not a failure.  ``actor`` is the
+        identity nested actions (agent tool calls, workflow steps) are
+        audited under.
+        """
         ...
 
     # -- semantic state write (Data -> Kernel, design.txt §15) --
 
-    def apply_delta(self, delta: SemanticDelta) -> list[dict]:
-        """Apply one SemanticDelta atomically; return applied changes."""
+    def apply_delta(self, delta: SemanticDelta, source: str = "projection",
+                    must_exist: bool = False) -> list[dict]:
+        """Apply one SemanticDelta atomically; return applied changes.
+
+        ``must_exist`` rejects upserts of absent objects (mutation door,
+        not an implicit create door).
+        """
+        ...
+
+    def delete_objects(self, refs: list[str],
+                       source: str = "projection") -> list[dict]:
+        """Delete objects + incident relations atomically (idempotent).
+
+        Used by projection deletion propagation: the source of truth no
+        longer contains the row, so the semantic object disappears too.
+        Returns the unlink/delete changes; missing refs are skipped.
+        """
         ...
 
     # -- change observation (Audit 消费 Kernel Change, design.txt §29) --

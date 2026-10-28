@@ -64,11 +64,18 @@ def test_projection_end_to_end(platform, workspace_id):
 
 def test_projection_rerun_is_idempotent(platform, workspace_id):
     projections = platform.data.list_projections(workspace_id, "admin")
-    first = platform.data.run_projection(workspace_id, projections[0]["id"], "admin")
+    first = platform.data.run_projection(
+        workspace_id, projections[0]["id"], "admin", force=True)
+    # v2: an unchanged source is skipped thanks to the content watermark
     second = platform.data.run_projection(workspace_id, projections[0]["id"], "admin")
-    assert first["objects_upserted"] == second["objects_upserted"]
-    # rerun produces no property/link changes (all no-ops)
-    assert second["changes"] == 0
+    assert second["skipped"] is True
+    assert second["watermark"] == first["watermark"]
+
+    # forcing a re-run is still idempotent: same upsert count, no changes
+    forced = platform.data.run_projection(
+        workspace_id, projections[0]["id"], "admin", force=True)
+    assert forced["objects_upserted"] == first["objects_upserted"]
+    assert forced["changes"] == 0
 
 
 def test_projection_rejects_unknown_object_type(platform, workspace_id):
@@ -123,3 +130,24 @@ def test_row_filter_and_missing_ids(platform, workspace_id):
     vehicles = platform.ctx.gateways.for_workspace(workspace_id, {}).find_objects(
         "Vehicle", {"plate": "测A"})
     assert len(vehicles) == 1
+
+def test_row_limit_fails_before_apply_and_records_the_run(platform, workspace_id):
+    projection = platform.data.list_projections(workspace_id, "admin")[0]
+    gateway = platform.ctx.gateways.for_workspace(workspace_id, {})
+    before = {o["id"] for o in gateway.find_objects("Vehicle", {})}
+    projection["row_limit"] = 1
+    platform.ctx.save("projection", projection)
+    with pytest.raises(ValidationError, match="row limit 1 exceeded"):
+        platform.data.run_projection(workspace_id, projection["id"],
+                                     "admin", force=True)
+    runs = platform.ctx.repo.list("projection_run", workspace_id)
+    failed = [r for r in runs if r.get("projection_id") == projection["id"]
+              and r.get("status") == "failed"]
+    assert len(failed) == 1
+    assert failed[0]["summary"]["truncated"] is False
+    # no partial projection was applied
+    after = {o["id"] for o in gateway.find_objects("Vehicle", {})}
+    assert after == before
+    run = platform.data.get_projection_run(
+        workspace_id, projection["id"], failed[0]["id"], "admin")
+    assert run["error"].startswith("projection row limit 1 exceeded")

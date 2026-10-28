@@ -1,7 +1,7 @@
 {
   "name": "onto-platform-console",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.3.0",
   "type": "module",
   "description": "OntoPlatform Web 控制台（React + Vite）。构建产物直接落进 Python 包，运行期不需要 Node。",
   "scripts": {
@@ -12,6 +12,10 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@fontsource-variable/geist": "^5.3.0",
+    "@fontsource-variable/geist-mono": "^5.3.0",
+    "@fontsource-variable/newsreader": "^5.3.0",
+    "@phosphor-icons/react": "^2.1.10",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
@@ -19,6 +23,7 @@
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.4",
+    "axe-core": "^4.14.0",
     "typescript": "^5.6.3",
     "vite": "^5.4.11",
     "vitest": "^4.1.11"

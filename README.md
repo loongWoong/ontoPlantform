@@ -41,6 +41,31 @@ infrastructure/    kernel 网关 · sqlite/memory 持久化 · 连接器 · LLM 
 链三（语言 → 状态）  用户语言 --Vocabulary/SemanticIndex--> 概念 --> Runtime State
 ```
 
+## v0.3 控制回路修复
+
+v0.3 不是新增业务页面，而是把“看起来在闭环、其实没有闭环”的地方改成真实状态：
+
+- 执行结果三态：`succeeded / failed / unknown`。`unknown` 不重试，必须有解析动作。
+- 幂等键先原子认领再执行。同一键 100 并发只产生一次世界变化和一条执行记录。
+- 发布分环：`current` 服务真实流量，`canary` 是可丢弃的影子环；提升要求新鲜健康检查。
+- 重启以 `deployment/current` 为事实来源；未提交的部署会被完成或回退。
+- SLO 按窗口和样本数计算，空样本显示 `no_data`，不足样本显示 `insufficient`。
+- 对账只把投影自己物化的对象算作归属，`authoritative` 模式下才把孤儿算进来。
+- Outbox 无消费者记为 `no_subscribers`，失败退避，超过 5 次进死信。
+- 工作空间级模型配置，密钥加密存储、只写不读、返回掩码。
+
+验收命令：
+
+```bash
+python -m pytest -q                       # 300 passed
+python scripts/migrate_v03.py --db <db>   # 先预览，--apply 写入
+python scripts/rehearse_v03.py            # 发布/回滚/重启演练
+python scripts/e2e_v03.py                 # 16 个真实 HTTP 检查
+python scripts/axe_v03.py                 # 可访问性门禁，需 playwright + axe-core
+```
+
+逐项证据和残余边界见 [docs/progress-v0.3.md](docs/progress-v0.3.md)。
+
 ## 设计原则（design.txt）
 
 1. **Kernel 是唯一事实来源** —— 平台不缓存业务状态；发布 Schema 不动 State。

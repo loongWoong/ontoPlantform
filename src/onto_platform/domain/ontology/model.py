@@ -5,9 +5,13 @@
 Application。
 
     Ontology
-    ├── ObjectType  (+ Property)
-    ├── Relation
+    ├── ObjectType  (+ Property, identity, category)
+    ├── Relation    (+ cardinality, inverse)
     └── Vocabulary   (业务语言 -> 本体概念, 只属于 Platform)
+
+v0.2 adds the minimal *decidable* semantics the control loop needs:
+identity criteria, property facets (required/enum/range/unit/unique),
+enumerated cardinality and a declared logical profile (closed/open world).
 """
 
 from __future__ import annotations
@@ -29,17 +33,68 @@ TYPE_KINDS: tuple[str, ...] = (
     "datetime",
 )
 
+# relation multiplicity, source -> target
+CARDINALITIES: tuple[str, ...] = (
+    "",
+    "one-to-one",
+    "one-to-many",
+    "many-to-one",
+    "many-to-many",
+)
+
+# older drafts/examples used snake_case; accept it and normalize on compile
+_CARDINALITY_ALIASES = {
+    "one_to_one": "one-to-one",
+    "one_to_many": "one-to-many",
+    "many_to_one": "many-to-one",
+    "many_to_many": "many-to-many",
+}
+
+
+def normalize_cardinality(value: str) -> str:
+    return _CARDINALITY_ALIASES.get(value, value)
+
+# object meta-category: ordinary object / event (happened) / value (immutable)
+CATEGORIES: tuple[str, ...] = ("object", "event", "value")
+
+# logical profile: closed world (absence = false) vs open world (absence = unknown)
+PROFILES: tuple[str, ...] = ("closed", "open")
+
+TEMPORAL_MODES: tuple[str, ...] = ("", "snapshot", "history")
+
 
 @dataclass(slots=True)
 class PropertySpec:
-    """A property of a platform ObjectType."""
+    """A property of a platform ObjectType, with optional facets."""
 
     name: str
     type: str = "string"
     description: str = ""
+    required: bool = False
+    enum: list = field(default_factory=list)
+    minimum: float | None = None
+    maximum: float | None = None
+    unique: bool = False
+    unit: str = ""
+    precision: int | None = None
+    default: object = None
+    temporal: str = ""
 
     def to_dict(self) -> dict:
-        return {"name": self.name, "type": self.type, "description": self.description}
+        return {
+            "name": self.name,
+            "type": self.type,
+            "description": self.description,
+            "required": self.required,
+            "enum": list(self.enum),
+            "minimum": self.minimum,
+            "maximum": self.maximum,
+            "unique": self.unique,
+            "unit": self.unit,
+            "precision": self.precision,
+            "default": self.default,
+            "temporal": self.temporal,
+        }
 
     @classmethod
     def from_dict(cls, data: dict) -> "PropertySpec":
@@ -47,22 +102,47 @@ class PropertySpec:
             name=data["name"],
             type=data.get("type", "string"),
             description=data.get("description", ""),
+            required=bool(data.get("required", False)),
+            enum=list(data.get("enum") or []),
+            minimum=_optional_number(data.get("minimum")),
+            maximum=_optional_number(data.get("maximum")),
+            unique=bool(data.get("unique", False)),
+            unit=str(data.get("unit") or ""),
+            precision=(
+                int(data["precision"])
+                if data.get("precision") is not None
+                else None
+            ),
+            default=data.get("default"),
+            temporal=str(data.get("temporal") or ""),
         )
 
 
 @dataclass(slots=True)
 class ObjectTypeSpec:
-    """A kind of business object, e.g. ``Vehicle`` (车辆)."""
+    """A kind of business object, e.g. ``Vehicle`` (车辆).
+
+    ``identity`` is the business key deciding whether two references are the
+    same entity.  ``category`` separates objects from events and values.
+    ``state_machine`` is an optional declared lifecycle:
+    ``{"field": "status", "transitions": {"free": ["congested"], ...}}``.
+    """
 
     name: str
     description: str = ""
     properties: dict[str, PropertySpec] = field(default_factory=dict)
+    identity: list[str] = field(default_factory=list)
+    category: str = "object"
+    state_machine: dict | None = None
 
     def to_dict(self) -> dict:
         return {
             "name": self.name,
             "description": self.description,
             "properties": {k: p.to_dict() for k, p in self.properties.items()},
+            "identity": list(self.identity),
+            "category": self.category,
+            "state_machine": dict(self.state_machine) if self.state_machine else None,
         }
 
     @classmethod
@@ -73,6 +153,9 @@ class ObjectTypeSpec:
             name=data["name"],
             description=data.get("description", ""),
             properties={item["name"]: PropertySpec.from_dict(item) for item in items},
+            identity=list(data.get("identity") or []),
+            category=data.get("category", "object"),
+            state_machine=data.get("state_machine"),
         )
 
 
@@ -85,6 +168,7 @@ class RelationSpec:
     target: str
     description: str = ""
     cardinality: str = ""
+    inverse: str = ""
 
     def to_dict(self) -> dict:
         return {
@@ -93,6 +177,7 @@ class RelationSpec:
             "target": self.target,
             "description": self.description,
             "cardinality": self.cardinality,
+            "inverse": self.inverse,
         }
 
     @classmethod
@@ -103,6 +188,7 @@ class RelationSpec:
             target=data["target"],
             description=data.get("description", ""),
             cardinality=data.get("cardinality", ""),
+            inverse=data.get("inverse", ""),
         )
 
 
@@ -145,6 +231,12 @@ class Ontology:
     name: str
     description: str = ""
     version: int = 1
+    schema_version: int = 1
+    # revision lineage (plan-v2 2.5): the published version this revision copies
+    parent_version: int | None = None
+    # stable hash of the compiled schema written at publish time
+    schema_fingerprint: str = ""
+    profile: str = "closed"
     objects: dict[str, ObjectTypeSpec] = field(default_factory=dict)
     relations: dict[str, RelationSpec] = field(default_factory=dict)
     vocabulary: dict[str, VocabularyTerm] = field(default_factory=dict)
@@ -213,6 +305,22 @@ class Ontology:
                 )
         self.vocabulary[term.term] = term
 
+    # ---- publish gate ----
+
+    def assert_publishable(self) -> None:
+        """Single publish precondition: raise with every problem found.
+
+        Both the validate and publish use cases call this exactly once, so
+        the rules cannot drift between two copies of validation logic.
+        """
+        from .validation import validate_ontology
+
+        problems = validate_ontology(self)
+        if problems:
+            raise ValidationError(
+                "ontology validation failed: " + "; ".join(problems)
+            )
+
     # ---- helpers ----
 
     def _ensure_editable(self) -> None:
@@ -229,6 +337,10 @@ class Ontology:
             "name": self.name,
             "description": self.description,
             "version": self.version,
+            "schema_version": self.schema_version,
+            "parent_version": self.parent_version,
+            "schema_fingerprint": self.schema_fingerprint,
+            "profile": self.profile,
             "objects": {k: o.to_dict() for k, o in self.objects.items()},
             "relations": {k: r.to_dict() for k, r in self.relations.items()},
             "vocabulary": {k: v.to_dict() for k, v in self.vocabulary.items()},
@@ -245,6 +357,11 @@ class Ontology:
             name=data["name"],
             description=data.get("description", ""),
             version=int(data.get("version", 1)),
+            schema_version=int(data.get("schema_version", 1)),
+            parent_version=(int(data["parent_version"])
+                            if data.get("parent_version") is not None else None),
+            schema_fingerprint=str(data.get("schema_fingerprint") or ""),
+            profile=data.get("profile", "closed"),
             objects={
                 k: ObjectTypeSpec.from_dict(v) for k, v in data.get("objects", {}).items()
             },
@@ -265,3 +382,14 @@ def _ensure_identifier(name: str, what: str) -> None:
         raise ValidationError(
             f"{what} name {name!r} must be an identifier (letters/digits/underscore)"
         )
+
+
+def _optional_number(value):
+    if value is None or value == "":
+        return None
+    if isinstance(value, bool):
+        raise ValidationError(f"numeric facet must be a number, got bool")
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        raise ValidationError(f"numeric facet must be a number, got {value!r}") from None

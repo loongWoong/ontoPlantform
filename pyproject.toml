@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "onto-platform"
-version = "0.1.0"
-description = "OntoPlatform v0.1 - build, govern and use a semantic business world on top of the Ontology Runtime Kernel"
+version = "0.3.0"
+description = "OntoPlatform v0.2 - build, govern and use a semantic business world on top of the Ontology Runtime Kernel"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
@@ -16,7 +16,14 @@ dependencies = []
 [project.optional-dependencies]
 kernel = ["ontology-runtime>=0.1.1"]
 mcp = ["mcp>=1.0"]
-dev = ["pytest>=8.0", "ontology-runtime>=0.1.1"]
+dev = [
+    "pytest>=8.0",
+    "ontology-runtime>=0.1.1",
+    # W0 test guard rails (optional, not runtime dependencies)
+    "pytest-timeout>=2.3",
+    "coverage[toml]>=7.4",
+    "hypothesis>=6.98",
+]
 
 [project.scripts]
 onto = "onto_platform.interfaces.cli:main"
@@ -41,3 +48,20 @@ include-package-data = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = "--strict-markers"
+markers = [
+  "slow: long-running end-to-end scenario",
+  "integration: needs the kernel/runtime (not pure domain)",
+  "http: exercises the REST adapter on a real socket",
+]
+# timeout = 30 requires pytest-timeout (dev extra); skipped when absent.
+
+[tool.coverage.run]
+source = ["onto_platform"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+# W0 floor: domain/application stay the strongly covered layers; the kernel
+# gateway and HTTP shell are exercised end to end instead of unit-covered.
+fail_under = 70

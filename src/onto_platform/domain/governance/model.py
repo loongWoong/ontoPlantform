@@ -70,6 +70,33 @@ class Membership:
 class AccessPolicy:
     """Pure decision object; storage-agnostic."""
 
+    #: Action/target/role matrix (plan-v2 1.8, contract C5).  A use case asks
+    #: for an *action*, never a bare role, so the policy is reviewable in one
+    #: place instead of being scattered through the application layer.
+    ACTION_POLICY: dict[str, tuple[str, str]] = {
+        "workspace.read": ("viewer", "workspace"),
+        "workspace.manage_members": ("owner", "workspace"),
+        "ontology.edit": ("editor", "ontology"),
+        "ontology.publish": ("editor", "ontology"),
+        "capability.publish": ("editor", "capability"),
+        "capability.invoke": ("editor", "capability"),
+        "release.deploy": ("owner", "deployment"),
+        "release.rollback": ("owner", "deployment"),
+        "settings.manage": ("owner", "workspace"),
+        "projection.run": ("editor", "projection"),
+        "agent.run": ("viewer", "agent"),
+    }
+
+    def required_role(self, action: str) -> str:
+        entry = self.ACTION_POLICY.get(action)
+        if entry is None:
+            raise AccessDeniedError(f"unknown authorization action {action!r}")
+        return entry[0]
+
+    def check_action(self, memberships: list[Membership], user: str,
+                     workspace_id: str, action: str) -> None:
+        self.check(memberships, user, workspace_id, self.required_role(action))
+
     def check(self, memberships: list[Membership], user: str, workspace_id: str,
               required: str = "viewer") -> None:
         rank_needed = _ROLE_RANK.get(required)

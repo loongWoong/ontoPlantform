@@ -25,8 +25,27 @@ class WorkflowStepError(PlatformError):
     """A workflow step failed; the executor turns this into result.error."""
 
 
+class WorkflowSagaError(WorkflowStepError):
+    """A step failed and the completed steps were compensated.
+
+    ``compensations`` records what ran (or failed to run) so the caller sees
+    the true end state instead of a bare "step failed" (plan-v2 1.7).
+    """
+
+    def __init__(self, message: str, *, compensations: list[dict]) -> None:
+        super().__init__(message)
+        self.compensations = compensations
+
+
 class GatewayWorkflowRunner:
-    """Runs one workflow definition; the gateway is the only dependency."""
+    """Runs one workflow definition; the gateway is the only dependency.
+
+    Saga semantics: every step may declare ``compensate`` (itself a step
+    spec).  When a later step fails, completed steps are compensated in
+    reverse order; compensation failures are reported, never silently
+    swallowed.  A step that returns ``unknown`` is treated as a saga failure
+    (it may have happened), so compensation runs instead of assuming success.
+    """
 
     def __init__(self, gateway) -> None:
         self._gateway = gateway
@@ -39,19 +58,52 @@ class GatewayWorkflowRunner:
             "vars": {},
         }
         output = None
+        completed: list[tuple[str, dict]] = []
         for i, step in enumerate(steps):
             alias = step.get("as") or f"step{i + 1}"
             kind = step.get("kind")
             try:
                 output = self._execute(kind, step, ctx)
-            except WorkflowStepError:
-                raise
+            except WorkflowStepError as exc:
+                raise self._compensate(completed, ctx, exc) from exc
             except Exception as exc:
-                raise WorkflowStepError(f"step {alias} ({kind}) failed: {exc}") from exc
+                failure = WorkflowStepError(
+                    f"step {alias} ({kind}) failed: {exc}")
+                raise self._compensate(completed, ctx, failure) from exc
             ctx["steps"][alias] = output
+            completed.append((alias, step))
         # convention: a step aliased "output" wins; otherwise the last step
         ctx["output"] = ctx["steps"].get("output", output)
         return ctx
+
+    def _compensate(self, completed: list[tuple[str, dict]], ctx: dict,
+                    failure: WorkflowStepError) -> WorkflowStepError:
+        """Run declared compensations in reverse order; never raise from here."""
+        compensations: list[dict] = []
+        for alias, step in reversed(completed):
+            spec = step.get("compensate")
+            if not spec:
+                continue
+            before = dict(ctx["steps"])
+            try:
+                self._execute(spec.get("kind"), spec, ctx)
+            except Exception as exc:  # compensation must not mask the original
+                compensations.append(
+                    {"step": alias, "ok": False, "error": str(exc)})
+            else:
+                compensations.append({"step": alias, "ok": True})
+            finally:
+                # every compensation sees the pre-compensation context
+                ctx["steps"] = before
+        if not compensations:
+            return failure
+        failed = [c for c in compensations if not c["ok"]]
+        detail = ", ".join(
+            f"{c['step']}:{'ok' if c['ok'] else 'failed'}" for c in compensations)
+        message = f"{failure}; compensated [{detail}]"
+        if failed:
+            message += f"; COMPENSATION FAILURES: {failed}"
+        return WorkflowSagaError(message, compensations=compensations)
 
     # ------------------------------------------------------------------
 
@@ -61,7 +113,12 @@ class GatewayWorkflowRunner:
                 _resolve(step["function"], ctx),
                 target=_resolve(step["target"], ctx) if step.get("target") else None,
                 args={k: _resolve(v, ctx) for k, v in (step.get("args") or {}).items()},
+                timeout=step.get("timeout"),
             )
+            if result.status == "unknown":
+                raise WorkflowStepError(
+                    f"invoke {step['function']!r} outcome unknown: {result.error}"
+                )
             if not result.ok:
                 raise WorkflowStepError(
                     f"invoke {step['function']!r} failed: {result.error}"
@@ -113,7 +170,7 @@ class GatewayWorkflowRunner:
 
             self._gateway.apply_delta(SemanticDelta(
                 upserts=(ObjectUpsert(type=obj_type, id=obj_id, properties=properties),),
-            ), source="invoke")
+            ), source="invoke", must_exist=True)
             return dict(properties)
 
         raise WorkflowStepError(f"unknown step kind {kind!r}")  # pragma: no cover

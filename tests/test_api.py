@@ -49,6 +49,20 @@ def test_health_and_web_console(server):
     assert "OntoPlatform" in html
 
 
+def test_projection_run_can_be_queried_by_run_id(server):
+    base, wid = server
+    projections = get(base, f"/api/workspaces/{wid}/projections?user=admin")
+    pid = projections[0]["id"]
+    status, summary = post(base, f"/api/workspaces/{wid}/projections/{pid}/run",
+                           {"user": "admin"})
+    assert status == 200
+    run = get(base, f"/api/workspaces/{wid}/projections/{pid}/runs/"
+                     f"{summary['run_id']}?user=admin")
+    assert run["id"] == summary["run_id"]
+    assert run["projection_id"] == pid
+    assert run["status"] in {"succeeded", "skipped"}
+
+
 def test_full_flow_over_http(server):
     base, wid = server
 
@@ -132,3 +146,24 @@ def test_application_agent_endpoints(server):
         {"user": "admin"})
     # no LLM provider configured on this platform -> clean 503-style error
     assert status in (400, 403, 500, 503) or body.get("ok") is False
+
+
+def test_members_routes(server):
+    base, wid = server
+    status, body = post(base, f"/api/workspaces/{wid}/members",
+                        {"member": "alice", "role": "viewer", "user": "admin"})
+    assert status == 200 and body["role"] == "viewer"
+
+    members = get(base, f"/api/workspaces/{wid}/members?user=admin")
+    assert {m["user"]: m["role"] for m in members}["alice"] == "viewer"
+
+    # only an owner may manage members
+    status, _ = post(base, f"/api/workspaces/{wid}/members",
+                     {"member": "bob", "role": "editor", "user": "alice"})
+    assert status == 403
+
+    # a viewer cannot run a capability (it may change semantic state)
+    status, _ = post(base, f"/api/workspaces/{wid}/invoke", {
+        "function": "Vehicle.recharge", "target": "Vehicle/V001",
+        "args": {"amount": 1}, "user": "alice"})
+    assert status == 403

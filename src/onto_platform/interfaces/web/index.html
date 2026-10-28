@@ -282,7 +282,7 @@
 <div class="ambient" aria-hidden="true"></div>
 
 <header>
-  <div class="brand"><b>OntoPlatform</b><span>本体智能应用平台 v0.1</span></div>
+  <div class="brand"><b>OntoPlatform</b><span>本体智能应用平台 v0.2</span></div>
   <div class="spacer"></div>
   <div class="ws-picker">
     工作空间
@@ -1434,7 +1434,7 @@ async function loadAudit() {
 function updateHealth(online) {
   const el = $("health");
   if (online) {
-    el.innerHTML = `<span class="dot"></span> v${esc(S.version || "0.1.0")}` +
+    el.innerHTML = `<span class="dot"></span> v${esc(S.version || "0.2.0")}` +
       `<span class="mini ${S.llm ? "" : "off"}">LLM ${S.llm ? "已配置" : "未配置"}</span>`;
   } else {
     el.innerHTML = `<span class="dot off"></span> 服务不可达`;

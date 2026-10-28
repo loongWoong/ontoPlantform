@@ -98,6 +98,11 @@ class Capability:
     description: str = ""
     inputs: list[CapabilityInput] = field(default_factory=list)
     implementation: Implementation = field(default_factory=lambda: Implementation(kind="python"))
+    #: Executable contract (plan-v2 1.4): pre/postconditions, declared
+    #: effects, idempotency and compensation.  The verifier judges outcomes
+    #: independently of the implementation; effects make the blast radius
+    #: explicit instead of implicit.
+    contract: dict = field(default_factory=dict)
     lifecycle: str = "draft"
     created_at: str = ""
     updated_at: str = ""
@@ -117,6 +122,7 @@ class Capability:
             "description": self.description,
             "inputs": [i.to_dict() for i in self.inputs],
             "implementation": self.implementation.to_dict(),
+            "contract": dict(self.contract),
             "lifecycle": self.lifecycle,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
@@ -133,6 +139,7 @@ class Capability:
             description=data.get("description", ""),
             inputs=[CapabilityInput.from_dict(i) for i in data.get("inputs", [])],
             implementation=Implementation.from_dict(data.get("implementation", {})),
+            contract=dict(data.get("contract") or {}),
             lifecycle=data.get("lifecycle", "draft"),
             created_at=data.get("created_at", ""),
             updated_at=data.get("updated_at", ""),
@@ -142,6 +149,63 @@ class Capability:
 # ----------------------------------------------------------------------
 # validation
 # ----------------------------------------------------------------------
+
+
+CONTRACT_OPS = ("eq", "ne", "gte", "lte", "gt", "lt", "in",
+                "changed", "unchanged", "eq_prev_plus")
+COMPENSATION_KINDS = ("none", "python", "invoke", "workflow")
+
+
+def validate_contract(contract: dict) -> list[str]:
+    """Structural validation of an executable capability contract."""
+    problems: list[str] = []
+    if not isinstance(contract, dict):
+        return ["contract must be an object"]
+    allowed = {"preconditions", "postconditions", "effects", "idempotent",
+               "compensate"}
+    unknown = sorted(set(contract) - allowed)
+    if unknown:
+        problems.append(
+            f"contract has unknown fields: {unknown}; allowed fields are "
+            f"{sorted(allowed)}")
+    for section in ("preconditions", "postconditions"):
+        conditions = contract.get(section, [])
+        if not isinstance(conditions, list):
+            problems.append(f"contract.{section} must be a list")
+            continue
+        for i, cond in enumerate(conditions):
+            where = f"contract.{section}[{i}]"
+            if not isinstance(cond, dict):
+                problems.append(f"{where} must be an object")
+                continue
+            if not isinstance(cond.get("property"), str) or not cond["property"]:
+                problems.append(f"{where} needs a 'property'")
+            if cond.get("op") not in CONTRACT_OPS:
+                problems.append(
+                    f"{where}.op {cond.get('op')!r} not in {list(CONTRACT_OPS)}")
+            if cond.get("op") == "eq_prev_plus":
+                value = cond.get("value")
+                if not (isinstance(value, dict) and isinstance(value.get("args"), str)):
+                    problems.append(f"{where}.value must be {{'args': '<input>'}}")
+    effects = contract.get("effects", [])
+    if not isinstance(effects, list) or any(not isinstance(e, str) for e in effects):
+        problems.append("contract.effects must be a list of property paths")
+    idempotent = contract.get("idempotent")
+    if idempotent is not None and not isinstance(idempotent, bool):
+        problems.append("contract.idempotent must be a boolean")
+    compensate = contract.get("compensate")
+    if compensate not in (None, ""):
+        if not isinstance(compensate, dict):
+            problems.append("contract.compensate must be an object")
+        elif compensate.get("kind") not in COMPENSATION_KINDS:
+            problems.append(
+                f"contract.compensate.kind {compensate.get('kind')!r} "
+                f"not in {list(COMPENSATION_KINDS)}")
+        elif compensate.get("kind") == "invoke" and not compensate.get("function"):
+            problems.append("contract.compensate needs a 'function'")
+        elif compensate.get("kind") == "python" and not compensate.get("source"):
+            problems.append("contract.compensate needs a 'source'")
+    return problems
 
 
 def validate_capability(capability: Capability) -> list[str]:
@@ -163,6 +227,7 @@ def validate_capability(capability: Capability) -> list[str]:
         problems.extend(validate_steps(list(impl.steps)))
     elif impl.kind == "agent" and not impl.goal.strip():
         problems.append("agent implementation needs a 'goal'")
+    problems.extend(validate_contract(capability.contract or {}))
     return problems
 
 

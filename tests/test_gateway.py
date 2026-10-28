@@ -47,6 +47,31 @@ def test_requires_published_schema():
     assert "publish" in result.error
 
 
+def test_accepts_legacy_snake_case_cardinality():
+    """Stored payloads from older versions / LLM drafts used one_to_many.
+
+    The gateway must normalize them on the way in so previously published
+    workspaces keep loading after a kernel upgrade, without rewriting the
+    stored document.
+    """
+    schema = {
+        "ontology": {"name": "legacy", "version": 1},
+        "objects": {
+            "TollStation": {"properties": {"name": {"type": "string"}}},
+            "Lane": {"properties": {"code": {"type": "string"}}},
+        },
+        "relations": {"has_lane": {"source": "TollStation", "target": "Lane",
+                                   "cardinality": "one_to_many"}},
+        "functions": {},
+    }
+    gateway = KernelRuntimeGateway(store_kind="memory")
+    gateway.publish_schema(SchemaPayload(schema=schema))
+    relations = {r["name"]: r for r in gateway.describe()["relations"]}
+    assert relations["has_lane"]["cardinality"] == "one-to-many"
+    # the caller's payload is not mutated: the repository keeps its bytes
+    assert schema["relations"]["has_lane"]["cardinality"] == "one_to_many"
+
+
 def test_describe_and_reads():
     gateway = make_gateway()
     gateway.apply_delta(SemanticDelta(

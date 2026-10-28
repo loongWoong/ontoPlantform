@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="982.00" height="514.40" viewBox="0 0 982.00 514.40" aria-label="OntoPlatform v0.2 核心逻辑：一条可判定的闭环" font-family="&quot;Noto Sans SC&quot;, &quot;Source Han Sans SC&quot;, &quot;PingFang SC&quot;, &quot;Microsoft YaHei&quot;, &quot;Segoe UI&quot;, sans-serif">
+  <rect x="0.00" y="0.00" width="982.00" height="514.40" rx="0.00" fill="#ffffff" stroke="none" />
+  <g data-shape="node">
+    <path d="M 125.00 183.50 A 8.00 8.00 0 0 1 133.00 175.50 L 271.00 175.50 A 8.00 8.00 0 0 1 279.00 183.50 L 279.00 237.50 A 8.00 8.00 0 0 1 271.00 245.50 L 133.00 245.50 A 8.00 8.00 0 0 1 125.00 237.50 L 125.00 183.50 Z" fill="#dbeafe" stroke="#1d4ed8" stroke-width="1.5" />
+    <text x="202.00" y="198.80" fill="#1e3a8a" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">世界定义</text>
+    <text x="202.00" y="214.40" fill="#1e3a8a" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">W1 · 语义内核</text>
+    <text x="202.00" y="230.60" fill="#1e3a8a" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">身份 · 约束 · 状态机</text>
+  </g>
+  <g data-shape="node">
+    <path d="M 311.00 183.50 A 8.00 8.00 0 0 1 319.00 175.50 L 457.00 175.50 A 8.00 8.00 0 0 1 465.00 183.50 L 465.00 237.50 A 8.00 8.00 0 0 1 457.00 245.50 L 319.00 245.50 A 8.00 8.00 0 0 1 311.00 237.50 L 311.00 183.50 Z" fill="#ede9fe" stroke="#6d28d9" stroke-width="1.5" />
+    <text x="388.00" y="198.80" fill="#4c1d95" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">发布为制品</text>
+    <text x="388.00" y="214.40" fill="#4c1d95" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">W2 · 聚合版本 + CAS</text>
+    <text x="388.00" y="230.60" fill="#4c1d95" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">Release + Deployment</text>
+  </g>
+  <g data-shape="node">
+    <path d="M 485.00 183.50 A 8.00 8.00 0 0 1 493.00 175.50 L 611.00 175.50 A 8.00 8.00 0 0 1 619.00 183.50 L 619.00 237.50 A 8.00 8.00 0 0 1 611.00 245.50 L 493.00 245.50 A 8.00 8.00 0 0 1 485.00 237.50 L 485.00 183.50 Z" fill="#059669" stroke="#047857" stroke-width="1.5" />
+    <text x="552.00" y="198.80" fill="#ffffff" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">受约束执行</text>
+    <text x="552.00" y="214.40" fill="#ffffff" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">W3 · 执行与观测</text>
+    <text x="552.00" y="230.60" fill="#ffffff" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">幂等键 · 三态结果</text>
+  </g>
+  <g data-shape="node">
+    <path d="M 639.00 183.50 A 8.00 8.00 0 0 1 647.00 175.50 L 772.00 175.50 A 8.00 8.00 0 0 1 780.00 183.50 L 780.00 237.50 A 8.00 8.00 0 0 1 772.00 245.50 L 647.00 245.50 A 8.00 8.00 0 0 1 639.00 237.50 L 639.00 183.50 Z" fill="#fef3c7" stroke="#d97706" stroke-width="1.5" />
+    <text x="709.50" y="198.80" fill="#78350f" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">独立验证</text>
+    <text x="709.50" y="214.40" fill="#78350f" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">W4 · 验证与对账</text>
+    <text x="709.50" y="230.60" fill="#78350f" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">Verifier 独立判定</text>
+  </g>
+  <g data-shape="node">
+    <path d="M 801.00 183.50 A 8.00 8.00 0 0 1 809.00 175.50 L 941.00 175.50 A 8.00 8.00 0 0 1 949.00 183.50 L 949.00 237.50 A 8.00 8.00 0 0 1 941.00 245.50 L 809.00 245.50 A 8.00 8.00 0 0 1 801.00 237.50 L 801.00 183.50 Z" fill="#ccfbf1" stroke="#0f766e" stroke-width="1.5" />
+    <text x="875.00" y="198.80" fill="#134e4a" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">控制与自适应</text>
+    <text x="875.00" y="214.40" fill="#134e4a" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">W6 · Goal / SLO</text>
+    <text x="875.00" y="230.60" fill="#134e4a" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">快规则 · 慢回路提议</text>
+  </g>
+  <g data-shape="node">
+    <path d="M 125.00 336.90 A 8.00 8.00 0 0 1 133.00 328.90 L 271.00 328.90 A 8.00 8.00 0 0 1 279.00 336.90 L 279.00 390.90 A 8.00 8.00 0 0 1 271.00 398.90 L 133.00 398.90 A 8.00 8.00 0 0 1 125.00 390.90 L 125.00 336.90 Z" fill="#dbeafe" stroke="#1d4ed8" stroke-width="1.5" />
+    <text x="202.00" y="352.20" fill="#1e3a8a" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">约束可判定</text>
+    <text x="202.00" y="367.80" fill="#1e3a8a" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">发布时 + 运行时</text>
+    <text x="202.00" y="384.00" fill="#1e3a8a" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">enum / range / 基数</text>
+  </g>
+  <g data-shape="node">
+    <path d="M 311.00 336.90 A 8.00 8.00 0 0 1 319.00 328.90 L 457.00 328.90 A 8.00 8.00 0 0 1 465.00 336.90 L 465.00 390.90 A 8.00 8.00 0 0 1 457.00 398.90 L 319.00 398.90 A 8.00 8.00 0 0 1 311.00 390.90 L 311.00 336.90 Z" fill="#ede9fe" stroke="#6d28d9" stroke-width="1.5" />
+    <text x="388.00" y="352.20" fill="#4c1d95" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">制品可回指</text>
+    <text x="388.00" y="367.80" fill="#4c1d95" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">失败不残留</text>
+    <text x="388.00" y="384.00" fill="#4c1d95" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">回滚 = 改指针</text>
+  </g>
+  <g data-shape="node">
+    <path d="M 485.00 336.90 A 8.00 8.00 0 0 1 493.00 328.90 L 611.00 328.90 A 8.00 8.00 0 0 1 619.00 336.90 L 619.00 390.90 A 8.00 8.00 0 0 1 611.00 398.90 L 493.00 398.90 A 8.00 8.00 0 0 1 485.00 390.90 L 485.00 336.90 Z" fill="#d1fae5" stroke="#047857" stroke-width="1.5" />
+    <text x="552.00" y="352.20" fill="#064e3b" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">变更可追溯</text>
+    <text x="552.00" y="367.80" fill="#064e3b" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">version · source</text>
+    <text x="552.00" y="384.00" fill="#064e3b" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">变更流 + outbox</text>
+  </g>
+  <g data-shape="node">
+    <path d="M 639.00 336.90 A 8.00 8.00 0 0 1 647.00 328.90 L 772.00 328.90 A 8.00 8.00 0 0 1 780.00 336.90 L 780.00 390.90 A 8.00 8.00 0 0 1 772.00 398.90 L 647.00 398.90 A 8.00 8.00 0 0 1 639.00 390.90 L 639.00 336.90 Z" fill="#fef3c7" stroke="#d97706" stroke-width="1.5" />
+    <text x="709.50" y="352.20" fill="#78350f" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">结论可判定</text>
+    <text x="709.50" y="367.80" fill="#78350f" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">postcondition</text>
+    <text x="709.50" y="384.00" fill="#78350f" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">独立 Verifier 判定</text>
+  </g>
+  <g data-shape="node">
+    <path d="M 801.00 336.90 A 8.00 8.00 0 0 1 809.00 328.90 L 941.00 328.90 A 8.00 8.00 0 0 1 949.00 336.90 L 949.00 390.90 A 8.00 8.00 0 0 1 941.00 398.90 L 809.00 398.90 A 8.00 8.00 0 0 1 801.00 390.90 L 801.00 336.90 Z" fill="#ccfbf1" stroke="#0f766e" stroke-width="1.5" />
+    <text x="875.00" y="352.20" fill="#134e4a" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">偏差可收敛</text>
+    <text x="875.00" y="367.80" fill="#134e4a" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">偏差 → 待办</text>
+    <text x="875.00" y="384.00" fill="#134e4a" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">提议 → 裁决 → 验证</text>
+  </g>
+  <g data-shape="edge">
+    <path d="M 279.00 210.50 L 304.00 210.50" fill="none" stroke="#64748b" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
+    <path d="M 311.00 210.50 L 304.00 213.65 L 304.00 207.35 Z" fill="#64748b" stroke="#64748b" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
+  </g>
+  <g data-shape="edge">
+    <path d="M 465.00 210.50 L 478.00 210.50" fill="none" stroke="#64748b" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
+    <path d="M 485.00 210.50 L 478.00 213.65 L 478.00 207.35 Z" fill="#64748b" stroke="#64748b" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
+  </g>
+  <g data-shape="edge">
+    <path d="M 619.00 210.50 L 632.00 210.50" fill="none" stroke="#64748b" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
+    <path d="M 639.00 210.50 L 632.00 213.65 L 632.00 207.35 Z" fill="#64748b" stroke="#64748b" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
+  </g>
+  <g data-shape="edge">
+    <path d="M 780.00 210.50 L 794.00 210.50" fill="none" stroke="#64748b" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
+    <path d="M 801.00 210.50 L 794.00 213.65 L 794.00 207.35 Z" fill="#64748b" stroke="#64748b" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
+  </g>
+  <g data-shape="edge">
+    <path d="M 875.00 175.50 L 875.00 105.50 A 10.00 10.00 0 0 0 865.00 95.50 L 212.00 95.50 A 10.00 10.00 0 0 0 202.00 105.50 L 202.00 168.50" fill="none" stroke="#5eead4" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
+    <path d="M 202.00 175.50 L 198.85 168.50 L 205.15 168.50 Z" fill="#5eead4" stroke="#5eead4" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
+  </g>
+  <g data-shape="edge">
+    <path d="M 202.00 245.50 L 202.00 321.90" fill="none" stroke="#93c5fd" stroke-dasharray="3 4" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
+    <path d="M 202.00 328.90 L 198.85 321.90 L 205.15 321.90 Z" fill="#93c5fd" stroke="#93c5fd" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
+  </g>
+  <g data-shape="edge">
+    <path d="M 388.00 245.50 L 388.00 321.90" fill="none" stroke="#c4b5fd" stroke-dasharray="3 4" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
+    <path d="M 388.00 328.90 L 384.85 321.90 L 391.15 321.90 Z" fill="#c4b5fd" stroke="#c4b5fd" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
+  </g>
+  <g data-shape="edge">
+    <path d="M 552.00 245.50 L 552.00 321.90" fill="none" stroke="#6ee7b7" stroke-dasharray="3 4" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
+    <path d="M 552.00 328.90 L 548.85 321.90 L 555.15 321.90 Z" fill="#6ee7b7" stroke="#6ee7b7" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
+  </g>
+  <g data-shape="edge">
+    <path d="M 709.50 245.50 L 709.50 321.90" fill="none" stroke="#fcd34d" stroke-dasharray="3 4" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
+    <path d="M 709.50 328.90 L 706.35 321.90 L 712.65 321.90 Z" fill="#fcd34d" stroke="#fcd34d" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
+  </g>
+  <g data-shape="edge">
+    <path d="M 875.00 245.50 L 875.00 321.90" fill="none" stroke="#5eead4" stroke-dasharray="3 4" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
+    <path d="M 875.00 328.90 L 871.85 321.90 L 878.15 321.90 Z" fill="#5eead4" stroke="#5eead4" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
+  </g>
+  <g data-shape="edge">
+    <path d="M 109.00 135.50 L 965.00 135.50" fill="none" stroke="#cbd5e1" stroke-dasharray="2 6" stroke-linecap="round" stroke-linejoin="round" stroke-width="1" />
+  </g>
+  <g data-shape="edge">
+    <path d="M 109.00 288.90 L 965.00 288.90" fill="none" stroke="#cbd5e1" stroke-dasharray="2 6" stroke-linecap="round" stroke-linejoin="round" stroke-width="1" />
+  </g>
+  <g data-shape="label-box">
+    <rect x="421.60" y="54.90" width="233.80" height="28.60" rx="4.00" fill="#ffffff" stroke="none" />
+    <text x="538.50" y="66.20" fill="#134e4a" font-family="inherit" font-size="11" text-anchor="middle">慢回路：偏差 → 提议 → 裁决 → 修订</text>
+    <text x="538.50" y="79.90" fill="#134e4a" font-family="inherit" font-size="11" text-anchor="middle">v0.1 断在时间 · 门限 · 回执 · 验证</text>
+  </g>
+  <text x="31.00" y="117.20" fill="#475569" font-family="inherit" font-size="11">01 主闭环</text>
+  <text x="17.00" y="271.20" fill="#475569" font-family="inherit" font-size="11">02 每环判据</text>
+  <text x="109.00" y="35.50" fill="#475569" font-family="inherit" font-size="17" font-weight="600">OntoPlatform v0.2 · 核心逻辑</text>
+  <text x="109.00" y="57.20" fill="#475569" font-family="inherit" font-size="10.5">世界定义 → 不可变制品 → 受约束执行</text>
+  <text x="109.00" y="72.20" fill="#475569" font-family="inherit" font-size="10.5">→ 独立验证 → 偏差驱动修订</text>
+  <text x="109.00" y="449.10" fill="#475569" font-family="inherit" font-size="12" font-weight="600">闭环成立的前提：约束可声明 · 制品可回指 · 变更可追溯 · 结论可判定 · 偏差可收敛</text>
+  <text x="109.00" y="472.60" fill="#475569" font-family="inherit" font-size="10.5">W0 测试护栏贯穿：契约注册表 K1–K10 / C1–C10 · 失败注入 8 场景 · 5 个 seams</text>
+  <text x="109.00" y="493.60" fill="#475569" font-family="inherit" font-size="10.5">W5 治理与安全：actor · ActionAuthorization · 审批 · 审计　|　实施顺序由依赖决定：W1 → W2 → W3 → W4 → W6（W5 可与 W2 并行）</text>
+</svg>

@@ -57,10 +57,10 @@ export function AiDrawer() {
 
             {!!(res.objects || []).length && (
               <>
-                <h4 className="h4">它看到了哪些对象</h4>
+                <h3 className="h4">它看到了哪些对象</h3>
                 <TableWrap auto>
                   <table>
-                    <thead><tr><th>引用</th><th className="wrap">属性</th><th> </th></tr></thead>
+                    <thead><tr><th>引用</th><th className="wrap">属性</th><th>操作</th></tr></thead>
                     <tbody>
                       {res.objects.map(o => (
                         <tr key={`${o.type}/${o.id}`}>
@@ -77,7 +77,7 @@ export function AiDrawer() {
 
             {!!(res.related || []).length && (
               <>
-                <h4 className="h4">顺带看到的关系</h4>
+                <h3 className="h4">顺带看到的关系</h3>
                 <TableWrap auto>
                   <table>
                     <thead><tr><th>从</th><th>关系</th><th>到</th></tr></thead>

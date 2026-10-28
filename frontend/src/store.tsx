@@ -4,7 +4,7 @@ import {
   createContext, useCallback, useContext, useEffect, useMemo, useRef, useState,
   type ReactNode, type DependencyList,
 } from "react";
-import { api, ApiError, type Application, type Capability, type LlmChoice, type Workspace } from "./api";
+import { api, ApiError, getApiToken, setApiToken, type Application, type Capability, type LlmChoice, type Workspace } from "./api";
 
 export const LS = {
   ws: "onto.workspace",
@@ -13,12 +13,34 @@ export const LS = {
   llm: "onto.llm",
 };
 
+/** 请求作用域的模型选择。密钥不在前端保存，也不在请求里传（P2-14）。 */
 export type LlmSetting =
   | { mode: "platform" }
-  | { mode: "openai"; base_url: string; model: string; api_key: string }
+  | { mode: "openai"; base_url: string; model: string }
   | { mode: "demo" };
 
 export const DEFAULT_LLM: LlmSetting = { mode: "platform" };
+
+/** 旧版本可能把 api_key 一起写进了 localStorage；读取时一律剥掉。 */
+export function sanitizeLlmSetting(input: unknown): LlmSetting {
+  if (!input || typeof input !== "object") return DEFAULT_LLM;
+  const raw = input as Record<string, unknown>;
+  if (raw.mode === "openai") {
+    return {
+      mode: "openai",
+      base_url: typeof raw.base_url === "string" ? raw.base_url : "",
+      model: typeof raw.model === "string" ? raw.model : "",
+    };
+  }
+  if (raw.mode === "demo") return { mode: "demo" };
+  return DEFAULT_LLM;
+}
+
+/** 只落盘非敏感字段；永远不包含 api_key。 */
+export function persistedLlm(s: LlmSetting): string {
+  if (s.mode === "openai") return JSON.stringify({ mode: "openai", base_url: s.base_url, model: s.model });
+  return JSON.stringify({ mode: s.mode });
+}
 
 /** 演示脚本：先用真实工具看清世界，再给出结论；不依赖任何密钥。 */
 export const DEMO_SCRIPT = [
@@ -33,7 +55,6 @@ export function toChoice(s: LlmSetting, firstType?: string): LlmChoice {
       provider: "openai",
       ...(s.base_url ? { base_url: s.base_url } : {}),
       ...(s.model ? { model: s.model } : {}),
-      ...(s.api_key ? { api_key: s.api_key } : {}),
     };
   if (s.mode === "demo")
     return {
@@ -72,6 +93,9 @@ interface Ctx {
 
   online: boolean;
   version: string;
+  authMode: "local" | "token" | string;
+  token: string;
+  setToken: (token: string) => void;
   llmReady: boolean;
   llm: LlmSetting;
   setLlm: (s: LlmSetting) => void;
@@ -102,7 +126,7 @@ export const usePlatform = (): Ctx => {
 };
 
 /**
- * 路由形如  #/w/<workspaceId>/<page>?k=v  —— 工作空间进 URL，链接才真的可分享
+ * 路由形如  #/w/<workspaceId>/<page>?k=v  –– 工作空间进 URL，链接才真的可分享
  * （design.txt §42：界面状态必须可复现）。老的 #/<page> 形式继续兼容，
  * 此时工作空间回落到 localStorage 里记住的那个。
  */
@@ -128,10 +152,12 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [wid, setWid] = useState<string | null>(null);
   const [online, setOnline] = useState(false);
-  const [version, setVersion] = useState("0.1.0");
+  const [version, setVersion] = useState("0.3.0");
+  const [authMode, setAuthMode] = useState<string>("local");
+  const [token, setTokenState] = useState<string>(() => getApiToken());
   const [llmReady, setLlmReady] = useState(false);
   const [llm, setLlmState] = useState<LlmSetting>(() => {
-    try { return JSON.parse(localStorage.getItem(LS.llm) || "") as LlmSetting; }
+    try { return sanitizeLlmSetting(JSON.parse(localStorage.getItem(LS.llm) || "")); }
     catch { return DEFAULT_LLM; }
   });
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -146,7 +172,7 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
 
   const setLlm = useCallback((s: LlmSetting) => {
     setLlmState(s);
-    try { localStorage.setItem(LS.llm, JSON.stringify(s)); } catch { /* 隐私模式忽略 */ }
+    try { localStorage.setItem(LS.llm, persistedLlm(s)); } catch { /* 隐私模式忽略 */ }
   }, []);
 
   const toast = useCallback((text: string, kind: ToastKind = "") => {
@@ -160,8 +186,15 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
     try {
       const h = await api.health();
       setOnline(true); setVersion(h.version); setLlmReady(!!h.llm_configured);
+      setAuthMode(h.auth_mode || "local");
     } catch { setOnline(false); }
   }, []);
+
+  const setToken = useCallback((next: string) => {
+    setApiToken(next.trim());
+    setTokenState(next.trim());
+    void ping();
+  }, [ping]);
 
   const reloadWorkspaces = useCallback(async () => {
     const list = await api.workspaces();
@@ -216,6 +249,21 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
   }, [wid]);
 
   useEffect(() => {
+    // 迁移旧版本误存的 api_key：读取时已经剥掉，这里把落盘内容也清理一次。
+    try {
+      const raw = localStorage.getItem(LS.llm);
+      if (raw) {
+        const parsed = JSON.parse(raw) as Record<string, unknown>;
+        if (parsed && typeof parsed === "object" && "api_key" in parsed) {
+          localStorage.setItem(LS.llm, persistedLlm(sanitizeLlmSetting(parsed)));
+        }
+      }
+    } catch {
+      try { localStorage.removeItem(LS.llm); } catch { /* 隐私模式 */ }
+    }
+  }, []);
+
+  useEffect(() => {
     ping();
     const t = setInterval(ping, 20000);
     const onHash = () => setRoute(readHash());
@@ -234,7 +282,7 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
     setWid(id);
     localStorage.setItem(LS.ws, id);
     // 留在当前页，只换空间；但 ref/type/app 是上一个世界的作用域参数，
-    // 带过去会指向不存在的对象 —— 只保留与空间无关的 tab
+    // 带过去会指向不存在的对象 –– 只保留与空间无关的 tab
     const { nav, params } = readHash();
     const safe = Object.fromEntries(Object.entries(params).filter(([k]) => k === "tab"));
     const hash = hashFor(id, nav, safe);
@@ -256,13 +304,13 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
     workspaceName: workspaces.find(w => w.id === wid)?.name || "",
     setWorkspace,
     reloadWorkspaces,
-    online, version, llmReady, llm, setLlm,
+    online, version, authMode, token, setToken, llmReady, llm, setLlm,
     toast, confirm,
     aiOpen, setAiOpen, aiContext, setAiContext,
     nav: route.nav, params: route.params, go,
     objectTypes, relationTypes, completeness, refreshRuntime,
-  }), [wid, workspaces, setWorkspace, reloadWorkspaces, online, version, llmReady, llm, setLlm,
-       toast, confirm, aiOpen, aiContext, go, route,
+  }), [wid, workspaces, setWorkspace, reloadWorkspaces, online, version, authMode, token, setToken,
+       llmReady, llm, setLlm, toast, confirm, aiOpen, aiContext, go, route,
        objectTypes, relationTypes, completeness, refreshRuntime]);
 
   return (
@@ -291,14 +339,14 @@ function ToastStack({ toasts, dismiss }: { toasts: Toast[]; dismiss: (id: number
 }
 
 /** 统一的"写操作"包装：进行中禁用 + 统一错误提示。返回 running 供按钮禁用。 */
-export function useAction(fn: (...a: never[]) => Promise<unknown>, deps: DependencyList = []) {
+export function useAction<A extends unknown[] = []>(fn: (...a: A) => Promise<unknown>, deps: DependencyList = []) {
   const { toast } = usePlatform();
   const [running, setRunning] = useState(false);
   const busy = useRef(false);
-  const run = useCallback(async (...a: unknown[]) => {
+  const run = useCallback(async (...a: A) => {
     if (busy.current) return;                 // 连点直接忽略，杜绝重复提交
     busy.current = true; setRunning(true);
-    try { return await (fn as (...x: unknown[]) => Promise<unknown>)(...a); }
+    try { return await fn(...a); }
     catch (e) { toast((e as ApiError).message, "err"); /* 有意不 rethrow：调用方都是 void run()，
                        错误已经通过 toast 呈现；ConfirmDialog 依赖「抛错时不关闭」的行为 */ }
     finally { busy.current = false; setRunning(false); }

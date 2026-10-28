@@ -104,7 +104,7 @@ class RunAgent:
                  provider: LLMProvider | None = None,
                  max_steps: int = 8) -> dict:
         self._ctx.require(actor, workspace_id, "viewer")
-        effective = provider or self._ctx.llm
+        effective = provider or self._ctx.llm_for(workspace_id)
         if effective is None:
             raise ValidationError(
                 "no LLM provider configured; pass one or configure the platform"
@@ -113,10 +113,32 @@ class RunAgent:
         ontology = _ontology_from_dict(ontology_data)
         context_text = SemanticIndex.from_ontology(ontology).context_text(ontology)
         gateway = self._ctx.gateway_for(workspace_id)
-        run = AgentRunner(gateway, effective, context_text, max_steps=max_steps).run(goal)
-        self._ctx.audit_event(actor, workspace_id, "intelligence.agent", "agent",
-                              {"goal": goal, "ok": run.ok, "steps": len(run.steps)})
-        return run.to_dict()
+        from .agent_runner import make_audited_invoker
+
+        run = AgentRunner(
+            gateway, effective, context_text, max_steps=max_steps,
+            # agent actions are governed like any other capability invocation
+            invoker=make_audited_invoker(self._ctx, workspace_id, gateway,
+                                          actor=actor),
+        ).run(goal)
+        run_dict = run.to_dict()
+        run_dict.update({"id": run.run_id, "workspace_id": workspace_id,
+                         "actor": actor,
+                         "created_at": self._ctx.clock()})
+        with self._ctx.transaction():
+            self._ctx.save("agent_run", run_dict)
+            for step in run.steps:
+                self._ctx.save("agent_step", {
+                    **step.to_dict(),
+                    "id": f"{run.run_id}_s{step.index}",
+                    "workspace_id": workspace_id,
+                    "run_id": run.run_id,
+                })
+            self._ctx.audit_event(actor, workspace_id, "intelligence.agent",
+                                  "agent", {"goal": goal, "ok": run.ok,
+                                            "run_id": run.run_id,
+                                            "steps": len(run.steps)})
+        return run_dict
 
 
 # ----------------------------------------------------------------------

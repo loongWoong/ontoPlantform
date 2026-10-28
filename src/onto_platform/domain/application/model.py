@@ -112,6 +112,8 @@ class Application:
     # one Agent domain lives in Intelligence - the application only
     # references it, never duplicates it)
     agents: list[dict] = field(default_factory=list)
+    # business objective (plan-v2 2.1): {metric,target,band,window,direction,samples}
+    objective: dict = field(default_factory=dict)
     lifecycle: str = "draft"
     created_at: str = ""
     updated_at: str = ""
@@ -126,6 +128,7 @@ class Application:
             "queries": {k: q.to_dict() for k, q in self.queries.items()},
             "capabilities": list(self.capabilities),
             "agents": [dict(a) for a in self.agents],
+            "objective": dict(self.objective),
             "lifecycle": self.lifecycle,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
@@ -142,6 +145,7 @@ class Application:
             queries={k: QuerySpec.from_dict(q) for k, q in data.get("queries", {}).items()},
             capabilities=list(data.get("capabilities", [])),
             agents=[dict(a) for a in data.get("agents", [])],
+            objective=dict(data.get("objective") or {}),
             lifecycle=data.get("lifecycle", "draft"),
             created_at=data.get("created_at", ""),
             updated_at=data.get("updated_at", ""),

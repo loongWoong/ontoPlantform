@@ -1,0 +1,59 @@
+name: ci
+
+# W0 guard rail: one command proves the platform AND the kernel boundary.
+# The kernel lives in a sibling repo; set the repository variable
+# ONTO_RK_REPO (Settings -> Variables) to "<org>/ontoRK" to enable it.
+# Without it the kernel checkout step is skipped and the kernel-dependent
+# tests cannot run - that is a configuration error, not a test failure.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: ontoPlantform
+
+      - uses: actions/checkout@v4
+        if: vars.ONTO_RK_REPO != ''
+        with:
+          repository: ${{ vars.ONTO_RK_REPO }}
+          path: ontoRK
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install kernel (editable) and platform (dev extras)
+        shell: pwsh
+        run: |
+          if (Test-Path ontoRK) {
+            python -m pip install -e ontoRK
+          } else {
+            Write-Error "ONTO_RK_REPO is not configured: the kernel is required for the contract tests"
+          }
+          python -m pip install -e ontoPlantform[dev]
+
+      - name: Kernel suite
+        shell: pwsh
+        working-directory: ontoRK
+        run: python -m pytest -q
+
+      - name: Platform suite (strict markers, timeout, coverage)
+        shell: pwsh
+        working-directory: ontoPlantform
+        run: |
+          python -m pytest -q --strict-markers --timeout=60 `
+            --cov=onto_platform --cov-report=term-missing --cov-fail-under=70
+
+      - name: Frontend build (console must compile)
+        shell: pwsh
+        working-directory: ontoPlantform/frontend
+        run: |
+          npm install --no-audit --no-fund
+          npm run build

@@ -99,13 +99,19 @@ class FieldMapping:
 
     source_field: str
     property: str
+    #: unit the source promised; must match the ontology property unit (1.4)
+    unit: str = ""
 
     def to_dict(self) -> dict:
-        return {"source_field": self.source_field, "property": self.property}
+        data = {"source_field": self.source_field, "property": self.property}
+        if self.unit:
+            data["unit"] = self.unit
+        return data
 
     @classmethod
     def from_dict(cls, data: dict) -> "FieldMapping":
-        return cls(source_field=data["source_field"], property=data["property"])
+        return cls(source_field=data["source_field"], property=data["property"],
+                   unit=str(data.get("unit") or ""))
 
 
 @dataclass(slots=True)
@@ -186,6 +192,13 @@ class Projection:
     object_mappings: list[ObjectMapping] = field(default_factory=list)
     relation_mappings: list[RelationMapping] = field(default_factory=list)
     lifecycle: str = "draft"
+    #: 0 means unbounded; a positive value caps rows per asset per run and
+    #: reports ``truncated`` instead of silently materializing a partial page
+    row_limit: int = 0
+    #: ``additive`` (default) only owns objects it materialized; ``authoritative``
+    #: also treats any runtime object of a mapped type without a source row as
+    #: an orphan (P1-6)
+    mode: str = "additive"
     created_at: str = ""
     updated_at: str = ""
 
@@ -198,6 +211,8 @@ class Projection:
             "object_mappings": [m.to_dict() for m in self.object_mappings],
             "relation_mappings": [m.to_dict() for m in self.relation_mappings],
             "lifecycle": self.lifecycle,
+            "row_limit": self.row_limit,
+            "mode": self.mode,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
         }
@@ -214,6 +229,8 @@ class Projection:
                 RelationMapping.from_dict(m) for m in data.get("relation_mappings", [])
             ],
             lifecycle=data.get("lifecycle", "draft"),
+            row_limit=int(data.get("row_limit") or 0),
+            mode=data.get("mode", "additive"),
             created_at=data.get("created_at", ""),
             updated_at=data.get("updated_at", ""),
         )

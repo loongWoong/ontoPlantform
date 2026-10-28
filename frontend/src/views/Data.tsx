@@ -1,15 +1,20 @@
 import { useMemo, useState } from "react";
-import { api, assetNames, type DataSource, type Projection } from "../api";
+import { ArrowClockwise, PlugsConnected, Table } from "@phosphor-icons/react";
+import { api, assetNames, type DataSource, type Projection, type ProjectionRun } from "../api";
 import { useAction, usePlatform } from "../store";
 import {
   Btn, Card, Collapsible, Drawer, Empty, Field, JsonField, KIND_LABEL,
-  labelOf, Loading, Select, TableWrap, Tag, TextInput, useLoad,
+  labelOf, Loading, PageHead, Select, TableWrap, Tag, TextInput, useLoad,
 } from "../ui";
+import { StatusBadge } from "../components/StatusBadge";
+import { ValueView } from "../components/ValueView";
+import { formatLocal } from "../lib/time";
 
 export function DataView() {
-  const { wid, toast, confirm, refreshRuntime } = usePlatform();
+  const { wid, toast, confirm, refreshRuntime, go } = usePlatform();
   const [preview, setPreview] = useState<DataSource | null>(null);
   const [connectOpen, setConnectOpen] = useState(false);
+  const [lastRun, setLastRun] = useState<{ name: string; run: ProjectionRun } | null>(null);
 
   const load = useLoad(async () => {
     if (!wid) return { sources: [] as DataSource[], projections: [] as Projection[] };
@@ -23,30 +28,61 @@ export function DataView() {
   const { run: sync, running: syncing } = useAction(async (pid: string, pname: string) => {
     if (!wid) return;
     const r = await api.runProjection(wid, pid);
+    setLastRun({ name: pname, run: r });
     await refreshRuntime();
-    toast(`同步「${pname}」完成：新增或更新 ${r.objects_upserted ?? 0} 个对象、${r.links_asserted ?? 0} 条关系`, "ok");
+    const st = r.run_status || r.status || "unknown";
+    const at = r.checked_at || r.finished_at;
+    if (st === "succeeded") {
+      toast(`同步「${pname}」成功：运行 ${r.run_id || "未返回"}，写入 ${r.objects_upserted ?? 0} 个对象、${r.links_asserted ?? 0} 条关系${at ? `，检查于 ${formatLocal(at)}` : ""}`, "ok");
+    } else if (st === "skipped") {
+      toast(`同步「${pname}」跳过：运行 ${r.run_id || "未返回"}${r.skipped_reason || r.reason ? `，原因 ${r.skipped_reason || r.reason}` : "，源数据没有变化"}${at ? `，检查于 ${formatLocal(at)}` : ""}`, "warn");
+    } else {
+      toast(`同步「${pname}」未成功（${st}）：以运行编号 ${r.run_id || "未返回"} 的记录为准${at ? `，记录于 ${formatLocal(at)}` : ""}`, st === "failed" ? "err" : "warn");
+    }
     load.reload();
   }, [wid]);
 
-  if (load.loading && !load.data) return <Loading />;
   const { sources, projections } = load.data || { sources: [], projections: [] };
 
   return (
     <>
-      <Card title="数据源" sub="外部世界的入口。平台不复制数据，同步时才按需读取。"
-            aside={<Btn size="sm" onClick={() => setConnectOpen(true)}>连接新数据源</Btn>}>
-        {!sources.length && <Empty title="还没有数据源" hint="连接一个静态样例、数据库或接口。"
-                                   action={<Btn size="sm" onClick={() => setConnectOpen(true)}>连接第一个</Btn>} />}
+      <PageHead
+        kicker="Data"
+        title="数据"
+        desc="外部世界的入口。平台不复制数据，只有映射和显式同步；同步写入的是运行时对象，不是第二份业务库。"
+        meta={<>
+          <span>数据源 <b>{sources.length}</b></span>
+          <span>映射 <b>{projections.length}</b></span>
+          <span>同步方式 <b>按需触发</b></span>
+        </>}
+        actions={<>
+          <Btn variant="subtle" onClick={load.reload} busy={load.loading}>
+            <ArrowClockwise size={14} /> 刷新
+          </Btn>
+          <Btn onClick={() => setConnectOpen(true)}>
+            <PlugsConnected size={14} /> 连接数据源
+          </Btn>
+        </>}
+      />
+
+      {load.loading && <Loading />}
+
+      <Card title="数据源" sub="连接参数与可用数据表都由创建时声明；预览只展示已声明的静态样例。"
+            aside={<Tag kind="plain">{sources.length} 个</Tag>}>
+        {!load.loading && !sources.length && (
+          <Empty title="还没有数据源" hint="连接一个静态样例、SQLite 数据库或 REST 接口。"
+                 action={<Btn size="sm" onClick={() => setConnectOpen(true)}>连接第一个</Btn>} />
+        )}
         {!!sources.length && (
           <TableWrap>
             <table>
-              <thead><tr><th>名称</th><th>来源</th><th className="wrap">可用数据表</th><th> </th></tr></thead>
+              <thead><tr><th>名称</th><th>来源</th><th className="wrap">可用数据表</th><th>操作</th></tr></thead>
               <tbody>
                 {sources.map(d => (
                   <tr key={d.id}>
                     <td className="nowrap"><b>{d.name}</b></td>
                     <td className="nowrap"><Tag kind="plain">{labelOf(KIND_LABEL, d.kind)}</Tag></td>
-                    <td className="wrap" title={assetNames(d).join("、")}>{assetNames(d).join("、") || "—"}</td>
+                    <td className="wrap" title={assetNames(d).join("、")}>{assetNames(d).join("、") || "–"}</td>
                     <td className="nowrap"><Btn size="sm" variant="subtle" onClick={() => setPreview(d)}>预览</Btn></td>
                   </tr>
                 ))}
@@ -56,36 +92,76 @@ export function DataView() {
         )}
       </Card>
 
-      <Card title="映射与同步" sub="映射解决「字段对应哪个业务属性」，同步把源数据变成对象实例。">
-        {!projections.length && <Empty title="还没有映射" hint="先连接数据源，再声明字段怎么对应业务属性。" />}
+      <Card title="映射与同步" sub="映射解决「源字段对应哪个业务属性」，同步把它变成对象实例并写入运行时。"
+            aside={<Tag kind={projections.length ? "ok" : "plain"}>{projections.length} 个映射</Tag>}>
+        {!load.loading && !projections.length && (
+          <Empty title="还没有映射" hint="先连接数据源，再声明字段怎么对应业务属性；也可以先生成骨架再改。"
+                 action={sources.length ? undefined : <Btn size="sm" variant="subtle" onClick={() => setConnectOpen(true)}>先连接数据源</Btn>} />
+        )}
         {!!projections.length && (
-          <TableWrap>
-            <table>
-              <thead><tr><th>名称</th><th>覆盖范围</th><th> </th></tr></thead>
-              <tbody>
-                {projections.map(p => (
-                  <tr key={p.id}>
-                    <td className="nowrap"><b>{p.name}</b></td>
-                    <td className="wrap">
-                      {(p.object_mappings || []).length} 个对象映射 · {(p.relation_mappings || []).length} 条关系映射
-                    </td>
-                    <td className="nowrap">
-                      <Btn size="sm" busy={syncing}
-                           onClick={() => confirm({
-                             title: `立即同步「${p.name}」？`,
-                             confirmText: "开始同步",
-                             body: <p className="muted">会读取数据源并按映射写入业务世界，每次写入都留痕。</p>,
-                             run: async () => { await sync(p.id, p.name); },
-                           })}>立即同步</Btn>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </TableWrap>
+          <>
+            {lastRun && (
+              <div className={"banner " + ((lastRun.run.run_status || lastRun.run.status) === "succeeded" ? "info" : "warn")}>
+                最近一次同步「{lastRun.name}」：<StatusBadge status={lastRun.run.run_status || lastRun.run.status || "unknown"} />
+                <span className="mono small"> 运行 {lastRun.run.run_id || "–"} · 检查于 {lastRun.run.checked_at ? formatLocal(lastRun.run.checked_at) : "–"} · 完成于 {lastRun.run.finished_at ? formatLocal(lastRun.run.finished_at) : "–"} · 写入 {lastRun.run.objects_upserted ?? 0} 对象 / {lastRun.run.links_asserted ?? 0} 关系</span>
+                {lastRun.run.skipped_reason && <p className="muted small">跳过原因：{lastRun.run.skipped_reason}</p>}
+              </div>
+            )}
+            <TableWrap>
+              <table>
+                <thead><tr><th>名称</th><th>覆盖范围</th><th>写入模式</th><th>最近检查</th><th>最近变更</th><th>操作</th></tr></thead>
+                <tbody>
+                  {projections.map(p => (
+                    <tr key={p.id}>
+                      <td className="nowrap"><b>{p.name}</b></td>
+                      <td className="wrap">
+                        {(p.object_mappings || []).length} 个对象映射 · {(p.relation_mappings || []).length} 条关系映射
+                      </td>
+                      <td className="nowrap"><Tag kind={p.mode === "authoritative" ? "warn" : "plain"}>{p.mode || "未返回"}</Tag>
+                        {!!p.managed_types?.length && <span className="muted small"> · {p.managed_types.length} 个托管类型</span>}
+                      </td>
+                      <td className="mono nowrap">{p.last_check_at ? formatLocal(p.last_check_at) : "未返回"}</td>
+                      <td className="mono nowrap">{p.last_change_at ? formatLocal(p.last_change_at) : "未返回"}</td>
+                      <td className="nowrap">
+                        <Btn size="sm" busy={syncing}
+                             onClick={() => confirm({
+                               title: `立即同步「${p.name}」？`,
+                               confirmText: "开始同步",
+                               body: <p className="muted">会读取数据源并按映射写入业务世界；结果会返回运行编号与计数，失败时以错误为准，不会显示成完成。</p>,
+                               run: async () => { await sync(p.id, p.name); },
+                             })}>立即同步</Btn>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </TableWrap>
+          </>
         )}
         {!!sources.length && <CreateProjection sources={sources} onDone={load.reload} />}
       </Card>
+
+      <div className="bento gap-top">
+        <div className="col-6">
+          <Card title="数据不会凭空出现" sub="同步是显式动作；成功与否以运行状态和计数为准，不靠界面推断。">
+            <p className="muted">源数据先按映射编译成对象写入指令，再交给运行时；身份冲突、属性类型不匹配会在写入前被拒绝。</p>
+            <div className="btn-row">
+              <Btn size="sm" variant="subtle" onClick={() => go("state")}>去对象实例核对</Btn>
+              <Btn size="sm" variant="subtle" onClick={() => go("operations", { tab: "health" })}>跑结构校验</Btn>
+            </div>
+          </Card>
+        </div>
+        <div className="col-6">
+          <Card title="数据接入清单" sub="建议顺序：先最小一条，再扩大范围。">
+            <ul className="doc-list">
+              <li>数据源能连通，且声明了正确的表名 / 查询 / 接口路径。</li>
+              <li>主键字段唯一且稳定，前导零编号要按字符串处理。</li>
+              <li>映射的每个源字段都能落到已存在的属性上。</li>
+              <li>同步后用对象实例页抽查 3 条，再跑一次对账。</li>
+            </ul>
+          </Card>
+        </div>
+      </div>
 
       {preview && <PreviewDrawer source={preview} onClose={() => setPreview(null)} />}
       {connectOpen && <ConnectDrawer onClose={() => setConnectOpen(false)} onDone={() => { setConnectOpen(false); load.reload(); }} />}
@@ -103,14 +179,14 @@ function PreviewDrawer({ source, onClose }: { source: DataSource; onClose: () =>
         const rows = (asset?.config?.rows as Record<string, unknown>[] | undefined) || [];
         return (
           <div key={n}>
-            <h4 className="h4">{n}{rows.length ? ` · ${rows.length} 行` : ""}</h4>
+            <h3 className="h4">{n}{rows.length ? ` · ${rows.length} 行` : ""}</h3>
             {rows.length ? (
               <TableWrap auto>
                 <table>
                   <thead><tr>{Object.keys(rows[0]).map(k => <th key={k}>{k}</th>)}</tr></thead>
                   <tbody>
                     {rows.slice(0, 5).map((r, i) => (
-                      <tr key={i}>{Object.keys(rows[0]).map(k => <td key={k} title={String(r[k])}>{String(r[k] ?? "—")}</td>)}</tr>
+                      <tr key={i}>{Object.keys(rows[0]).map(k => <td key={k}><ValueView value={r[k]} compact field={k} /></td>)}</tr>
                     ))}
                   </tbody>
                 </table>
@@ -120,7 +196,7 @@ function PreviewDrawer({ source, onClose }: { source: DataSource; onClose: () =>
         );
       })}
       <Collapsible label="这个数据源的连接参数">
-        <pre>{JSON.stringify({ kind: source.kind, config: source.config }, null, 2)}</pre>
+        <pre className="obs">{JSON.stringify({ kind: source.kind, config: source.config }, null, 2)}</pre>
       </Collapsible>
       <div className="btn-row">
         <Btn variant="subtle" onClick={onClose}>关闭</Btn>
@@ -160,16 +236,15 @@ function ConnectDrawer({ onClose, onDone }: { onClose: () => void; onDone: () =>
       </Field>
       <Field label="来源类型">
         <Select value={kind} onChange={e => setKind(e.target.value)}>
-          <option value="static">静态样例（演示/测试）</option>
+          <option value="static">静态样例（演示 / 测试）</option>
           <option value="sqlite">数据库文件</option>
           <option value="rest">接口</option>
         </Select>
       </Field>
       <JsonField label="连接参数" value={config} onChange={setConfig} rows={3}
-                 hint={kind === "sqlite" ? '例如 {"path": "data.db"}；rest 用 {"base_url": "https://…"}`'
-                    : "静态样例可留空。"} />
+                 hint={kind === "sqlite" ? '例如 {"path": "data.db"}；接口用 {"base_url": "https://…"}' : "静态样例可留空。"} />
       <JsonField label="数据表声明" value={assets} onChange={setAssets} rows={8}
-                 hint='每个数据表：{"name": "vehicles", "config": {"rows": [{"vid": "V001", "plate": "鲁A1"}]}}。静态样例用 rows；数据库用 {"query": "SELECT …"}；接口用 {"path": "/x"}。' />
+                 hint='每个数据表：{"name": "vehicles", "config": {"rows": [{"vid": "V001"}]}}。数据库用 {"query": "SELECT …"}；接口用 {"path": "/x"}。' />
       <Collapsible label="插入一份可直接跑的静态样例">
         <Btn size="sm" variant="subtle" onClick={() => {
           setAssets(JSON.stringify([
@@ -230,8 +305,10 @@ function CreateProjection({ sources, onDone }: { sources: DataSource[]; onDone: 
   return (
     <>
       <div className="btn-row">
-        <Btn variant="subtle" onClick={() => setOpen(true)}>新建映射</Btn>
-        <span className="muted">映射 = 源字段 ↔ 业务属性的对应表</span>
+        <Btn variant="subtle" onClick={() => setOpen(true)}>
+          <Table size={14} /> 新建映射
+        </Btn>
+        <span className="muted small">映射 = 源字段 ↔ 业务属性的对应表</span>
       </div>
       {open && (
         <Drawer title="新建映射" onClose={() => setOpen(false)} wide
@@ -249,7 +326,7 @@ function CreateProjection({ sources, onDone }: { sources: DataSource[]; onDone: 
                      hint='对象映射：{"asset","object_type","id_field","fields":[{"source_field","property"}]}；关系映射：{"asset","relation","source_field","target_field"}。' />
           <div className="btn-row">
             <Btn size="sm" variant="subtle" onClick={() => setMappings(skeleton)}>按当前选择生成骨架</Btn>
-            <span className="muted">骨架会带入所选数据源的表名与本体里的对象、属性名，改字段名即可。</span>
+            <span className="muted small">骨架会带入所选数据源的表名与本体里的对象、属性名，改字段名即可。</span>
           </div>
         </Drawer>
       )}

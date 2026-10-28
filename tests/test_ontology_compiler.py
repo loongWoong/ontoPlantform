@@ -38,7 +38,12 @@ def build_ontology() -> Ontology:
 
 def test_compiles_to_kernel_schema_dict():
     payload = OntologyCompiler().compile(build_ontology(), [])
-    assert payload.schema["ontology"] == {"name": "traffic", "version": 1}
+    assert payload.schema["ontology"] == {
+        "name": "traffic",
+        "version": 1,
+        "schema_version": 1,
+        "profile": "closed",
+    }
     assert payload.schema["objects"]["Vehicle"]["properties"]["balance"] == {"type": "number"}
     assert payload.schema["relations"]["passes"] == {"source": "Vehicle", "target": "TollStation"}
     # platform-only concepts are stripped

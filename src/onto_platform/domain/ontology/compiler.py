@@ -12,12 +12,17 @@ Vocabulary, lifecycle, workspace ids or capability ids.  Published
 Capabilities are compiled into kernel Functions here as well
 (``{ObjectType}.{capability key}``), with workflow implementations
 carried beside the payload (the kernel only sees a binding URI).
+
+v0.2 also carries the decidable semantics: identity criteria, date/time
+temporal modes, property facets, enumerated cardinality and inverse
+relations.  Defaults are omitted so the payload stays minimal and stable
+(the kernel fills them in).
 """
 
 from __future__ import annotations
 
 from ..capability.model import Capability
-from .model import TYPE_KINDS, Ontology
+from .model import TYPE_KINDS, Ontology, normalize_cardinality
 from ...errors import CompilerError
 from ...ports.runtime import SchemaPayload
 
@@ -30,6 +35,8 @@ class OntologyCompiler:
             "ontology": {
                 "name": self._schema_name(ontology),
                 "version": ontology.version,
+                "schema_version": ontology.schema_version,
+                "profile": ontology.profile,
             },
             "objects": {},
             "relations": {},
@@ -41,19 +48,27 @@ class OntologyCompiler:
         for otype in ontology.objects.values():
             schema["objects"][otype.name] = {
                 "description": otype.description,
+                "identity": list(otype.identity),
+                "category": otype.category,
                 "properties": {
-                    p.name: self._property(p.name, p.type, otype.name)
+                    p.name: self._property(p, otype.name)
                     for p in otype.properties.values()
                 },
             }
+            if otype.state_machine:
+                schema["objects"][otype.name]["state_machine"] = dict(
+                    otype.state_machine
+                )
 
         for rel in ontology.relations.values():
-            schema["relations"][rel.name] = {
-                "source": rel.source,
-                "target": rel.target,
-            }
-            if rel.cardinality:
-                schema["relations"][rel.name]["cardinality"] = rel.cardinality
+            self._check_relation(rel)
+            entry: dict = {"source": rel.source, "target": rel.target}
+            cardinality = normalize_cardinality(rel.cardinality)
+            if cardinality:
+                entry["cardinality"] = cardinality
+            if rel.inverse:
+                entry["inverse"] = rel.inverse
+            schema["relations"][rel.name] = entry
 
         for capability in capabilities:
             self._compile_capability(
@@ -112,13 +127,40 @@ class OntologyCompiler:
                 f"{impl.kind!r}"
             )
 
-    def _property(self, name: str, type_kind: str, otype: str) -> dict:
-        if type_kind not in TYPE_KINDS:
+    def _check_relation(self, rel) -> None:
+        from .model import CARDINALITIES
+
+        if normalize_cardinality(rel.cardinality) not in CARDINALITIES:
             raise CompilerError(
-                f"{otype}.{name}: unknown property type {type_kind!r}; "
+                f"relation {rel.name!r}: unknown cardinality {rel.cardinality!r}"
+            )
+
+    def _property(self, prop, otype: str) -> dict:
+        if prop.type not in TYPE_KINDS:
+            raise CompilerError(
+                f"{otype}.{prop.name}: unknown property type {prop.type!r}; "
                 f"expected one of {list(TYPE_KINDS)}"
             )
-        return {"type": type_kind}
+        entry: dict = {"type": prop.type}
+        if prop.required:
+            entry["required"] = True
+        if prop.enum:
+            entry["enum"] = list(prop.enum)
+        if prop.minimum is not None:
+            entry["minimum"] = prop.minimum
+        if prop.maximum is not None:
+            entry["maximum"] = prop.maximum
+        if prop.unique:
+            entry["unique"] = True
+        if prop.unit:
+            entry["unit"] = prop.unit
+        if prop.precision is not None:
+            entry["precision"] = prop.precision
+        if prop.default is not None:
+            entry["default"] = prop.default
+        if prop.temporal:
+            entry["temporal"] = prop.temporal
+        return entry
 
     def _input_type(self, type_kind: str, function_name: str) -> str:
         if type_kind not in TYPE_KINDS:

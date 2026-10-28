@@ -62,17 +62,41 @@ def test_file_code_store(tmp_path):
 
 def test_sqlite_platform_end_to_end(tmp_path):
     """The whole platform works over sqlite persistence."""
-    platform = build_platform(PlatformConfig(
-        store="sqlite", db_path=str(tmp_path / "platform.db")))
+    db = str(tmp_path / "platform.db")
+    platform = build_platform(PlatformConfig(store="sqlite", db_path=db))
     ws = platform.workspaces.create("制造运营", actor="admin")
     platform.ontologies.create(ws["id"], "manufacturing", actor="admin")
     platform.ontologies.upsert_object(
         ws["id"], "admin", "Equipment",
         properties=[{"name": "code", "type": "string"}])
     platform.ontologies.publish(ws["id"], "admin")
+    platform.close()
     # a second platform instance over the same db sees the same world
-    platform2 = build_platform(PlatformConfig(
-        store="sqlite", db_path=str(tmp_path / "platform.db")))
+    platform2 = build_platform(PlatformConfig(store="sqlite", db_path=db))
     ontology = platform2.ontologies.get(ws["id"], "admin")
     assert ontology["objects"]["Equipment"]["properties"]["code"]["type"] == "string"
     assert platform2.ontologies.describe_runtime(ws["id"], "admin")["objects"]
+    platform2.close()
+
+
+def test_sqlite_audit_joins_the_repository_transaction(tmp_path):
+    """Audit rows in a repository transaction must not deadlock the file."""
+    db = str(tmp_path / "audit.db")
+    platform = build_platform(PlatformConfig(store="sqlite", db_path=db))
+    workspace_id = platform.workspaces.create("审计", actor="admin")["id"]
+    with platform.ctx.transaction():
+        platform.ctx.save("marker", {"id": "m1",
+                                     "workspace_id": workspace_id,
+                                     "value": 1})
+        platform.ctx.audit_event("admin", workspace_id, "marker.created",
+                                 "m1", {"value": 1})
+    rows = platform.ctx.audit.list(workspace_id)
+    assert rows and rows[0]["action"] == "marker.created"
+    assert rows[0]["detail"] == {"value": 1}
+    platform.close()
+    # the closed handle can be reopened and still shows the committed pair
+    reopened = build_platform(PlatformConfig(store="sqlite", db_path=db))
+    assert reopened.ctx.repo.get("marker", workspace_id, "m1") == {
+        "id": "m1", "workspace_id": workspace_id, "value": 1}
+    assert reopened.ctx.audit.list(workspace_id)[0]["action"] == "marker.created"
+    reopened.close()
