@@ -12,7 +12,7 @@
 
 ```text
 $ python -m pytest -q
-300 passed in 26.07s
+300 passed in 38.72s
 ```
 
 真实 HTTP 冒烟：
@@ -216,7 +216,27 @@ python scripts/axe_v03.py                                     # 可访问性门�
 
 结果：15 项断言全部 `PASS`，输出 `REHEARSAL PASSED`。
 
-### 7.3 门禁状态
+### 7.3 验收场景映射
+
+| 计划场景 | 自动化证据 |
+|---|---|
+| 1 空工作空间不假绿 | `tests/test_limits_slo.py`；E2E 断言空工作空间成功率为 `no_data` 且 `ok=false`；无投影时新鲜度为 `not_applicable`，有投影但从未运行时为 `no_data` |
+| 2 后置条件失败显示 `failed` | `tests/test_truth_contract.py`、`tests/test_contract_verifier.py` |
+| 3 超时返回 `unknown` 且不自动重试 | `tests/test_execution_ledger.py`；E2E 的 `/executions/by-key/e2e-timeout` |
+| 4 同键并发只执行一次 | `tests/test_execution_ledger.py`、`tests/test_concurrency_100.py` |
+| 5 金丝雀隔离、检查后提升 | `tests/test_release_rings.py`；`scripts/rehearse_v03.py`；E2E canary 路由 |
+| 6 回滚重启指纹一致 | `tests/test_release_recovery.py`；`scripts/rehearse_v03.py` |
+| 7 无消费者事件记为 `unrouted` | `tests/test_outbox_delivery.py`；迁移后 348 条事件抽检无“已投递但无消费者” |
+| 8 消费者失败重试、死信 | `tests/test_outbox_delivery.py` |
+| 9 目标越界开单个待办、关闭被拒绝 | `tests/test_objective.py`、`tests/test_scheduler.py` |
+| 10 投影删除失败不留半写、跳过刷新检查时间 | `tests/test_projection.py`（含行数上限先失败后记录） |
+| 11 对账归属与控制器 3 轮未收敛 | `tests/test_reconciler_ownership.py`、`tests/test_controller.py` |
+| 12 匿名 401、viewer 可读不可写 | `tests/test_truth_contract.py`、`tests/test_auth.py` |
+| 13 Agent 自证不通过、有证据、trace 可查 | `tests/test_intelligence.py` |
+| 14 对象详情无 `[object Object]`、as-of 本地时区 | 前端 `ValueView` / `lib/time.ts` Vitest |
+| 15 模型密钥不回显、工作空间隔离 | `tests/test_truth_contract.py` |
+
+### 7.4 门禁状态
 
 | 门禁 | 结果 |
 |---|---|
