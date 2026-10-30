@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  CaretRight, Lightning, Play, Plus,
+  CaretRight, Lightning, Play, Plus, Trash,
 } from "@phosphor-icons/react";
 import { api, type Application, type AppView, type Capability, type Obj, type QueryResult, type Verification } from "../api";
 import { toChoice, useAction, usePlatform } from "../store";
@@ -27,10 +27,12 @@ type Stage =
   };
 
 export function ApplicationView() {
-  const { wid, params, go } = usePlatform();
+  const { wid, params, go, toast, confirm, refreshRuntime } = usePlatform();
   const [selected, setSelected] = useState<string | null>(params.app || null);
   useEffect(() => { if (params.app) setSelected(params.app); }, [params.app]);
   const [stage, setStage] = useState<Stage>({ kind: "none" });
+  // 发布校验的一次性多问题清单：成功后清空，失败时常驻展示（不只依赖 toast）
+  const [publishProblem, setPublishProblem] = useState<string | null>(null);
 
   const load = useLoad(async () => {
     if (!wid) return { apps: [] as Application[], caps: [] as Capability[] };
@@ -45,6 +47,20 @@ export function ApplicationView() {
   const apps = load.data?.apps || [];
   const caps = load.data?.caps || [];
   const current = apps.find(a => a.id === selected) || apps[0] || null;
+  // 换应用后旧的发布问题清单不再相关
+  useEffect(() => { setPublishProblem(null); }, [current?.id]);
+
+  const { run: deleteCurrent, running: deletingCurrent } = useAction(async () => {
+    if (!wid || !current) return;
+    await api.deleteApplication(wid, current.id);
+    toast(`应用「${current.name}」已删除；对象实例、能力与审计记录都保留不变`, "ok");
+    const next = apps.find(a => a.id !== current.id) || null;
+    setSelected(next?.id || null);
+    setStage({ kind: "none" });
+    go("application", next ? { app: next.id } : undefined);
+    load.reload();
+    void refreshRuntime();
+  }, [wid, current]);
 
   if (load.loading && !load.data) {
     return (
@@ -68,11 +84,46 @@ export function ApplicationView() {
         </>}
         actions={<>
           {current && current.lifecycle !== "published" && (
-            <PublishApp app={current} onChanged={load.reload} />
+            <>
+              <span className="muted small">发布前会校验视图 / 查询 / 能力引用</span>
+              <PublishApp app={current} onChanged={load.reload} onProblem={setPublishProblem} />
+            </>
+          )}
+          {current && (
+            <Btn variant="subtle" disabled={deletingCurrent}
+                 aria-label={`删除应用 ${current.name}`}
+                 onClick={() => confirm({
+                   title: `删除应用「${current.name}」？`,
+                   danger: true,
+                   confirmText: "确认删除",
+                   body: (
+                     <p className="muted">
+                       应用及其视图、查询、智能体和挂载关系会被删除；业务对象实例、能力与审计记录都保留。这个操作不可撤销。
+                     </p>
+                   ),
+                   run: async () => { await deleteCurrent(); },
+                 })}>
+              <Trash size={14} /> 删除应用
+            </Btn>
           )}
           <Btn variant="subtle" onClick={load.reload} busy={load.loading}>刷新</Btn>
         </>}
       />
+
+      {publishProblem && (
+        <div className="banner err banner-row">
+          <div>
+            <b>发布没通过：下面这些问题要一次改完</b>
+            <ul className="doc-list">
+              {splitPublishProblems(publishProblem).map((problem, i) => <li key={i}>{problem}</li>)}
+            </ul>
+            <p className="muted small">
+              发布前的校验覆盖视图、查询、挂载能力与智能体；没过校验前应用不会被发布，运行时也不会变。
+            </p>
+          </div>
+          <Btn size="sm" variant="subtle" onClick={() => setPublishProblem(null)}>知道了</Btn>
+        </div>
+      )}
 
       <div className="layout app-layout">
         <Card title="应用清单" tight sub="选中一个来配置与运行。">
@@ -119,23 +170,48 @@ export function ApplicationView() {
   );
 }
 
-function PublishApp({ app, onChanged }: { app: Application; onChanged: () => void }) {
+function PublishApp({ app, onChanged, onProblem }: {
+  app: Application; onChanged: () => void; onProblem: (message: string | null) => void;
+}) {
   const { wid, toast, confirm, refreshRuntime } = usePlatform();
   const { run, running } = useAction(async () => {
     if (!wid) return;
-    await api.publishApplication(wid, app.id);
+    onProblem(null);
+    try {
+      await api.publishApplication(wid, app.id);
+    } catch (e) {
+      // 发布校验会一次性返回全部问题：错误原文交给调用方常驻展示，别只留一个 toast
+      onProblem((e as Error).message);
+      throw e;
+    }
     toast(`应用「${app.name}」已发布`, "ok");
     onChanged();
     void refreshRuntime();
-  }, [wid, app.id, refreshRuntime, app.name]);
+  }, [wid, app.id, refreshRuntime, app.name, onProblem]);
   return (
     <Btn size="sm" busy={running} onClick={() => confirm({
       title: `发布应用「${app.name}」？`,
       confirmText: "发布",
-      body: <p className="muted">发布后应用及其视图、查询、智能体对外可用。</p>,
+      body: (
+        <>
+          <p className="muted">发布后应用及其视图、查询、智能体对外可用。</p>
+          <p className="muted">
+            发布前会校验视图 / 查询 / 挂载能力与智能体：引用的对象类型、属性、关系要仍在已发布本体里，
+            挂载的能力要已发布。有问题会一次列全，改完再发布。
+          </p>
+        </>
+      ),
       run: async () => { await run(); },
     })}>发布应用</Btn>
   );
+}
+
+/** 把发布校验的中文清单拆成条目：friendly() 已逐条翻译并用「；」连接。
+ *  认不出的说法原样保留，绝不吞掉后端原文。 */
+function splitPublishProblems(message: string): string[] {
+  const body = message.includes("：") ? message.slice(message.indexOf("：") + 1) : message;
+  const parts = body.split("；").map(s => s.trim()).filter(Boolean);
+  return parts.length ? parts : [message];
 }
 
 function CreateApp({ onDone }: { onDone: () => void }) {
@@ -167,7 +243,7 @@ function AppDetail({ app, caps, stage, setStage, onChanged, onOpenObject }: {
   app: Application; caps: Capability[]; stage: Stage;
   setStage: (s: Stage) => void; onChanged: () => void; onOpenObject: (ref: string) => void;
 }) {
-  const { params, go } = usePlatform();
+  const { wid, params, go, toast, confirm } = usePlatform();
   const urlTab = APP_TABS.find(t => t === params.tab);
   const [tab, setTab] = useState<AppTab>(urlTab || "views");
   useEffect(() => { if (urlTab) setTab(urlTab); }, [urlTab]);
@@ -179,6 +255,27 @@ function AppDetail({ app, caps, stage, setStage, onChanged, onOpenObject }: {
   const queries = Object.values(app.queries || {});
   const agents = app.agents || [];
   const attached = (app.capabilities || []).map(id => caps.find(c => c.id === id)).filter(Boolean) as Capability[];
+
+  type PartKind = "view" | "query" | "agent" | "cap";
+  const { run: removePart, running: removingPart } = useAction(
+    async (kind: PartKind, value: string, label: string) => {
+      if (!wid) return;
+      if (kind === "view") await api.removeView(wid, app.id, value);
+      else if (kind === "query") await api.removeQuery(wid, app.id, value);
+      else if (kind === "agent") await api.removeAgent(wid, app.id, value);
+      else await api.detachCapability(wid, app.id, value);
+      toast(`已从应用「${app.name}」移除${label}`, "ok");
+      onChanged();
+    }, [wid, app.id, app.name, onChanged]);
+
+  const askRemovePart = (kind: PartKind, value: string, label: string,
+                         warning: string) => confirm({
+    title: `移除${label}？`,
+    danger: true,
+    confirmText: "确认移除",
+    body: <p className="muted">{warning}</p>,
+    run: async () => { await removePart(kind, value, label); },
+  });
 
   return (
     <Card title={app.name}
@@ -210,7 +307,18 @@ function AppDetail({ app, caps, stage, setStage, onChanged, onOpenObject }: {
                       <td className="nowrap"><b>{v.title || v.alias}</b></td>
                       <td className="nowrap"><Tag kind="plain">{labelOf(KIND_LABEL, v.kind)}</Tag></td>
                       <td className="wrap">{v.query_alias ? `查询 ${v.query_alias}` : (v.object_type || "–")}</td>
-                      <td className="nowrap"><OpenView app={app} view={v} onResult={setStage} /></td>
+                      <td className="nowrap">
+                        <div className="pill-row">
+                          <OpenView app={app} view={v} onResult={setStage} />
+                          <Btn size="sm" variant="subtle" disabled={removingPart}
+                               aria-label={`移除视图 ${v.alias}`}
+                               onClick={() => askRemovePart(
+                                 "view", v.alias, `视图「${v.title || v.alias}」`,
+                                 "只删除这个视图定义，不会删除查询、对象实例或上一次跑出来的数据。")}>
+                            <Trash size={12} /> 移除
+                          </Btn>
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -239,7 +347,18 @@ function AppDetail({ app, caps, stage, setStage, onChanged, onOpenObject }: {
                           <span className="muted"> · 顺带展开 {q.expand.map(e => e.relation).join("、")}</span>
                         )}
                       </td>
-                      <td className="nowrap"><RunQuery app={app} alias={q.alias} onResult={setStage} /></td>
+                      <td className="nowrap">
+                        <div className="pill-row">
+                          <RunQuery app={app} alias={q.alias} onResult={setStage} />
+                          <Btn size="sm" variant="subtle" disabled={removingPart}
+                               aria-label={`移除查询 ${q.alias}`}
+                               onClick={() => askRemovePart(
+                                 "query", q.alias, `查询「${q.title || q.alias}」`,
+                                 "视图仍引用这个查询时不能删除；先移除对应视图，再删除查询。")}>
+                            <Trash size={12} /> 移除
+                          </Btn>
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -262,7 +381,18 @@ function AppDetail({ app, caps, stage, setStage, onChanged, onOpenObject }: {
                     <tr key={g.alias}>
                       <td className="nowrap"><b>{g.alias}</b></td>
                       <td className="wrap" title={g.goal}>{g.goal}</td>
-                      <td className="nowrap"><RunAgent app={app} alias={g.alias} onResult={setStage} /></td>
+                      <td className="nowrap">
+                        <div className="pill-row">
+                          <RunAgent app={app} alias={g.alias} onResult={setStage} />
+                          <Btn size="sm" variant="subtle" disabled={removingPart}
+                               aria-label={`移除智能体 ${g.alias}`}
+                               onClick={() => askRemovePart(
+                                 "agent", g.alias, `智能体「${g.alias}」`,
+                                 "只从应用里移除这个智能体配置；历史运行记录与能力本身不受影响。")}>
+                            <Trash size={12} /> 移除
+                          </Btn>
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -278,7 +408,14 @@ function AppDetail({ app, caps, stage, setStage, onChanged, onOpenObject }: {
           <div className="chips">
             {!attached.length && <span className="muted">还没有挂载能力。</span>}
             {attached.map(c => (
-              <span key={c.id} className="chip"><Lightning size={11} /> {c.name} · {c.target_type}.{c.key}</span>
+              <span key={c.id} className="chip">
+                <Lightning size={11} /> {c.name} · {c.target_type}.{c.key}
+                <button type="button" className="chip-x" disabled={removingPart}
+                        aria-label={`从应用移除能力 ${c.name}`} title="取消挂载"
+                        onClick={() => askRemovePart(
+                          "cap", c.id, `能力「${c.name}」`,
+                          "只是取消这个应用与能力的挂载关系；能力本身和其他应用不受影响。已发布的应用需要重新发布后才会对外生效。")}>×</button>
+              </span>
             ))}
           </div>
           <AttachCapability app={app} caps={caps} onDone={onChanged} />

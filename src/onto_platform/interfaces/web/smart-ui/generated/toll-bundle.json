@@ -1,0 +1,852 @@
+{
+  "workspace": {
+    "id": "7c33935df1d1",
+    "name": "山东高速 · 收费稽核",
+    "operator": "山东高速集团"
+  },
+  "pass": {
+    "id": "P20261013084300SX0579",
+    "plate": "鲁SX0579",
+    "time": "2026-10-13T08:43:00",
+    "fee": 138.0,
+    "feeRule": "TRUCK_BY_AXLE",
+    "station": "济南西收费站"
+  },
+  "identity": {
+    "plate": "鲁SX0579",
+    "plateColor": "蓝",
+    "vehicleType": "客车",
+    "etcType": "客车",
+    "recognizedType": "货车",
+    "axleCount": 2,
+    "riskLevel": "HIGH",
+    "passCount": 7,
+    "owner": "山东鲁通物流有限公司",
+    "passId": "P20261013084300SX0579",
+    "passTime": "2026-10-13T08:43:00",
+    "station": "济南西收费站",
+    "fee": "¥138.00",
+    "feeRule": "TRUCK_BY_AXLE",
+    "tags": [
+      "ETC 记账卡",
+      "高风险车辆",
+      "车型识别冲突"
+    ],
+    "headline": "ETC 登记为客车，车道识别为货车"
+  },
+  "relationship": {
+    "nodes": [
+      {
+        "id": "vehicle",
+        "type": "Vehicle",
+        "label": "鲁SX0579",
+        "sub": "客车（登记） · HIGH",
+        "tone": "warning",
+        "rank": 0
+      },
+      {
+        "id": "obu",
+        "type": "OBU",
+        "label": "OBU3701000123",
+        "sub": "车载单元 · 正常",
+        "tone": "neutral",
+        "rank": 1
+      },
+      {
+        "id": "card",
+        "type": "ETCCard",
+        "label": "ETC 记账卡",
+        "sub": "3701 **** 8901",
+        "tone": "neutral",
+        "rank": 1
+      },
+      {
+        "id": "pass",
+        "type": "VehiclePassRecord",
+        "label": "P20261013084300SX0579",
+        "sub": "08:43:00 · abnormal_flag",
+        "tone": "danger",
+        "rank": 1
+      },
+      {
+        "id": "entry",
+        "type": "Station",
+        "label": "济南北",
+        "sub": "入口站 · 08:01:12",
+        "tone": "neutral",
+        "rank": 2
+      },
+      {
+        "id": "gate1",
+        "type": "Gate",
+        "label": "G37010100B1",
+        "sub": "崮山门架 · 08:15:37",
+        "tone": "neutral",
+        "rank": 2
+      },
+      {
+        "id": "gate2",
+        "type": "Gate",
+        "label": "G37010100B2",
+        "sub": "泰安西门架 · 08:25:04",
+        "tone": "neutral",
+        "rank": 2
+      },
+      {
+        "id": "exit",
+        "type": "Station",
+        "label": "济南西",
+        "sub": "出口站 · 08:42:48",
+        "tone": "neutral",
+        "rank": 2
+      },
+      {
+        "id": "txn",
+        "type": "Transaction",
+        "label": "T20261013084300SX0579",
+        "sub": "¥138.00 · 车型计费冲突",
+        "tone": "danger",
+        "rank": 2
+      }
+    ],
+    "edges": [
+      {
+        "source": "vehicle",
+        "target": "obu",
+        "label": "装有"
+      },
+      {
+        "source": "obu",
+        "target": "card",
+        "label": "绑定"
+      },
+      {
+        "source": "vehicle",
+        "target": "pass",
+        "label": "通行"
+      },
+      {
+        "source": "pass",
+        "target": "entry",
+        "label": "入口"
+      },
+      {
+        "source": "pass",
+        "target": "gate1",
+        "label": "经过"
+      },
+      {
+        "source": "pass",
+        "target": "gate2",
+        "label": "经过"
+      },
+      {
+        "source": "pass",
+        "target": "exit",
+        "label": "出口"
+      },
+      {
+        "source": "pass",
+        "target": "txn",
+        "label": "交易"
+      },
+      {
+        "source": "card",
+        "target": "exit",
+        "label": "发行于"
+      }
+    ],
+    "centerId": "pass"
+  },
+  "timeline": {
+    "anchor": "2026-10-13T08:43:00",
+    "events": [
+      {
+        "id": "e1",
+        "time": "08:01:12",
+        "title": "驶入入口站",
+        "detail": "济南北 · 入口车道 03 · 车牌识别成功",
+        "source": "Station / VehiclePassRecord",
+        "nodeId": "entry",
+        "tone": "neutral"
+      },
+      {
+        "id": "e2",
+        "time": "08:15:37",
+        "title": "通过门架",
+        "detail": "G37010100B1 · 崮山门架 · 轴型识别触发",
+        "source": "Gate",
+        "nodeId": "gate1",
+        "tone": "neutral"
+      },
+      {
+        "id": "e3",
+        "time": "08:25:04",
+        "title": "通过门架",
+        "detail": "G37010100B2 · 泰安西门架 · 识别车型货车",
+        "source": "Gate",
+        "nodeId": "gate2",
+        "tone": "neutral"
+      },
+      {
+        "id": "e4",
+        "time": "08:42:48",
+        "title": "驶出收费站",
+        "detail": "济南西 · 出口车道 07 · ETC 交易开始",
+        "source": "Station",
+        "nodeId": "exit",
+        "tone": "neutral"
+      },
+      {
+        "id": "e5",
+        "time": "08:43:00",
+        "title": "通行记录落库",
+        "detail": "abnormal_flag = true · ETC 登记客车 / 车道识别货车",
+        "source": "VehiclePassRecord",
+        "nodeId": "pass",
+        "tone": "danger",
+        "anchor": true
+      },
+      {
+        "id": "e6",
+        "time": "08:43:02",
+        "title": "交易完成",
+        "detail": "扣费 ¥138.00 · 计费规则 TRUCK_BY_AXLE",
+        "source": "Transaction",
+        "nodeId": "txn",
+        "tone": "warning"
+      }
+    ]
+  },
+  "location": {
+    "region": "G2 京沪高速 · 济南—泰安段",
+    "points": [
+      {
+        "id": "entry",
+        "label": "济南北",
+        "kind": "station",
+        "lng": 117.031,
+        "lat": 36.681,
+        "time": "08:01:12",
+        "tone": "neutral"
+      },
+      {
+        "id": "gate1",
+        "label": "崮山门架",
+        "kind": "gate",
+        "lng": 116.981,
+        "lat": 36.634,
+        "time": "08:15:37",
+        "tone": "neutral"
+      },
+      {
+        "id": "gate2",
+        "label": "泰安西门架",
+        "kind": "gate",
+        "lng": 116.912,
+        "lat": 36.571,
+        "time": "08:25:04",
+        "tone": "neutral"
+      },
+      {
+        "id": "exit",
+        "label": "济南西",
+        "kind": "station",
+        "lng": 116.872,
+        "lat": 36.661,
+        "time": "08:42:48",
+        "tone": "warning"
+      }
+    ],
+    "distanceKm": 74.6,
+    "durationMin": 42
+  },
+  "statistics": {
+    "metrics": [
+      {
+        "label": "历史通行",
+        "value": "7",
+        "unit": "次",
+        "hint": "近 90 天",
+        "tone": "neutral"
+      },
+      {
+        "label": "异常通行",
+        "value": "2",
+        "unit": "次",
+        "hint": "车型冲突",
+        "tone": "danger"
+      },
+      {
+        "label": "累计金额",
+        "value": "842.60",
+        "unit": "元",
+        "hint": "近 90 天",
+        "tone": "neutral"
+      },
+      {
+        "label": "平均时长",
+        "value": "42",
+        "unit": "min",
+        "hint": "本段 74.6 km",
+        "tone": "neutral"
+      }
+    ],
+    "series": [
+      {
+        "label": "06月",
+        "value": 1
+      },
+      {
+        "label": "07月",
+        "value": 1
+      },
+      {
+        "label": "08月",
+        "value": 2
+      },
+      {
+        "label": "09月",
+        "value": 2
+      },
+      {
+        "label": "10月",
+        "value": 1
+      }
+    ],
+    "note": "10 月异常率 28.6%，高于同车型均值 4.2%"
+  },
+  "state": {
+    "state": "严重异常",
+    "tone": "danger",
+    "description": "ETC 登记车型与车道识别车型不一致，计费规则存在冲突",
+    "confidence": 0.94,
+    "rules": [
+      {
+        "priority": 1,
+        "condition": "etc_vehicle_type != recognized_vehicle_type",
+        "value": "严重异常",
+        "hit": true
+      },
+      {
+        "priority": 2,
+        "condition": "fee > 10000",
+        "value": "重点关注",
+        "hit": true
+      },
+      {
+        "priority": 3,
+        "condition": "abnormal_flag == true",
+        "value": "待稽核",
+        "hit": true
+      }
+    ],
+    "recommendations": [
+      "analyze_exception",
+      "create_task"
+    ]
+  },
+  "rule": {
+    "title": "车型识别与收费规则冲突",
+    "ruleName": "vehicle_type_fee_rule_conflict",
+    "summary": "ETC 卡内登记为客车，车道设备实际识别为货车；计费程序仍按卡内登记车型套用费率，导致本段通行费按客车标准计收。",
+    "rootCause": "ETC 登记车型（客车）≠ 车道识别车型（货车）",
+    "causalChain": [
+      "车辆驶入收费车道，车牌识别与轴型识别完成",
+      "天线读取 OBU / ETC 卡内登记的车型",
+      "计费程序以卡内登记车型套用费率，未采用实际识别车型",
+      "实际识别车型与卡内登记车型不一致，费率适用错误",
+      "通行费按错误车型计收，形成少收与稽核风险"
+    ],
+    "template": "该车 ETC 登记车型为客车，实际识别车型为货车，按 TRUCK_BY_AXLE 计费存在冲突",
+    "fields": [
+      {
+        "label": "ETC 登记",
+        "value": "客车"
+      },
+      {
+        "label": "识别车型",
+        "value": "货车"
+      },
+      {
+        "label": "计费规则",
+        "value": "TRUCK_BY_AXLE"
+      },
+      {
+        "label": "实收",
+        "value": "¥138.00"
+      }
+    ],
+    "confidence": 0.94,
+    "evidence": [
+      "pass_record_abnormal_context",
+      "vehicle_type_fee_rule_conflict"
+    ]
+  },
+  "action": {
+    "note": "当前角色 analyst：2 个动作可执行；生成处置任务需 operator / supervisor，已从程序裁剪",
+    "allowed": [
+      "trace_vehicle",
+      "analyze_exception"
+    ],
+    "denied": [
+      {
+        "actionId": "create_task",
+        "displayName": "生成处置任务",
+        "roles": [
+          "operator",
+          "supervisor"
+        ],
+        "reason": "当前角色 analyst 不在 operator, supervisor 中"
+      }
+    ]
+  },
+  "actionMeta": {
+    "trace_vehicle": {
+      "displayName": "轨迹追溯",
+      "description": "沿车辆关系链展开通行轨迹与画像",
+      "roles": [
+        "analyst",
+        "operator"
+      ]
+    },
+    "analyze_exception": {
+      "displayName": "分析异常",
+      "description": "按规则链解释车型识别冲突与计费差异",
+      "roles": [
+        "analyst"
+      ]
+    },
+    "create_task": {
+      "displayName": "生成处置任务",
+      "description": "依据根因生成稽核处置工单",
+      "roles": [
+        "operator",
+        "supervisor"
+      ]
+    }
+  },
+  "viewPayloads": {
+    "view_identity": {
+      "rows": [
+        {
+          "plate": "鲁SX0579",
+          "plateColor": "蓝",
+          "vehicleType": "客车",
+          "etcType": "客车",
+          "recognizedType": "货车",
+          "axleCount": 2,
+          "riskLevel": "HIGH",
+          "passCount": 7,
+          "owner": "山东鲁通物流有限公司",
+          "passId": "P20261013084300SX0579",
+          "passTime": "2026-10-13T08:43:00",
+          "station": "济南西收费站",
+          "fee": "¥138.00",
+          "feeRule": "TRUCK_BY_AXLE",
+          "tags": [
+            "ETC 记账卡",
+            "高风险车辆",
+            "车型识别冲突"
+          ],
+          "headline": "ETC 登记为客车，车道识别为货车"
+        }
+      ]
+    },
+    "view_relationship": {
+      "rows": [
+        {
+          "nodes": [
+            {
+              "id": "vehicle",
+              "type": "Vehicle",
+              "label": "鲁SX0579",
+              "sub": "客车（登记） · HIGH",
+              "tone": "warning",
+              "rank": 0
+            },
+            {
+              "id": "obu",
+              "type": "OBU",
+              "label": "OBU3701000123",
+              "sub": "车载单元 · 正常",
+              "tone": "neutral",
+              "rank": 1
+            },
+            {
+              "id": "card",
+              "type": "ETCCard",
+              "label": "ETC 记账卡",
+              "sub": "3701 **** 8901",
+              "tone": "neutral",
+              "rank": 1
+            },
+            {
+              "id": "pass",
+              "type": "VehiclePassRecord",
+              "label": "P20261013084300SX0579",
+              "sub": "08:43:00 · abnormal_flag",
+              "tone": "danger",
+              "rank": 1
+            },
+            {
+              "id": "entry",
+              "type": "Station",
+              "label": "济南北",
+              "sub": "入口站 · 08:01:12",
+              "tone": "neutral",
+              "rank": 2
+            },
+            {
+              "id": "gate1",
+              "type": "Gate",
+              "label": "G37010100B1",
+              "sub": "崮山门架 · 08:15:37",
+              "tone": "neutral",
+              "rank": 2
+            },
+            {
+              "id": "gate2",
+              "type": "Gate",
+              "label": "G37010100B2",
+              "sub": "泰安西门架 · 08:25:04",
+              "tone": "neutral",
+              "rank": 2
+            },
+            {
+              "id": "exit",
+              "type": "Station",
+              "label": "济南西",
+              "sub": "出口站 · 08:42:48",
+              "tone": "neutral",
+              "rank": 2
+            },
+            {
+              "id": "txn",
+              "type": "Transaction",
+              "label": "T20261013084300SX0579",
+              "sub": "¥138.00 · 车型计费冲突",
+              "tone": "danger",
+              "rank": 2
+            }
+          ],
+          "edges": [
+            {
+              "source": "vehicle",
+              "target": "obu",
+              "label": "装有"
+            },
+            {
+              "source": "obu",
+              "target": "card",
+              "label": "绑定"
+            },
+            {
+              "source": "vehicle",
+              "target": "pass",
+              "label": "通行"
+            },
+            {
+              "source": "pass",
+              "target": "entry",
+              "label": "入口"
+            },
+            {
+              "source": "pass",
+              "target": "gate1",
+              "label": "经过"
+            },
+            {
+              "source": "pass",
+              "target": "gate2",
+              "label": "经过"
+            },
+            {
+              "source": "pass",
+              "target": "exit",
+              "label": "出口"
+            },
+            {
+              "source": "pass",
+              "target": "txn",
+              "label": "交易"
+            },
+            {
+              "source": "card",
+              "target": "exit",
+              "label": "发行于"
+            }
+          ],
+          "centerId": "pass"
+        }
+      ]
+    },
+    "view_timeline": {
+      "rows": [
+        {
+          "anchor": "2026-10-13T08:43:00",
+          "events": [
+            {
+              "id": "e1",
+              "time": "08:01:12",
+              "title": "驶入入口站",
+              "detail": "济南北 · 入口车道 03 · 车牌识别成功",
+              "source": "Station / VehiclePassRecord",
+              "nodeId": "entry",
+              "tone": "neutral"
+            },
+            {
+              "id": "e2",
+              "time": "08:15:37",
+              "title": "通过门架",
+              "detail": "G37010100B1 · 崮山门架 · 轴型识别触发",
+              "source": "Gate",
+              "nodeId": "gate1",
+              "tone": "neutral"
+            },
+            {
+              "id": "e3",
+              "time": "08:25:04",
+              "title": "通过门架",
+              "detail": "G37010100B2 · 泰安西门架 · 识别车型货车",
+              "source": "Gate",
+              "nodeId": "gate2",
+              "tone": "neutral"
+            },
+            {
+              "id": "e4",
+              "time": "08:42:48",
+              "title": "驶出收费站",
+              "detail": "济南西 · 出口车道 07 · ETC 交易开始",
+              "source": "Station",
+              "nodeId": "exit",
+              "tone": "neutral"
+            },
+            {
+              "id": "e5",
+              "time": "08:43:00",
+              "title": "通行记录落库",
+              "detail": "abnormal_flag = true · ETC 登记客车 / 车道识别货车",
+              "source": "VehiclePassRecord",
+              "nodeId": "pass",
+              "tone": "danger",
+              "anchor": true
+            },
+            {
+              "id": "e6",
+              "time": "08:43:02",
+              "title": "交易完成",
+              "detail": "扣费 ¥138.00 · 计费规则 TRUCK_BY_AXLE",
+              "source": "Transaction",
+              "nodeId": "txn",
+              "tone": "warning"
+            }
+          ]
+        }
+      ]
+    },
+    "view_location": {
+      "rows": [
+        {
+          "region": "G2 京沪高速 · 济南—泰安段",
+          "points": [
+            {
+              "id": "entry",
+              "label": "济南北",
+              "kind": "station",
+              "lng": 117.031,
+              "lat": 36.681,
+              "time": "08:01:12",
+              "tone": "neutral"
+            },
+            {
+              "id": "gate1",
+              "label": "崮山门架",
+              "kind": "gate",
+              "lng": 116.981,
+              "lat": 36.634,
+              "time": "08:15:37",
+              "tone": "neutral"
+            },
+            {
+              "id": "gate2",
+              "label": "泰安西门架",
+              "kind": "gate",
+              "lng": 116.912,
+              "lat": 36.571,
+              "time": "08:25:04",
+              "tone": "neutral"
+            },
+            {
+              "id": "exit",
+              "label": "济南西",
+              "kind": "station",
+              "lng": 116.872,
+              "lat": 36.661,
+              "time": "08:42:48",
+              "tone": "warning"
+            }
+          ],
+          "distanceKm": 74.6,
+          "durationMin": 42
+        }
+      ]
+    },
+    "view_statistics": {
+      "rows": [
+        {
+          "metrics": [
+            {
+              "label": "历史通行",
+              "value": "7",
+              "unit": "次",
+              "hint": "近 90 天",
+              "tone": "neutral"
+            },
+            {
+              "label": "异常通行",
+              "value": "2",
+              "unit": "次",
+              "hint": "车型冲突",
+              "tone": "danger"
+            },
+            {
+              "label": "累计金额",
+              "value": "842.60",
+              "unit": "元",
+              "hint": "近 90 天",
+              "tone": "neutral"
+            },
+            {
+              "label": "平均时长",
+              "value": "42",
+              "unit": "min",
+              "hint": "本段 74.6 km",
+              "tone": "neutral"
+            }
+          ],
+          "series": [
+            {
+              "label": "06月",
+              "value": 1
+            },
+            {
+              "label": "07月",
+              "value": 1
+            },
+            {
+              "label": "08月",
+              "value": 2
+            },
+            {
+              "label": "09月",
+              "value": 2
+            },
+            {
+              "label": "10月",
+              "value": 1
+            }
+          ],
+          "note": "10 月异常率 28.6%，高于同车型均值 4.2%"
+        }
+      ]
+    },
+    "view_state": {
+      "rows": [
+        {
+          "state": "严重异常",
+          "tone": "danger",
+          "description": "ETC 登记车型与车道识别车型不一致，计费规则存在冲突",
+          "confidence": 0.94,
+          "rules": [
+            {
+              "priority": 1,
+              "condition": "etc_vehicle_type != recognized_vehicle_type",
+              "value": "严重异常",
+              "hit": true
+            },
+            {
+              "priority": 2,
+              "condition": "fee > 10000",
+              "value": "重点关注",
+              "hit": true
+            },
+            {
+              "priority": 3,
+              "condition": "abnormal_flag == true",
+              "value": "待稽核",
+              "hit": true
+            }
+          ],
+          "recommendations": [
+            "analyze_exception",
+            "create_task"
+          ]
+        }
+      ]
+    },
+    "view_rule": {
+      "rows": [
+        {
+          "title": "车型识别与收费规则冲突",
+          "ruleName": "vehicle_type_fee_rule_conflict",
+          "summary": "ETC 卡内登记为客车，车道设备实际识别为货车；计费程序仍按卡内登记车型套用费率，导致本段通行费按客车标准计收。",
+          "rootCause": "ETC 登记车型（客车）≠ 车道识别车型（货车）",
+          "causalChain": [
+            "车辆驶入收费车道，车牌识别与轴型识别完成",
+            "天线读取 OBU / ETC 卡内登记的车型",
+            "计费程序以卡内登记车型套用费率，未采用实际识别车型",
+            "实际识别车型与卡内登记车型不一致，费率适用错误",
+            "通行费按错误车型计收，形成少收与稽核风险"
+          ],
+          "template": "该车 ETC 登记车型为客车，实际识别车型为货车，按 TRUCK_BY_AXLE 计费存在冲突",
+          "fields": [
+            {
+              "label": "ETC 登记",
+              "value": "客车"
+            },
+            {
+              "label": "识别车型",
+              "value": "货车"
+            },
+            {
+              "label": "计费规则",
+              "value": "TRUCK_BY_AXLE"
+            },
+            {
+              "label": "实收",
+              "value": "¥138.00"
+            }
+          ],
+          "confidence": 0.94,
+          "evidence": [
+            "pass_record_abnormal_context",
+            "vehicle_type_fee_rule_conflict"
+          ]
+        }
+      ]
+    },
+    "view_action": {
+      "rows": [
+        {
+          "note": "当前角色 analyst：2 个动作可执行；生成处置任务需 operator / supervisor，已从程序裁剪",
+          "allowed": [
+            "trace_vehicle",
+            "analyze_exception"
+          ],
+          "denied": [
+            {
+              "actionId": "create_task",
+              "displayName": "生成处置任务",
+              "roles": [
+                "operator",
+                "supervisor"
+              ],
+              "reason": "当前角色 analyst 不在 operator, supervisor 中"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

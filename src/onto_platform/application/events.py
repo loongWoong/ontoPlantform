@@ -25,6 +25,7 @@ EVENT_CATALOG: dict[str, int] = {
     "release.canary_deployed": 1,
     "release.canary_promoted": 1,
     "capability.published": 1,
+    "capability.deleted": 1,
     "capability.invoked": 1,
     "capability.verified": 1,
     "capability.contract_failed": 1,

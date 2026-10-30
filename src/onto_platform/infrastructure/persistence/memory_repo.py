@@ -112,6 +112,22 @@ class InMemoryRepository:
                 if k == kind and (workspace_id is None or ws == workspace_id)
             ]
 
+    def workspace_kinds(self, workspace_id: str) -> dict[str, int]:
+        with self._lock:
+            counts: dict[str, int] = {}
+            for (kind, ws, _) in self._data:
+                if ws == workspace_id:
+                    counts[kind] = counts.get(kind, 0) + 1
+            return counts
+
+    def delete_workspace_documents(self, workspace_id: str) -> int:
+        with self._lock:
+            keys = [key for key in self._data if key[1] == workspace_id]
+            for key in keys:
+                self._data.pop(key, None)
+                self._versions.pop(key, None)
+            return len(keys)
+
 
 class _MemoryTransaction:
     """Context manager returned by ``InMemoryRepository.transaction()``."""

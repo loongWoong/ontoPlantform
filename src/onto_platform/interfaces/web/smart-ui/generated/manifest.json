@@ -1,0 +1,43 @@
+{
+  "ok": true,
+  "programHash": "sha256:f03bb72b61a3fe5a0a2c768cc5b0a3100a7390cc08dcd449b53c073b0a2fff73",
+  "programBytes": 1966,
+  "views": [
+    "identity",
+    "relationship",
+    "timeline",
+    "location",
+    "statistics",
+    "state",
+    "rule",
+    "action"
+  ],
+  "tools": [
+    "view_identity",
+    "view_relationship",
+    "view_timeline",
+    "view_location",
+    "view_statistics",
+    "view_state",
+    "view_rule",
+    "view_action",
+    "trace_vehicle",
+    "analyze_exception"
+  ],
+  "permissions": {
+    "callerRoles": [
+      "analyst"
+    ],
+    "allowed": [
+      "trace_vehicle",
+      "analyze_exception"
+    ],
+    "denied": [
+      "create_task"
+    ]
+  },
+  "errors": [],
+  "warnings": [
+    "E_FORBIDDEN"
+  ]
+}

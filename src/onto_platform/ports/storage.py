@@ -48,6 +48,19 @@ class Repository(Protocol):
         """All documents of a kind, optionally scoped to a workspace."""
         ...
 
+    def workspace_kinds(self, workspace_id: str) -> dict[str, int]:
+        """Counts per document kind for one workspace (emptiness checks)."""
+        ...
+
+    def delete_workspace_documents(self, workspace_id: str) -> int:
+        """Delete every document scoped to a workspace; return the count.
+
+        Audit rows live in their own append-only table and are deliberately
+        not touched here - the evidence of a workspace's life survives its
+        deletion.
+        """
+        ...
+
     def transaction(self):
         """Context manager grouping writes into one atomic commit.
 

@@ -1,0 +1,34 @@
+{
+  "version": "1.0",
+  "ontologyVersion": "com.mypalantir.demo.toll.ontology@1.0",
+  "namespace": "com.mypalantir.demo.toll.ontology",
+  "objects": 7,
+  "links": 8,
+  "rules": 3,
+  "actions": 3,
+  "errors": 0,
+  "object_names": [
+    "Vehicle",
+    "OBU",
+    "ETCCard",
+    "Station",
+    "Gate",
+    "Transaction",
+    "VehiclePassRecord"
+  ],
+  "link_names": [
+    "vehicle_has_obu",
+    "obu_has_etc_card",
+    "etc_card_issued_at_station",
+    "vehicle_has_pass_records",
+    "pass_record_involves_vehicle",
+    "pass_record_through_gate",
+    "pass_record_at_station",
+    "pass_record_has_transaction"
+  ],
+  "action_ids": [
+    "trace_vehicle",
+    "analyze_exception",
+    "create_task"
+  ]
+}

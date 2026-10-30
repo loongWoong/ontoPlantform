@@ -32,6 +32,42 @@ def _new_id() -> str:
     return uuid4().hex[:12]
 
 
+def active_ontology_row(ctx: "ApplicationContext", workspace_id: str) -> dict | None:
+    """The ontology revision an editor is working on (stable choice).
+
+    A revision draft wins over the deprecated parent; otherwise the highest
+    non-deprecated revision is the live one.  Ties are broken by
+    version/created_at/id so the pick never depends on storage row order.
+    """
+    rows = ctx.repo.list("ontology", workspace_id)
+    drafts = [row for row in rows if row.get("lifecycle") == "draft"]
+    if drafts:
+        return max(drafts, key=lambda row: (
+            int(row.get("version") or 0),
+            str(row.get("created_at") or ""),
+            str(row.get("id") or "")))
+    live = [row for row in rows if row.get("lifecycle") != "deprecated"]
+    if not live:
+        return None
+    return max(live, key=lambda row: (
+        int(row.get("version") or 0),
+        str(row.get("updated_at") or ""),
+        str(row.get("id") or "")))
+
+
+def published_ontology_row(ctx: "ApplicationContext",
+                           workspace_id: str) -> dict | None:
+    """The highest **published** ontology revision (the serving contract)."""
+    rows = [
+        row for row in ctx.repo.list("ontology", workspace_id)
+        if row.get("lifecycle") == "published"
+    ]
+    if not rows:
+        return None
+    return max(rows, key=lambda row: (
+        int(row.get("version") or 0), str(row.get("id") or "")))
+
+
 @dataclass
 class ApplicationContext:
     """Everything a use case may touch - and nothing more."""
@@ -260,10 +296,12 @@ class ApplicationContext:
         from ..domain.intelligence.model import SemanticIndex
         from ..domain.ontology.model import Ontology
 
-        ontologies = self.repo.list("ontology", workspace_id)
-        if not ontologies:
+        # agent context must describe the serving schema, not an un-published
+        # draft that happens to be the newest storage row
+        row = published_ontology_row(self, workspace_id)
+        if row is None:
             return
-        ontology = Ontology.from_dict(ontologies[0])
+        ontology = Ontology.from_dict(row)
         context_text = SemanticIndex.from_ontology(ontology).context_text(ontology)
         for data in self.repo.list("capability", workspace_id):
             impl = data.get("implementation", {})

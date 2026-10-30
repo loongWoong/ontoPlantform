@@ -14,6 +14,9 @@ export default defineConfig({
   },
   server: {
     port: 5173,
-    proxy: { "/api": "http://127.0.0.1:8100" },   // onto-api 默认端口
+    proxy: {
+      "/api": "http://127.0.0.1:8100",            // onto-api 默认端口
+      "/smart-ui": "http://127.0.0.1:8100",       // 独立构建的智能视图运行时
+    },
   },
 });

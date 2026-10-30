@@ -284,6 +284,12 @@ class Ontology:
             raise NotFoundError(f"relation not found: {name!r}")
         del self.relations[name]
 
+    def remove_term(self, term: str) -> None:
+        self._ensure_editable()
+        if term not in self.vocabulary:
+            raise NotFoundError(f"vocabulary term not found: {term!r}")
+        del self.vocabulary[term]
+
     def add_term(self, term: VocabularyTerm) -> None:
         self._ensure_editable()
         if term.kind == "object" and term.concept not in self.objects:

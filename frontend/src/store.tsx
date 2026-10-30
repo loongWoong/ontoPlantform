@@ -78,10 +78,21 @@ export interface Completeness {
   suggestions: string[];
 }
 
+/** 危险确认的二次输入：值必须与 expected 完全一致，确认按钮才启用。 */
+export interface ConfirmInput {
+  label: string;
+  placeholder?: string;
+  expected: string;
+  hint?: ReactNode;
+}
+
 export interface ConfirmState {
   title: string; body: ReactNode;
   confirmText?: string; danger?: boolean;
-  run: () => Promise<void>;
+  /** 需要用户手打一段文字才能确认时才传；不传就是普通确认。 */
+  input?: ConfirmInput;
+  /** 带 input 时收到用户输入的原值；不带 input 时参数恒为 undefined。 */
+  run: (input?: string) => Promise<void>;
 }
 
 interface Ctx {
@@ -89,6 +100,7 @@ interface Ctx {
   workspaces: Workspace[];
   workspaceName: string;
   setWorkspace: (id: string) => void;
+  clearWorkspace: () => void;
   reloadWorkspaces: () => Promise<void>;
 
   online: boolean;
@@ -101,7 +113,7 @@ interface Ctx {
   setLlm: (s: LlmSetting) => void;
 
   toast: (text: string, kind?: ToastKind) => void;
-  confirm: (s: Omit<ConfirmState, "run"> & { run: () => Promise<void> }) => void;
+  confirm: (s: Omit<ConfirmState, "run"> & { run: (input?: string) => Promise<void> }) => void;
 
   aiOpen: boolean;
   setAiOpen: (v: boolean) => void;
@@ -207,6 +219,7 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
         : (prev && list.some(w => w.id === prev)) ? prev
         : list.some(w => w.id === saved) ? saved : (list[0]?.id ?? null);
       if (next) localStorage.setItem(LS.ws, next);
+      else localStorage.removeItem(LS.ws);
       return next;
     });
   }, []);
@@ -289,6 +302,14 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
     if (location.hash !== hash) location.hash = hash;
   }, []);
 
+  const clearWorkspace = useCallback(() => {
+    setWid(null);
+    localStorage.removeItem(LS.ws);
+    const { nav } = readHash();
+    const hash = hashFor(null, nav);
+    if (location.hash !== hash) location.hash = hash;
+  }, []);
+
   const go = useCallback((tab: string, params?: Record<string, string>) => {
     localStorage.setItem(LS.nav, tab);
     const hash = hashFor(wid, tab, params);
@@ -303,13 +324,14 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
     workspaces,
     workspaceName: workspaces.find(w => w.id === wid)?.name || "",
     setWorkspace,
+    clearWorkspace,
     reloadWorkspaces,
     online, version, authMode, token, setToken, llmReady, llm, setLlm,
     toast, confirm,
     aiOpen, setAiOpen, aiContext, setAiContext,
     nav: route.nav, params: route.params, go,
     objectTypes, relationTypes, completeness, refreshRuntime,
-  }), [wid, workspaces, setWorkspace, reloadWorkspaces, online, version, authMode, token, setToken,
+  }), [wid, workspaces, setWorkspace, clearWorkspace, reloadWorkspaces, online, version, authMode, token, setToken,
        llmReady, llm, setLlm, toast, confirm, aiOpen, aiContext, go, route,
        objectTypes, relationTypes, completeness, refreshRuntime]);
 
@@ -355,17 +377,39 @@ export function useAction<A extends unknown[] = []>(fn: (...a: A) => Promise<unk
 }
 
 function ConfirmDialog({ state, close }: { state: ConfirmState; close: () => void }) {
+  const [value, setValue] = useState("");
+  useEffect(() => { setValue(""); }, [state]);
+  const need = state.input;
+  // 精确相等（含首尾空格）才算匹配：危险动作用户是复制名称，不做任何宽容归一化
+  const matched = !need || value === need.expected;
   const { run, running } = useAction(async () => {
-    await state.run();
+    await state.run(need ? value : undefined);
     close();          // 只有成功才关闭；抛错时 useAction 已 toast，弹窗保持打开
-  }, [state]);
+  }, [state, need, value]);
   return (
     <div className="scrim" role="dialog" aria-modal="true" aria-label={state.title} onClick={e => { if (e.target === e.currentTarget) close(); }}>
       <div className="modal">
         <div className="modal-head"><h2>{state.title}</h2></div>
         <div>{state.body}</div>
+        {need && (
+          <div className="field">
+            <label htmlFor="confirm-guard">{need.label}</label>
+            <div className="field-ctl">
+              <input id="confirm-guard" value={value} placeholder={need.placeholder}
+                     aria-label={need.label} autoComplete="off" spellCheck={false} autoFocus
+                     disabled={running}
+                     onChange={e => setValue(e.target.value)} />
+              <span className="field-hint">
+                {need.hint || "输入必须与提示完全一致（含大小写与空格），否则不能确认。"}
+                {!matched && value ? " 当前输入不一致。" : ""}
+              </span>
+            </div>
+          </div>
+        )}
         <div className="btn-row">
-          <button type="button" className={state.danger ? "danger" : ""} disabled={running} onClick={() => void run()}>
+          <button type="button" className={state.danger ? "danger" : ""} disabled={running || !matched}
+                  title={!matched ? "输入的内容与要求不一致，确认按钮不可用" : undefined}
+                  onClick={() => void run()}>
             {running ? "执行中…" : state.confirmText || "确认"}
           </button>
           <button type="button" className="subtle" disabled={running} onClick={close}>取消</button>

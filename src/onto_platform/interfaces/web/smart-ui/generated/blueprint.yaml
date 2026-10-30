@@ -1,0 +1,29 @@
+name: VehicleAbnormalAnalysis
+displayName: 车辆异常分析
+description: 由本体 com.mypalantir.demo.toll.ontology@1.0 驱动的异常分析视图；按目标 VehiclePassRecord 的能力求交生成。
+schemaVersion: '1.0'
+ontologyVersion: com.mypalantir.demo.toll.ontology@1.0
+context:
+  object: VehiclePassRecord
+  goal: anomaly_analysis
+  focus:
+    key: plate_number
+    value: 鲁SX0579
+views:
+- perspective: identity
+- perspective: relationship
+- perspective: timeline
+- perspective: location
+- perspective: statistics
+- perspective: state
+- perspective: rule
+- perspective: action
+actions:
+- trace_vehicle
+- analyze_exception
+layout: auto
+meta:
+  generatedBy: ai_planner
+  sourceQuestion: 鲁SX0579 为什么异常？
+  intentVersion: '1.0'
+  confidence: 0.9400000000000001

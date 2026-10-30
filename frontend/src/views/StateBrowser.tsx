@@ -3,7 +3,7 @@ import { ArrowClockwise, ArrowRight, MagnifyingGlass } from "@phosphor-icons/rea
 import { api, type Obj, type StateSnapshot } from "../api";
 import { useAction, usePlatform } from "../store";
 import {
-  Btn, Card, Collapsible, Drawer, Empty, ErrorNote, Field, FilterRowEditor,
+  Btn, Card, Collapsible, Drawer, Empty, ErrorNote, Field, FilterRowEditor, JsonField,
   Loading, ObjectTable, PageHead, Select, TableWrap, Tag, TextInput,
   buildFilters, useLoad, type FilterRow,
 } from "../ui";
@@ -37,6 +37,11 @@ export function StateView() {
     () => (wid && query ? api.find(wid, query.type, stringify(query.filters)) : Promise.resolve([] as Obj[])),
     [wid, query],
   );
+
+  const closeDrawer = () => {
+    setOpenRef(null);
+    if (params.ref) go("state");
+  };
 
   return (
     <>
@@ -125,7 +130,12 @@ export function StateView() {
       </div>
 
       {openRef && (
-        <ObjectDrawer ref_={openRef} onClose={() => { setOpenRef(null); if (params.ref) go("state"); }} />
+        <ObjectDrawer
+          ref_={openRef}
+          onClose={closeDrawer}
+          onMutated={() => results.reload()}
+          onDeleted={() => { closeDrawer(); results.reload(); }}
+        />
       )}
     </>
   );
@@ -134,9 +144,13 @@ export function StateView() {
 const stringify = (f: Record<string, unknown>) =>
   Object.fromEntries(Object.entries(f).map(([k, v]) => [k, String(v)]));
 
-function ObjectDrawer({ ref_, onClose }: { ref_: string; onClose: () => void }) {
-  const { wid, go } = usePlatform();
+function ObjectDrawer({ ref_, onClose, onMutated, onDeleted }: {
+  ref_: string; onClose: () => void; onMutated: () => void; onDeleted: () => void;
+}) {
+  const { wid, go, toast, confirm } = usePlatform();
   const [tab, setTab] = useState<"props" | "related" | "changes" | "asof">("props");
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
   const detail = useLoad(async () => {
     if (!wid) return null;
     const [obj, rt] = await Promise.all([api.get(wid, ref_), api.runtime(wid).catch(() => null)]);
@@ -155,14 +169,71 @@ function ObjectDrawer({ ref_, onClose }: { ref_: string; onClose: () => void }) 
   }, [wid, ref_]);
 
   const d = detail.data;
+  const obj = d?.obj ?? null;
+  const related = d?.related ?? [];
+  const changes = d?.changes ?? [];
+
+  const startEdit = () => {
+    setTab("props");
+    setDraft(JSON.stringify(obj?.properties || {}, null, 2));
+    setEditing(true);
+  };
+
+  /** 只提交属性对象；identity 属性由后端拒绝，前端不猜哪些是 identity，只提示。 */
+  const save = useAction(async () => {
+    if (!wid || !obj) return;
+    let parsed: unknown;
+    try { parsed = JSON.parse(draft); }
+    catch (e) { toast(`属性不是合法 JSON：${(e as Error).message}`, "err"); return; }
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      toast("属性必须是一个 JSON 对象，例如 {\"status\":\"active\"}", "err");
+      return;
+    }
+    const res = await api.updateObject(wid, ref_, parsed as Record<string, unknown>);
+    toast(res.changed.length ? `已更正属性：${res.changed.join("、")}` : "提交完成，属性值没有变化", "ok");
+    setEditing(false);
+    detail.reload();
+    onMutated();
+  }, [wid, ref_, draft, obj]);
+
+  const askDelete = () => confirm({
+    title: `删除对象 ${ref_}？`,
+    body: (
+      <>
+        <p className="muted">对象本身会被删除，指向它的关系引用也会一并清掉，这一步不可撤销。</p>
+        <p className="muted">要留证据的话，先在「相关记录」或「历史回读」里确认过变更再删。</p>
+      </>
+    ),
+    confirmText: "永久删除",
+    danger: true,
+    run: async () => {
+      if (!wid) return;
+      const res = await api.deleteObject(wid, ref_);
+      toast(res.deleted.length ? `已删除 ${ref_}` : `对象已不存在（${res.missing.length} 个引用没命中），列表已刷新`,
+        res.deleted.length ? "ok" : "warn");
+      onDeleted();
+    },
+  });
+
   return (
-    <Drawer title={ref_} sub={d?.obj ? `${d.obj.type} · 对象详情` : ""} onClose={onClose} wide>
+    <Drawer title={ref_} sub={obj ? `${obj.type} · 对象详情` : ""} onClose={onClose} wide
+            footer={obj ? (
+              <>
+                {!editing
+                  ? <Btn size="sm" variant="subtle" onClick={startEdit}>编辑属性</Btn>
+                  : <>
+                      <Btn size="sm" variant="subtle" disabled={save.running} onClick={() => setEditing(false)}>取消编辑</Btn>
+                      <Btn size="sm" busy={save.running} onClick={() => void save.run()}>保存更正</Btn>
+                    </>}
+                <Btn size="sm" variant="danger" onClick={askDelete}>删除对象</Btn>
+              </>
+            ) : undefined}>
       {detail.loading && <Loading />}
-      {!detail.loading && !d?.obj && <Empty title="没找到这个对象" hint={`引用 ${ref_}`} />}
-      {d?.obj && (
+      {!detail.loading && !obj && <Empty title="没找到这个对象" hint={`引用 ${ref_}`} />}
+      {obj && (
         <>
           <div className="subtabs" role="tablist" tabIndex={0}>
-            {([["props", "属性"], ["related", `关系 ${d.related.length}`], ["changes", `相关记录 ${d.changes.length}`], ["asof", "历史回读"]] as const)
+            {([["props", "属性"], ["related", `关系 ${related.length}`], ["changes", `相关记录 ${changes.length}`], ["asof", "历史回读"]] as const)
               .map(([k, l]) => (
                 <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => setTab(k)}>{l}</button>
               ))}
@@ -170,8 +241,8 @@ function ObjectDrawer({ ref_, onClose }: { ref_: string; onClose: () => void }) 
 
           {tab === "props" && (
             <dl className="kv">
-              <div className="kv-pair"><dt>类型</dt><dd className="mono">{d.obj.type}</dd></div>
-              {Object.entries(d.obj.properties || {}).map(([k, v]) => (
+              <div className="kv-pair"><dt>类型</dt><dd className="mono">{obj.type}</dd></div>
+              {Object.entries(obj.properties || {}).map(([k, v]) => (
                 <div key={k} className="kv-pair"><dt>{k}</dt><dd><ValueView value={v} field={k} /></dd></div>
               ))}
             </dl>
@@ -179,8 +250,8 @@ function ObjectDrawer({ ref_, onClose }: { ref_: string; onClose: () => void }) 
 
           {tab === "related" && (
             <>
-              {!d.related.length && <Empty title="这个对象类型没有定义关系" hint="到「本体」页补充关系。" />}
-              {d.related.map(r => (
+              {!related.length && <Empty title="这个对象类型没有定义关系" hint="到「本体」页补充关系。" />}
+              {related.map(r => (
                 <div key={r.relation}>
                   <h3 className="h4">{r.relation} {r.direction === "out" ? "→" : "←"} · {r.items.length}</h3>
                   {r.items.length ? (
@@ -199,13 +270,13 @@ function ObjectDrawer({ ref_, onClose }: { ref_: string; onClose: () => void }) 
 
           {tab === "changes" && (
             <>
-              {!d.changes.length && <Empty title="没有与它相关的变更记录" />}
-              {!!d.changes.length && (
+              {!changes.length && <Empty title="没有与它相关的变更记录" />}
+              {!!changes.length && (
                 <TableWrap auto>
                   <table>
                     <thead><tr><th>序号</th><th>来源</th><th className="wrap">改动</th></tr></thead>
                     <tbody>
-                      {d.changes.slice().reverse().map(e => (
+                      {changes.slice().reverse().map(e => (
                         <tr key={e.seq}>
                           <td className="nowrap mono">{e.seq}</td>
                           <td className="nowrap"><Tag kind="plain">{e.source}</Tag></td>
@@ -219,6 +290,14 @@ function ObjectDrawer({ ref_, onClose }: { ref_: string; onClose: () => void }) 
             </>
           )}
           {tab === "asof" && wid && <AsOfPanel wid={wid} ref_={ref_} />}
+
+          {editing && (
+            <>
+              <JsonField label="属性 JSON（更正运行时里的值）" value={draft} onChange={setDraft} rows={11} required
+                         hint="只提交属性对象本身；identity 属性（用来生成对象 id）由后端拒绝，改不了。这里只更正运行时值，不改本体定义。" />
+              <p className="muted small">保存后以返回的属性为准刷新抽屉；下次同步是否覆盖取决于投影的 mode。</p>
+            </>
+          )}
         </>
       )}
     </Drawer>

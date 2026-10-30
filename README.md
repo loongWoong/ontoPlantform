@@ -57,7 +57,7 @@ v0.3 不是新增业务页面，而是把“看起来在闭环、其实没有闭
 验收命令：
 
 ```bash
-python -m pytest -q                       # 300 passed
+python -m pytest -q                       # 310 passed
 python scripts/migrate_v03.py --db <db>   # 先预览，--apply 写入
 python scripts/rehearse_v03.py            # 发布/回滚/重启演练
 python scripts/e2e_v03.py                 # 16 个真实 HTTP 检查
@@ -89,6 +89,15 @@ python examples/traffic/demo.py
 ```
 
 一条命令跑通七个领域：建模 → 发布 → 投影 → 能力调用 → 应用视图 → Ask/Agent → 治理。
+
+另有一个金融租赁场景，用于验证智能视图对不同本体的普适性：
+
+```bash
+python -m examples.finance_lease.bootstrap --db .onto/platform.db --verify
+```
+
+它包含承租企业、租赁物、合同、租金账单和风险预警五类对象，装载后可在
+控制台打开「金融租赁智能风控」工作空间。
 
 ### CLI
 
@@ -142,11 +151,12 @@ Web 控制台是 **React + TypeScript + Vite** 单页应用（`frontend/`），�
 | 分区 | 页面 | 覆盖能力 |
 |------|------|----------|
 | — | 工作台 | 五步主流程（定义→发布→同步→能力→应用）＋真实计数与下一步 |
-| 业务世界 | 本体 | 对象/关系/术语（含别名）编辑、校验、发布（发布前二次确认） |
-| 业务世界 | 数据 | 数据源连接与预览、投影（映射行编辑器）、同步（确认后再改状态） |
-| 业务世界 | 能力 | python/workflow/agent 三种实现、按 inputs 自动生成的执行表单、改动清单 |
-| 业务世界 | 应用 | 视图/查询/智能体/挂载能力；定义区与结果区分离，改定义不清结果 |
+| 业务世界 | 本体 | 对象/关系/术语（含别名）增删改、校验、发布（发布前二次确认）；删除只作用于草稿并按引用保护 |
+| 业务世界 | 数据 | 数据源连接/预览/删除、投影（映射行编辑器）/删除、同步（确认后再改状态） |
+| 业务世界 | 能力 | python/workflow/agent 三种实现、按 inputs 自动生成的执行表单、删除（已发布会重发运行时） |
+| 业务世界 | 应用 | 视图/查询/智能体/挂载能力的增删、应用删除；定义区与结果区分离，改定义不清结果 |
 | 业务世界 | 对象实例 | 过滤查询、详情抽屉（属性/关系/相关记录）、变更流水实时跟随 |
+| 业务世界 | 智能视图 | 平台本体 → 确定性 OpenUI 程序 → sandbox 隔离 iframe；查询与动作回到真实工作空间 |
 | 平台 | AI 助手 | 检索问答（不调模型，明确注明）＋目标式智能体（推理链时间线） |
 | 平台 | 设置 | 模型来源（平台/OpenAI 兼容/演示）、工作空间、系统自检、操作记录 |
 
@@ -164,6 +174,67 @@ npm --prefix frontend run build    # 产物写入 src/onto_platform/interfaces/w
 当前门槛全部通过；实测数字与遗留项见 `docs/frontend-react-implementation.md`。
 未构建 `dist` 时后端会打印 WARN 并回落到旧版单文件控制台
 （`web/index.html`，仅作兜底，不再新增功能）。
+
+### 智能视图（React 19 + 本体驱动）
+
+控制台已升级到 **React 19.3**（`react` / `react-dom` / `@types/react`），构建使用
+Vite 7 + `@vitejs/plugin-react` 5；类型与构建均通过。`frontend/scripts/vite-build.mjs`
+会把 Vite/esbuild 的临时目录固定到 `frontend/.vite-tmp`，避免 Windows 上 `%TEMP%`
+跨卷导致的构建失败。
+
+「智能视图」页把当前工作空间接到 `vibe-可视化engine` 的 L0–L5 链路：
+
+```
+平台本体 + 当前工作空间状态
+  → onto_platform/interfaces/smart_ui.py（平台本体 → 引擎本体、状态 → payload）
+  → L3 planner → L4 compiler（确定性 OpenUI Lang，无 LLM）
+  → GET /smart-ui/ 的 React 运行时（构建产物 web/smart-ui/，sandbox 隔离 iframe）
+```
+
+真实联调接口（都走平台现有的工作空间授权）：
+
+```text
+GET  /api/workspaces/{wid}/smart-ui/meta
+POST /api/workspaces/{wid}/smart-ui/compile       {question, roles}
+POST /api/workspaces/{wid}/smart-ui/actions/{actionId}
+     {focusValue, role, args, idempotency_key}
+```
+
+动作请求里的 `focusValue` 是 L4 程序携带的焦点值（旧运行时仍会同时发送 `plate`，
+适配层把它当作焦点值兼容），目标对象由平台从**被选中的**焦点记录及其真实关联解析；
+焦点值不匹配或目标类型无法解析时直接拒绝，不再回退到同类型的第一个实例。动作面板
+覆盖参数化能力：`meta.actions[].parameters` 与编译产物的 `ActionButton` 都携带
+`name/displayName/type/required`，运行时在确认弹窗里按声明渲染输入框，按类型收集
+`args` 后随动作请求发送；后端会拒绝未知、缺失或类型不符的参数，不会静默丢弃。运行时
+为每次动作生成幂等键，执行前弹出可测试的应用内确认弹窗（不再使用 `window.confirm`），
+成功后重新编译一次以刷新平台数据。
+
+`meta.actorRole` 返回当前登录 actor 的真实工作空间角色，`roles` 只包含不高于该角色的
+视角；编译请求不能请求高于 actor 的角色，动作默认使用 actor 角色，写动作只对
+`editor/owner` 开放。运行时挂载在不授予 `allow-same-origin` 的 sandbox iframe 中，
+浏览器因此给它不透明源；控制台通过 `postMessage` 把 `sessionStorage["onto.api_token"]`
+里的 bearer token 交给运行时内存，运行时再带 token 跨源调用 meta/compile/action
+（API 已允许 CORS）。这样既消除了 `allow-scripts + allow-same-origin` 的沙箱逃逸
+告警，也避免把令牌放进 iframe URL。
+
+运行时源码在 `../vibe-可视化engine/runtime-web`。构建需要 Node，并把产物直接写进
+平台包；引擎源码默认从同级目录解析，也可用 `ONTO_UI_ENGINE_SRC` 指向
+`vibe-可视化engine/engine/src`：
+
+```bash
+npm --prefix ../vibe-可视化engine/runtime-web install
+npm --prefix ../vibe-可视化engine/runtime-web run build:platform
+# 产物：src/onto_platform/interfaces/web/smart-ui/
+```
+
+通用性边界：目标工作空间必须已发布本体；智能视图会自动选择有实例的业务对象作为焦点，
+不要求车辆、车牌或收费站。焦点对象、身份键、时间/数值/状态字段和关联对象都从本体声明
+与当前实例推导；本体有声明但工作空间没有实例时，`meta` 返回 `ready:false` 和下一步指引，
+接口不会编造数据。编译器发出的动作面板包含已发布、非 agent 的能力（无参数动作直接
+确认执行，参数化动作在确认弹窗里收集声明输入）。画像展示字段全部来自
+当前平台本体与实例，缺失时明确留空。若焦点或直接关联对象声明了经纬度，适配层会提供
+通用 `view_location` payload，运行时以位置点而非演示用的固定路线渲染；没有坐标时不会
+凭空生成地图。
 
 常见后端错误统一映射为中文指引＋下一步动作（未配置模型 / 本体已发布不可变 /
 运行时未就绪等）；无工作空间时全站引导创建；对象引用在应用页与对象实例页之间
@@ -211,6 +282,24 @@ Action → Change → State 闭环由此对无代码用户开放。
   `add-agent` 挂载命名 Agent 入口（只存引用与目标措辞，领域仍在
   Intelligence），`run-agent` 即可执行。
 
+## 删除与引用保护
+
+删除不是一句 `repository.delete`：控制台四个管理域都有删除入口，服务端先检查引用，
+再决定拒绝还是级联修复，并把动作写入审计。对应 `DELETE` 路由见
+`src/onto_platform/interfaces/api.py` 顶部注释。
+
+- **本体（草稿）**：对象/关系/术语行可删；已发布本体不可变，需先「修订」出新草稿。
+  对象仍被关系、术语、能力、映射或应用视图/查询引用时拒绝；关系仍被映射、查询展开
+  或术语引用时拒绝。运行时里已有的对象实例不会被删除。
+- **数据**：数据源仍被映射引用时拒绝；删除映射会同时删掉它的同步运行记录，但**保留**
+  此前同步进运行时的对象实例（同步是数据入口，不是业务数据的唯一副本）。
+- **能力**：草稿直接删除；已发布能力先按最近一次发布的本体重编译并安装剩余能力（内核
+  拒绝则不删），再从所有应用解绑并切出新的 Release/Deployment，最后删除能力文档。若
+  此时存在更新但未发布的本体草稿，草稿原样保留，只在运行时契约里移除该能力。历史执行
+  记录保留。
+- **应用**：整体删除应用文档；视图/查询/智能体/挂载能力都有单独的移除入口（查询被视图
+  引用时拒绝）。对象实例、能力与审计记录不受影响。
+
 ## MCP 接入（§36/§46）
 
 ```bash
@@ -233,10 +322,11 @@ workspace_ask / capability_invoke / agent_run` 七个工具——MCP 只翻译�
 ## 开发
 
 ```bash
-python -m pytest tests/ -q        # 79 个测试：compiler / gateway / projection /
+python -m pytest tests/ -q        # 336 个测试：compiler / gateway / projection /
                                   # capability / application / governance /
                                   # intelligence / persistence / api / cli / mcp /
-                                  # frontend-fixes（expand/contains/变更日志持久化）
+                                  # frontend-fixes（expand/contains/变更日志持久化）/
+                                  # delete（四域引用保护与运行时修复）
 ```
 
 测试覆盖三条链路的端到端断言、防腐层契约（编译产物必须能被 Kernel 的

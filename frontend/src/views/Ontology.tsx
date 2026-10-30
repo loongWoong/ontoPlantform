@@ -1,6 +1,6 @@
 import { useState } from "react";
 import {
-  ArrowRight, CheckCircle, ListChecks, SealCheck, WarningCircle,
+  ArrowCounterClockwise, ArrowRight, CheckCircle, ListChecks, PencilSimple, SealCheck, Trash, WarningCircle,
 } from "@phosphor-icons/react";
 import {
   api, type ObjectTypeSpec, type OntologyLint, type PropertySpec,
@@ -8,6 +8,9 @@ import {
 } from "../api";
 import { useAction, usePlatform } from "../store";
 import { OntologyDraftPanel } from "./OntologyDraft";
+import {
+  MetaEditDrawer, ObjectEditDrawer, RelationEditDrawer, TermEditDrawer,
+} from "./OntologyEdit";
 import {
   Btn, Card, Collapsible, Empty, ErrorNote, Field, KIND_LABEL, LIFECYCLE_LABEL,
   Loading, PageHead, PropertyList, RowEditor, Select, TableWrap, Tag, TextInput, useLoad, type Row,
@@ -23,6 +26,17 @@ export function OntologyView() {
   const load = useLoad(() => (wid ? api.ontology(wid) : Promise.resolve(null)), [wid]);
   const ont = load.data;
   const frozen = ont?.lifecycle === "published";
+  /** 修订草稿（有 parent_version）才能丢弃；非修订草稿没有可恢复的上一版。 */
+  const canDiscard = ont?.lifecycle === "draft" && typeof ont?.parent_version === "number";
+
+  /* ---- 编辑抽屉：一次只开一个 ---- */
+  const [editMeta, setEditMeta] = useState(false);
+  const [editObject, setEditObject] = useState<string | null>(null);
+  const [editRelation, setEditRelation] = useState<string | null>(null);
+  const [editTerm, setEditTerm] = useState<string | null>(null);
+  const closeEditors = () => {
+    setEditMeta(false); setEditObject(null); setEditRelation(null); setEditTerm(null);
+  };
 
   /* ---- 新增对象 ---- */
   const [objName, setObjName] = useState("");
@@ -72,6 +86,30 @@ export function OntologyView() {
     load.reload();
   }, [wid, term, concept, termKind, aliases]);
 
+  /* ---- 删除草稿里的一行 ---- */
+  const { run: removeRow, running: removing } = useAction(async (kind: Panel, name: string) => {
+    if (!wid) return;
+    if (kind === "object") await api.removeObject(wid, name);
+    else if (kind === "relation") await api.removeRelation(wid, name);
+    else await api.removeTerm(wid, name);
+    toast(`已从草稿删除${kind === "object" ? "对象" : kind === "relation" ? "关系" : "术语"}「${name}」`, "ok");
+    load.reload();
+  }, [wid]);
+
+  const askRemove = (kind: Panel, name: string) => confirm({
+    title: `删除${kind === "object" ? "对象「" : kind === "relation" ? "关系「" : "术语「"}${name}」？`,
+    danger: true,
+    confirmText: "确认删除",
+    body: (
+      <p className="muted">
+        {kind === "term"
+          ? "只删除这条业务术语映射，对象、关系与运行时数据都不受影响。"
+          : "仍被其他对象、能力、数据映射或应用引用时，服务端会拒绝并说明原因；运行时里已有的对象实例不会被删除。"}
+      </p>
+    ),
+    run: async () => { await removeRow(kind, name); },
+  });
+
   /* ---- 检查 / 发布 / 修订 ---- */
   const { run: validate, running: validating } = useAction(async () => {
     if (!wid) return;
@@ -100,6 +138,16 @@ export function OntologyView() {
     if (!wid) return;
     await api.reviseOntology(wid);
     toast("已复制出一个新草稿版本，可以继续演进", "ok");
+    load.reload();
+  }, [wid]);
+
+  /* ---- 丢弃修订草稿：恢复上一发布版本 ---- */
+  const { run: discardDraft, running: discarding } = useAction(async () => {
+    if (!wid) return;
+    const res = await api.discardOntologyDraft(wid);
+    const back = res.restored?.version;
+    toast(typeof back === "number" ? `已丢弃草稿，当前定义恢复为 v${back}` : "已丢弃草稿，恢复到上一发布版本", "ok");
+    await refreshRuntime();
     load.reload();
   }, [wid]);
 
@@ -157,6 +205,34 @@ export function OntologyView() {
           <span>术语 <b>{termCount}</b></span>
         </>}
         actions={<>
+          {!frozen && (
+            <Btn variant="subtle" disabled={discarding} onClick={() => setEditMeta(true)}>
+              <PencilSimple size={14} /> 编辑信息
+            </Btn>
+          )}
+          {canDiscard && (
+            <Btn variant="subtle" busy={discarding} onClick={() => confirm({
+              title: `丢弃草稿 v${ont.version}？`,
+              danger: true,
+              confirmText: "丢弃草稿",
+              body: (
+                <>
+                  <p className="muted">
+                    会删除当前草稿（v{ont.version}），并把上一发布版本
+                    {typeof ont.parent_version === "number" ? ` v${ont.parent_version} ` : ""}
+                    恢复为生效定义。
+                  </p>
+                  <p className="muted">
+                    运行时与发布指针不动，已经接进运行时的对象与关系不受影响；
+                    但草稿里这次改的对象、关系、术语和元信息都会丢，不可撤销。
+                  </p>
+                </>
+              ),
+              run: async () => { await discardDraft(); },
+            })}>
+              <ArrowCounterClockwise size={14} /> 丢弃草稿
+            </Btn>
+          )}
           <Btn variant="subtle" busy={validating} disabled={frozen} onClick={() => void validate()}>
             <ListChecks size={14} /> 语义检查
           </Btn>
@@ -226,9 +302,15 @@ export function OntologyView() {
               />
             </Collapsible>
 
-            <ObjectsTable objects={ont.objects} />
-            <RelationsTable relations={ont.relations} />
-            <VocabTable terms={ont.vocabulary} />
+            <ObjectsTable objects={ont.objects} frozen={frozen} busy={removing}
+                          onEdit={name => setEditObject(name)}
+                          onDelete={name => askRemove("object", name)} />
+            <RelationsTable relations={ont.relations} frozen={frozen} busy={removing}
+                            onEdit={name => setEditRelation(name)}
+                            onDelete={name => askRemove("relation", name)} />
+            <VocabTable terms={ont.vocabulary} frozen={frozen} busy={removing}
+                        onEdit={term => setEditTerm(term)}
+                        onDelete={term => askRemove("term", term)} />
 
             <div className="btn-row">
               {objectCount > 0 && (
@@ -324,6 +406,26 @@ export function OntologyView() {
           </div>
         </Card>
       </div>
+
+      {!frozen && wid && editMeta && (
+        <MetaEditDrawer wid={wid} ont={ont} onClose={closeEditors}
+                        onSaved={() => { closeEditors(); load.reload(); }} />
+      )}
+      {!frozen && wid && editObject && ont.objects[editObject] && (
+        <ObjectEditDrawer key={`obj-${editObject}`} wid={wid} name={editObject} spec={ont.objects[editObject]}
+                          onClose={closeEditors}
+                          onSaved={() => { closeEditors(); load.reload(); }} />
+      )}
+      {!frozen && wid && editRelation && ont.relations[editRelation] && (
+        <RelationEditDrawer key={`rel-${editRelation}`} wid={wid} name={editRelation} spec={ont.relations[editRelation]}
+                            onClose={closeEditors}
+                            onSaved={() => { closeEditors(); load.reload(); }} />
+      )}
+      {!frozen && wid && editTerm && ont.vocabulary[editTerm] && (
+        <TermEditDrawer key={`term-${editTerm}`} wid={wid} term={editTerm} spec={ont.vocabulary[editTerm]}
+                        onClose={closeEditors}
+                        onSaved={() => { closeEditors(); load.reload(); }} />
+      )}
     </>
   );
 }
@@ -354,7 +456,11 @@ function CreateOntologyForm({ onDone }: { onDone: () => void }) {
   );
 }
 
-function ObjectsTable({ objects }: { objects: Record<string, ObjectTypeSpec> }) {
+function ObjectsTable({ objects, frozen, busy, onEdit, onDelete }: {
+  objects: Record<string, ObjectTypeSpec>; frozen: boolean; busy: boolean;
+  onEdit: (name: string) => void;
+  onDelete: (name: string) => void;
+}) {
   const entries = Object.entries(objects);
   if (!entries.length) return <Empty title="还没有对象" hint="在右侧「对象」页签里添加第一个业务对象。" />;
   return (
@@ -362,7 +468,7 @@ function ObjectsTable({ objects }: { objects: Record<string, ObjectTypeSpec> }) 
       <h3 className="h4">对象（{entries.length}）</h3>
       <TableWrap>
         <table>
-          <thead><tr><th>对象</th><th>业务含义</th><th className="wrap">属性</th></tr></thead>
+          <thead><tr><th>对象</th><th>业务含义</th><th className="wrap">属性</th>{!frozen && <th>操作</th>}</tr></thead>
           <tbody>
             {entries.map(([name, o]) => (
               <tr key={name}>
@@ -371,6 +477,22 @@ function ObjectsTable({ objects }: { objects: Record<string, ObjectTypeSpec> }) 
                 <td className="wrap">
                   <PropertyList properties={o.properties} />
                 </td>
+                {!frozen && (
+                  <td className="nowrap">
+                    <div className="btn-row flat">
+                      <Btn size="sm" variant="subtle" disabled={busy}
+                           aria-label={`编辑对象 ${name}`} title="编辑业务含义、身份键、元语义与属性"
+                           onClick={() => onEdit(name)}>
+                        <PencilSimple size={12} /> 编辑
+                      </Btn>
+                      <Btn size="sm" variant="subtle" disabled={busy}
+                           aria-label={`删除对象 ${name}`} title="从草稿删除"
+                           onClick={() => onDelete(name)}>
+                        <Trash size={12} /> 删除
+                      </Btn>
+                    </div>
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>
@@ -380,7 +502,11 @@ function ObjectsTable({ objects }: { objects: Record<string, ObjectTypeSpec> }) 
   );
 }
 
-function RelationsTable({ relations }: { relations: Record<string, RelationSpec> }) {
+function RelationsTable({ relations, frozen, busy, onEdit, onDelete }: {
+  relations: Record<string, RelationSpec>; frozen: boolean; busy: boolean;
+  onEdit: (name: string) => void;
+  onDelete: (name: string) => void;
+}) {
   const entries = Object.entries(relations);
   if (!entries.length) return null;
   return (
@@ -388,13 +514,29 @@ function RelationsTable({ relations }: { relations: Record<string, RelationSpec>
       <h3 className="h4">关系（{entries.length}）</h3>
       <TableWrap>
         <table>
-          <thead><tr><th>关系</th><th>源 → 目标</th><th className="wrap">含义</th></tr></thead>
+          <thead><tr><th>关系</th><th>源 → 目标</th><th className="wrap">含义</th>{!frozen && <th>操作</th>}</tr></thead>
           <tbody>
             {entries.map(([n, r]) => (
               <tr key={n}>
                 <td className="nowrap"><b>{n}</b></td>
                 <td className="nowrap">{r.source} → {r.target}</td>
                 <td className="wrap" title={r.description || ""}>{r.description || "–"}</td>
+                {!frozen && (
+                  <td className="nowrap">
+                    <div className="btn-row flat">
+                      <Btn size="sm" variant="subtle" disabled={busy}
+                           aria-label={`编辑关系 ${n}`} title="编辑业务含义、基数与反向关系"
+                           onClick={() => onEdit(n)}>
+                        <PencilSimple size={12} /> 编辑
+                      </Btn>
+                      <Btn size="sm" variant="subtle" disabled={busy}
+                           aria-label={`删除关系 ${n}`} title="从草稿删除"
+                           onClick={() => onDelete(n)}>
+                        <Trash size={12} /> 删除
+                      </Btn>
+                    </div>
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>
@@ -404,7 +546,11 @@ function RelationsTable({ relations }: { relations: Record<string, RelationSpec>
   );
 }
 
-function VocabTable({ terms }: { terms: Record<string, VocabTerm> }) {
+function VocabTable({ terms, frozen, busy, onEdit, onDelete }: {
+  terms: Record<string, VocabTerm>; frozen: boolean; busy: boolean;
+  onEdit: (term: string) => void;
+  onDelete: (term: string) => void;
+}) {
   const entries = Object.entries(terms);
   if (!entries.length) return null;
   return (
@@ -414,6 +560,16 @@ function VocabTable({ terms }: { terms: Record<string, VocabTerm> }) {
         {entries.map(([t, v]) => (
           <span key={t} className="chip" title={`${KIND_LABEL[v.kind] || v.kind} · 同义词：${(v.aliases || []).join("、") || "无"}`}>
             {t} → {v.concept}
+            {!frozen && (
+              <>
+                <button type="button" className="link" disabled={busy}
+                        aria-label={`编辑术语 ${t}`} title="编辑指向、种类与同义词"
+                        onClick={() => onEdit(t)}>编辑</button>
+                <button type="button" className="chip-x" disabled={busy}
+                        aria-label={`删除术语 ${t}`} title="从草稿删除"
+                        onClick={() => onDelete(t)}>×</button>
+              </>
+            )}
           </span>
         ))}
       </div>

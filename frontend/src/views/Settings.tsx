@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Plus } from "@phosphor-icons/react";
-import { api, type AuditEvent, type Member } from "../api";
+import { api, type AuditEvent, type Member, type ResetWorkspaceResult, type Workspace } from "../api";
 import { useAction, usePlatform } from "../store";
 import { LlmPicker, LlmTest, LLM_MODE_LABEL } from "../LlmPicker";
 import { Btn, Card, Empty, Loading, PageHead, Select, TableWrap, Tag,
@@ -17,6 +17,32 @@ const TABS = [
 ];
 
 const ROLE_LABEL: Record<string, string> = { owner: "所有者", editor: "编辑者", viewer: "只读者" };
+
+const WORKSPACE_CONTENT_LABEL: Record<string, string> = {
+  ontology: "本体", datasource: "数据源", projection: "映射",
+  projection_run: "同步记录", capability: "能力", application: "应用",
+  release: "发布", deployment: "部署", schema_payload: "结构快照",
+  execution: "执行记录", agent_run: "智能体运行", agent_step: "智能体步骤",
+  objective: "目标", todo: "待办", event: "事件",
+};
+
+function workspaceContentLabel(kind: string): string {
+  return WORKSPACE_CONTENT_LABEL[kind] || kind;
+}
+
+/** 清空返回的按种类统计；形状不认识时只显示总数，不猜。 */
+function removedKindSummary(kinds: ResetWorkspaceResult["removed_kinds"]): string {
+  if (!kinds) return "";
+  const rows: [string, number | null][] = Array.isArray(kinds)
+    ? kinds.map((k): [string, number | null] => [k, null])
+    : Object.entries(kinds);
+  const kept = rows.filter(([, n]) => n === null || n > 0);
+  if (!kept.length) return "";
+  const shown = kept.slice(0, 6).map(([k, n]) => n === null
+    ? workspaceContentLabel(k)
+    : `${workspaceContentLabel(k)} ${n}`);
+  return shown.join("、") + (kept.length > 6 ? " 等" : "");
+}
 
 export function SettingsView() {
   const { params, llm, go } = usePlatform();
@@ -86,7 +112,7 @@ function Identity() {
 }
 
 function Workspaces() {
-  const { wid, setWorkspace, toast } = usePlatform();
+  const { wid, setWorkspace, clearWorkspace, toast, confirm, refreshRuntime } = usePlatform();
   const load = useLoad(() => api.workspaces(), []);
   const [name, setName] = useState("");
   const [desc, setDesc] = useState("");
@@ -99,26 +125,99 @@ function Workspaces() {
     setWorkspace(ws.id);
   }, [name, desc, setWorkspace, toast]);
 
+  const askDelete = (w: Workspace) => {
+    confirm({
+      title: `删除工作空间「${w.name}」？`,
+      body: <p className="muted">只会删除这个空工作空间的成员、配置与运行时缓存；审计记录保留，删除后不能恢复。</p>,
+      confirmText: "永久删除",
+      danger: true,
+      run: async () => {
+        await api.deleteWorkspace(w.id);
+        toast(`已删除工作空间「${w.name}」`, "ok");
+        if (w.id === wid) {
+          const remaining = (load.data || []).filter(x => x.id !== w.id);
+          if (remaining.length) setWorkspace(remaining[0].id);
+          else clearWorkspace();
+        }
+        load.reload();
+      },
+    });
+  };
+
+  /** 清空：删业务内容、留空间与审计。不可撤销，所以要求手打空间名。 */
+  const askReset = (w: Workspace) => {
+    const blockers = (w.blockers || []).map(workspaceContentLabel).join("、");
+    const isCurrent = w.id === wid;
+    confirm({
+      title: `清空工作空间「${w.name}」？`,
+      body: (
+        <>
+          <p className="muted">
+            会删除这个工作空间里的本体、数据源、映射、能力、应用、发布与运行实例，
+            以及运行时里的全部对象数据{blockers ? `（当前有：${blockers}）` : ""}。
+          </p>
+          <p className="muted">
+            保留工作空间本身、成员、模型配置与审计记录。清空后不可撤销，也没有备份；
+            需要保留的内容请先导出或另建工作空间。
+          </p>
+          {isCurrent && <p className="muted">这是当前工作空间：清空后各页面的对象类型与完成度计数会一起归零。</p>}
+        </>
+      ),
+      confirmText: "永久清空",
+      danger: true,
+      input: {
+        label: `输入工作空间名称「${w.name}」以确认`,
+        placeholder: w.name,
+        expected: w.name,
+        hint: "必须与名称逐字一致（含大小写与空格）；清空后业务数据不能恢复。",
+      },
+      run: async typed => {
+        const res = await api.resetWorkspace(w.id, typed ?? w.name);
+        const kinds = removedKindSummary(res.removed_kinds);
+        toast(`已清空「${res.name}」：删除 ${res.removed_documents} 条定义文档${kinds ? `（${kinds}）` : ""}`, "ok");
+        if (isCurrent) await refreshRuntime();
+        load.reload();
+      },
+    });
+  };
+
   return (
     <Card title="工作空间" sub="每个工作空间是一套独立的本体与运行时状态；切换不会影响其他空间。">
       <TableWrap auto>
         <table>
           <thead><tr><th>名称</th><th>标识</th><th className="wrap">说明</th><th>操作</th></tr></thead>
           <tbody>
-            {(load.data || []).map(w => (
-              <tr key={w.id}>
-                <td className="nowrap"><b>{w.name}</b></td>
-                <td className="nowrap" title={w.id}>{w.id}</td>
-                <td className="wrap">{w.description || "–"}</td>
-                <td className="nowrap">
-                  {w.id === wid ? <Tag kind="ok">当前</Tag>
-                    : <Btn size="sm" variant="tint" onClick={() => setWorkspace(w.id)}>进入</Btn>}
-                </td>
-              </tr>
-            ))}
+            {(load.data || []).map(w => {
+              const blockers = (w.blockers || []).map(workspaceContentLabel).join("、");
+              return (
+                <tr key={w.id}>
+                  <td className="nowrap"><b>{w.name}</b></td>
+                  <td className="nowrap" title={w.id}>{w.id}</td>
+                  <td className="wrap">{w.description || "–"}</td>
+                  <td className="nowrap">
+                    <div className="btn-row flat">
+                      {w.id === wid ? <Tag kind="ok">当前</Tag>
+                        : <Btn size="sm" variant="tint" onClick={() => setWorkspace(w.id)}>进入</Btn>}
+                      {w.deletable === false
+                        ? <>
+                            <span title={blockers ? `不能直接删除：还有${blockers}` : undefined}>
+                              <Tag kind="plain">有内容</Tag>
+                            </span>
+                            <Btn size="sm" variant="subtle" onClick={() => askReset(w)}>清空</Btn>
+                          </>
+                        : <Btn size="sm" variant="subtle" onClick={() => askDelete(w)}>删除</Btn>}
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </TableWrap>
+      <p className="muted small">
+        「删除」只适用于空工作空间；还有内容的空间显示「有内容」，先「清空」再删除。
+        清空会删掉本体、数据源、映射、能力、应用、发布与运行实例，保留工作空间、成员、模型配置和审计记录，不可撤销。
+      </p>
       <form className="inline-create wrap" onSubmit={e => { e.preventDefault(); void run(); }}>
         <TextInput value={name} placeholder="新工作空间名称，如 公交三公司" aria-label="名称" onChange={e => setName(e.target.value)} />
         <TextInput value={desc} placeholder="一句话说明（可选）" aria-label="说明" onChange={e => setDesc(e.target.value)} />

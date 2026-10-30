@@ -16,7 +16,7 @@ from typing import Any
 
 from ..domain.capability.model import CONTRACT_OPS
 from ..errors import ValidationError
-from .common import ApplicationContext
+from .common import ApplicationContext, published_ontology_row
 from .events import EventLog
 
 
@@ -165,10 +165,11 @@ class RuntimeVerifier:
         ids) so repeated audits of unchanged state check the same objects.
         """
         self._ctx.require(actor, workspace_id, "viewer")
-        ontologies = self._ctx.repo.list("ontology", workspace_id)
-        if not ontologies:
-            raise ValidationError("workspace has no ontology to verify")
-        ontology = ontologies[0]
+        # verify against the published contract the runtime is actually serving
+        ontology = published_ontology_row(self._ctx, workspace_id)
+        if ontology is None:
+            raise ValidationError(
+                "workspace has no published ontology to verify")
         gateway = self._ctx.gateway_for(workspace_id)
         problems: list[dict] = []
         checked = 0

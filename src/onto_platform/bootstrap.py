@@ -21,26 +21,40 @@ from .application.application_usecases import (    AddAgent,
     AddView,
     AttachCapability,
     CreateApplication,
+    DeleteApplication,
+    DetachCapability,
     GetApplication,
     ListApplications,
     PublishApplication,
+    RemoveAgent,
+    RemoveQuery,
+    RemoveView,
     RunAppAgent,
     RunAppQuery,
 )
 from .application.capability_usecases import (
+    CloneCapability,
     CreateCapability,
+    DeleteCapability,
     InvokeCapability,
     ListCapabilities,
     PublishCapability,
+    UpdateCapability,
 )
 from .application.common import ApplicationContext
 from .application.data_usecases import (
     ConnectDataSource,
     CreateProjection,
+    DeleteDataSource,
+    DeleteProjection,
     GetProjectionRun,
     ListDataSources,
     ListProjections,
+    PreviewDataSource,
     RunProjection,
+    TestDataSource,
+    UpdateDataSource,
+    UpdateProjection,
 )
 from .application.execution_ledger import ExecutionLedger
 from .application.controller import DriftController
@@ -57,16 +71,22 @@ from .application.ontology_usecases import (
     AddVocabularyTerm,
     CreateOntology,
     DescribeRuntime,
+    DiscardOntologyDraft,
     GetOntology,
     LintOntology,
     PublishOntology,
+    RemoveObjectType,
+    RemoveRelation,
+    RemoveVocabularyTerm,
     ReviseOntology,
     SchemaPublisher,
+    UpdateOntologyMeta,
     UpsertObjectType,
     UpsertRelation,
     ValidateOntology,
 )
 from .application.releases import ReleaseUseCases
+from .application.state_usecases import StateUseCases
 from .application.verifier import (
     CapabilityVerifier,
     Reconciler,
@@ -75,10 +95,12 @@ from .application.verifier import (
 from .application.workspace_usecases import (
     AddMember,
     CreateWorkspace,
+    DeleteWorkspace,
     GetWorkspace,
     ListMembers,
     ListWorkspaces,
     RemoveMember,
+    ResetWorkspace,
 )
 from .infrastructure.persistence.file_code_store import FileCodeStore
 from .infrastructure.persistence.memory_repo import InMemoryAuditLog, InMemoryRepository
@@ -125,6 +147,7 @@ class Platform:
     intelligence: "IntelligenceUseCases"
     llm_config: "LlmConfig"
     releases: "ReleaseUseCases"
+    state: "StateUseCases"
     events: EventLog
     dispatcher: Dispatcher
     verifier: RuntimeVerifier
@@ -198,6 +221,8 @@ class WorkspaceUseCases:
         self.create = CreateWorkspace(ctx)
         self.get = GetWorkspace(ctx)
         self.list = ListWorkspaces(ctx)
+        self.delete = DeleteWorkspace(ctx)
+        self.reset = ResetWorkspace(ctx)
         self.add_member = AddMember(ctx)
         self.remove_member = RemoveMember(ctx)
         self.list_members = ListMembers(ctx)
@@ -210,10 +235,15 @@ class OntologyUseCases:
         self.upsert_object = UpsertObjectType(ctx)
         self.upsert_relation = UpsertRelation(ctx)
         self.add_term = AddVocabularyTerm(ctx)
+        self.remove_object = RemoveObjectType(ctx)
+        self.remove_relation = RemoveRelation(ctx)
+        self.remove_term = RemoveVocabularyTerm(ctx)
         self.draft = DraftOntologyFromText(ctx)
         self.validate = ValidateOntology(ctx)
         self.publish = PublishOntology(ctx, publisher)
         self.revise = ReviseOntology(ctx)
+        self.update_meta = UpdateOntologyMeta(ctx)
+        self.discard_draft = DiscardOntologyDraft(ctx)
         self.lint = LintOntology(ctx)
         self.describe_runtime = DescribeRuntime(ctx)
 
@@ -221,17 +251,26 @@ class OntologyUseCases:
 class DataUseCases:
     def __init__(self, ctx: ApplicationContext) -> None:
         self.connect_source = ConnectDataSource(ctx)
+        self.update_source = UpdateDataSource(ctx)
+        self.test_source = TestDataSource(ctx)
+        self.preview_source = PreviewDataSource(ctx)
         self.create_projection = CreateProjection(ctx)
+        self.update_projection = UpdateProjection(ctx)
         self.run_projection = RunProjection(ctx)
         self.get_projection_run = GetProjectionRun(ctx)
         self.list_sources = ListDataSources(ctx)
         self.list_projections = ListProjections(ctx)
+        self.delete_source = DeleteDataSource(ctx)
+        self.delete_projection = DeleteProjection(ctx)
 
 
 class CapabilityUseCases:
     def __init__(self, ctx: ApplicationContext, publisher: SchemaPublisher) -> None:
         self.create = CreateCapability(ctx)
+        self.update = UpdateCapability(ctx)
+        self.clone = CloneCapability(ctx)
         self.publish = PublishCapability(ctx, publisher)
+        self.delete = DeleteCapability(ctx, publisher)
         self.list = ListCapabilities(ctx)
         self.invoke = InvokeCapability(ctx)
 
@@ -248,6 +287,11 @@ class ApplicationUseCases:
         self.run_agent = RunAppAgent(ctx)
         self.get = GetApplication(ctx)
         self.list = ListApplications(ctx)
+        self.delete = DeleteApplication(ctx)
+        self.remove_view = RemoveView(ctx)
+        self.remove_query = RemoveQuery(ctx)
+        self.remove_agent = RemoveAgent(ctx)
+        self.detach_capability = DetachCapability(ctx)
 
 
 class IntelligenceUseCases:
@@ -357,6 +401,7 @@ def build_platform(config: PlatformConfig | None = None) -> Platform:
         intelligence=IntelligenceUseCases(ctx),
         llm_config=LlmConfig(ctx),
         releases=ReleaseUseCases(ctx),
+        state=StateUseCases(ctx),
         events=EventLog(ctx),
         dispatcher=Dispatcher(ctx),
         verifier=RuntimeVerifier(ctx),

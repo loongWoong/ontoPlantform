@@ -155,3 +155,40 @@ def http_post(base: str, path: str, body: dict | None = None,
             return res.status, json.loads(res.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         return exc.code, json.loads(exc.read().decode("utf-8"))
+
+
+def http_delete(base: str, path: str):
+    """DELETE; returns (status, body) instead of raising on HTTP errors."""
+    request = urllib.request.Request(base + path, method="DELETE")
+    try:
+        with urllib.request.urlopen(request) as res:
+            return res.status, json.loads(res.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        return exc.code, json.loads(exc.read().decode("utf-8"))
+
+
+def http_call(method: str, base: str, path: str, body: dict | None = None,
+              headers: dict | None = None):
+    """Any method; returns ``(status, headers, body)``.
+
+    Unlike the helpers above this exposes the response headers, which the
+    CORS/CSRF tests need to assert the exact ``Access-Control-Allow-Origin``
+    and ``Vary`` values.  A JSON body is sent with a JSON content type unless
+    the caller overrides it (e.g. to prove a text/plain request is refused).
+    """
+    request_headers = dict(headers or {})
+    data = None
+    if body is not None:
+        data = json.dumps(body).encode("utf-8")
+        request_headers.setdefault("Content-Type", "application/json")
+    request = urllib.request.Request(
+        base + path, data=data, method=method, headers=request_headers)
+    try:
+        with urllib.request.urlopen(request) as res:
+            raw = res.read().decode("utf-8")
+            return (res.status, dict(res.headers),
+                    json.loads(raw) if raw else None)
+    except urllib.error.HTTPError as exc:
+        raw = exc.read().decode("utf-8")
+        return (exc.code, dict(exc.headers),
+                json.loads(raw) if raw else None)

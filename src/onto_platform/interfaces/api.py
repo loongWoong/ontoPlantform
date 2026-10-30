@@ -7,18 +7,34 @@ use cases the CLI uses - no domain logic here.
     GET  /api/health
     GET  /api/workspaces                        POST /api/workspaces
     GET  /api/workspaces/{wid}
+    POST /api/workspaces/{wid}/delete          {confirm: true}  (empty only)
+    POST /api/workspaces/{wid}/reset           {confirm: true, confirm_name}
     GET  /api/workspaces/{wid}/ontology         POST (same)  {name}
+    PATCH /api/workspaces/{wid}/ontology        {name?, description?, profile?}
+    POST /api/workspaces/{wid}/ontology/discard (drop draft, restore published)
     POST /api/workspaces/{wid}/ontology/objects {name, properties, description}
     POST /api/workspaces/{wid}/ontology/relations
     POST /api/workspaces/{wid}/ontology/vocabulary
+    DELETE /api/workspaces/{wid}/ontology/objects/{name}
+    DELETE /api/workspaces/{wid}/ontology/relations/{name}
+    DELETE /api/workspaces/{wid}/ontology/vocabulary/{term}
     POST /api/workspaces/{wid}/ontology/validate | /publish | /lint | /revisions
     GET  /api/workspaces/{wid}/state/history?ref=&limit=
     GET  /api/workspaces/{wid}/state/as-of?ref=&seq=   (or &at=RFC3339)
     GET  /api/workspaces/{wid}/runtime          (kernel describe)
     GET  /api/workspaces/{wid}/datasources      POST (same)
+    PATCH /api/workspaces/{wid}/datasources/{sid}  {name?, config?, assets?, test_connection?}
+    POST /api/workspaces/{wid}/datasources/{sid}/test
+    POST /api/workspaces/{wid}/datasources/{sid}/preview {asset, limit?}
+    DELETE /api/workspaces/{wid}/datasources/{sid}
     GET  /api/workspaces/{wid}/projections      POST (same)
+    PATCH /api/workspaces/{wid}/projections/{pid}  {name?, object_mappings?, ...}
+    DELETE /api/workspaces/{wid}/projections/{pid}
     POST /api/workspaces/{wid}/projections/{pid}/run
     GET  /api/workspaces/{wid}/capabilities     POST (same)
+    PATCH /api/workspaces/{wid}/capabilities/{cid}  {key?, name?, target_type?, ...} (draft only)
+    POST /api/workspaces/{wid}/capabilities/{cid}/clone {key?, name?}
+    DELETE /api/workspaces/{wid}/capabilities/{cid}
     POST /api/workspaces/{wid}/capabilities/{cid}/publish
     POST /api/workspaces/{wid}/invoke           {function, target, args}
     GET  /api/workspaces/{wid}/releases         POST (same) {note}
@@ -29,6 +45,11 @@ use cases the CLI uses - no domain logic here.
     GET  /api/workspaces/{wid}/events?limit=200&type=
     POST /api/workspaces/{wid}/events/dispatch
     GET  /api/workspaces/{wid}/applications     POST (same)
+    DELETE /api/workspaces/{wid}/applications/{aid}
+    DELETE /api/workspaces/{wid}/applications/{aid}/views/{alias}
+    DELETE /api/workspaces/{wid}/applications/{aid}/queries/{alias}
+    DELETE /api/workspaces/{wid}/applications/{aid}/agents/{alias}
+    DELETE /api/workspaces/{wid}/applications/{aid}/capabilities/{cid}
     POST /api/workspaces/{wid}/applications/{aid}/publish
     POST /api/workspaces/{wid}/applications/{aid}/query  {alias}
     POST /api/workspaces/{wid}/applications/{aid}/objective {metric,target,band,window}
@@ -38,10 +59,16 @@ use cases the CLI uses - no domain logic here.
     GET  /api/workspaces/{wid}/state/find?type=X&prop__op=v
     GET  /api/workspaces/{wid}/state/get?ref=Type/Id
     GET  /api/workspaces/{wid}/state/related?ref=&relation=&direction=
+    DELETE /api/workspaces/{wid}/state/objects?ref=Type/Id
+    PATCH  /api/workspaces/{wid}/state/objects?ref=Type/Id {properties}
     GET  /api/workspaces/{wid}/changes?after=0
     POST /api/workspaces/{wid}/ask              {question}
     POST /api/workspaces/{wid}/agent            {goal}
+    GET  /api/workspaces/{wid}/smart-ui/meta
+    POST /api/workspaces/{wid}/smart-ui/compile {question, roles}
+    POST /api/workspaces/{wid}/smart-ui/actions/{action_id}
     GET  /api/workspaces/{wid}/audit
+    GET  /smart-ui/                             (separate OpenUI runtime build)
 """
 
 from __future__ import annotations
@@ -67,6 +94,12 @@ from ..errors import (
 )
 from ..infrastructure.llm.echo import EchoLLMProvider
 from ..infrastructure.llm.openai_compat import OpenAICompatProvider
+from .smart_ui import (
+    compile_smart_ui,
+    invoke_smart_action,
+    smart_ui_engine_available,
+    smart_ui_meta,
+)
 
 import hmac
 import os
@@ -76,6 +109,10 @@ WEB_DIR = Path(__file__).resolve().parent / "web"
 # the package keeps ``python -m onto_platform.interfaces.api`` the one-command
 # startup: no Node, no separate dev server, no second process at runtime.
 DIST_DIR = WEB_DIR / "dist"
+# The smart-UI runtime is a separate Vite build (vibe-可视化engine/runtime-web).
+# It lives next to the console instead of inside ``dist`` so rebuilding the
+# console does not delete it.
+SMART_UI_DIR = WEB_DIR / "smart-ui"
 
 _MIME = {
     ".html": "text/html; charset=utf-8",
@@ -110,9 +147,62 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
         def log_message(self, fmt, *args):  # quieter tests
             pass
 
+        def _origin(self) -> str | None:
+            origin = (self.headers.get("Origin") or "").strip()
+            return origin or None
+
+        def _cors_origins(self) -> set[str]:
+            """Explicit cross-origin allowlist (config beats env only by union).
+
+            Sources: ``platform.config.extra["cors_origins"]`` (list or comma
+            separated string) and the ``ONTO_CORS_ORIGINS`` environment
+            variable.  Matching is exact on scheme+host+port.
+            """
+            raw = platform.config.extra.get("cors_origins") or []
+            if isinstance(raw, str):
+                raw = raw.split(",")
+            origins = {str(item).strip().rstrip("/") for item in raw
+                       if str(item).strip()}
+            env = os.environ.get("ONTO_CORS_ORIGINS", "")
+            origins.update(item.strip().rstrip("/") for item in env.split(",")
+                           if item.strip())
+            return origins
+
+        def _origin_allowed(self, origin: str) -> bool:
+            host = (self.headers.get("Host") or "").strip()
+            netloc = urlparse(origin).netloc
+            if host and netloc and netloc.lower() == host.lower():
+                return True  # the console served by this very host
+            return origin.rstrip("/") in self._cors_origins()
+
+        def _check_origin(self) -> None:
+            """Refuse a cross-site request whose Origin is not allowlisted.
+
+            Applies to every method (including OPTIONS).  No CORS grant is
+            emitted for a denied request, so a browser cannot read the 403
+            response either.
+            """
+            origin = self._origin()
+            if origin and not self._origin_allowed(origin):
+                raise AccessDeniedError(
+                    f"cross-site request blocked: origin {origin!r} is not "
+                    f"allowed")
+
         def _cors(self) -> None:
-            self.send_header("Access-Control-Allow-Origin", "*")
-            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+            """CORS headers for an allowed request.
+
+            No Origin (local console/curl) keeps working without an
+            ``Access-Control-Allow-Origin`` header; a specific allowed Origin
+            is echoed back (never ``*``) and varies by Origin.
+            """
+            origin = self._origin()
+            if origin:
+                if not self._origin_allowed(origin):
+                    return
+                self.send_header("Access-Control-Allow-Origin", origin)
+                self.send_header("Vary", "Origin")
+            self.send_header("Access-Control-Allow-Methods",
+                             "GET, POST, PATCH, DELETE, OPTIONS")
             self.send_header("Access-Control-Allow-Headers",
                              "Content-Type, Idempotency-Key, If-Match, Authorization")
 
@@ -143,6 +233,13 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
             self.wfile.write(body)
 
         def _body(self) -> dict:
+            # CSRF hardening: a cross-site form can send text/plain (or a
+            # simple content type) without a preflight, so a state-changing
+            # JSON request must prove its content type.
+            raw_type = (self.headers.get("Content-Type") or "").split(";")[0]
+            if raw_type.strip().lower() != "application/json":
+                raise ValidationError(
+                    "POST and PATCH require Content-Type: application/json")
             length = int(self.headers.get("Content-Length", 0))
             raw = self.rfile.read(length) if length else b"{}"
             data = json.loads(raw or b"{}")
@@ -223,10 +320,89 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
             return None
 
         def do_OPTIONS(self) -> None:
+            origin = self._origin()
+            if origin and not self._origin_allowed(origin):
+                return self._error(AccessDeniedError(
+                    f"cross-site request blocked: origin {origin!r} is not "
+                    f"allowed"))
+            # a preflight without Origin (local tooling) stays usable and
+            # advertises the mutating methods, PATCH included
             self.send_response(204)
             self.send_header("Content-Length", "0")
             self._cors()
             self.end_headers()
+
+        # ------------------------------------------------------------ DELETE
+
+        def do_DELETE(self) -> None:
+            parsed = urlparse(self.path)
+            parts = [unquote(p) for p in parsed.path.split("/") if p]
+            query = {k: _parse_scalar(v[-1]) for k, v in parse_qs(parsed.query).items()}
+            try:
+                self._check_origin()
+                if parts[:2] != ["api", "workspaces"]:
+                    raise ValidationError(f"no route for {self.path}")
+                wid = parts[2] if len(parts) > 2 else None
+                rest = parts[3:]
+                return self._delete(wid, rest, query)
+            except PlatformError as exc:
+                return self._error(exc)
+            except (KeyError, json.JSONDecodeError) as exc:
+                return self._error(ValidationError(f"invalid request: {exc}"))
+            except Exception as exc:  # pragma: no cover
+                return self._error(exc)
+
+        def _delete(self, wid: str | None, rest: list[str],
+                    query: dict) -> None:
+            user = self._actor(query=query)
+            if wid is None:
+                raise ValidationError("workspace id is required")
+            if len(rest) == 3 and rest[0] == "ontology" and rest[1] == "objects":
+                return self._send(200, platform.ontologies.remove_object(
+                    wid, user, rest[2]))
+            if len(rest) == 3 and rest[0] == "ontology" and rest[1] == "relations":
+                return self._send(200, platform.ontologies.remove_relation(
+                    wid, user, rest[2]))
+            if len(rest) == 3 and rest[0] == "ontology" and rest[1] == "vocabulary":
+                return self._send(200, platform.ontologies.remove_term(
+                    wid, user, rest[2]))
+            if rest == ["state", "objects"]:
+                ref = query.get("ref")
+                if not ref:
+                    raise ValidationError("query param 'ref' is required")
+                result = platform.state.delete_objects(wid, user, [str(ref)])
+                if not result["deleted"]:
+                    raise NotFoundError(f"object not found: {ref}")
+                return self._send(200, result)
+            if len(rest) == 2 and rest[0] == "capabilities":
+                return self._send(200, platform.capabilities.delete(
+                    wid, rest[1], user))
+            if len(rest) == 2 and rest[0] == "datasources":
+                return self._send(200, platform.data.delete_source(
+                    wid, user, rest[1]))
+            if len(rest) == 2 and rest[0] == "projections":
+                return self._send(200, platform.data.delete_projection(
+                    wid, user, rest[1]))
+            if len(rest) == 2 and rest[0] == "applications":
+                return self._send(200, platform.applications.delete(
+                    wid, rest[1], user))
+            if len(rest) == 4 and rest[0] == "applications" \
+                    and rest[2] == "views":
+                return self._send(200, platform.applications.remove_view(
+                    wid, rest[1], rest[3], user))
+            if len(rest) == 4 and rest[0] == "applications" \
+                    and rest[2] == "queries":
+                return self._send(200, platform.applications.remove_query(
+                    wid, rest[1], rest[3], user))
+            if len(rest) == 4 and rest[0] == "applications" \
+                    and rest[2] == "agents":
+                return self._send(200, platform.applications.remove_agent(
+                    wid, rest[1], rest[3], user))
+            if len(rest) == 4 and rest[0] == "applications" \
+                    and rest[2] == "capabilities":
+                return self._send(200, platform.applications.detach_capability(
+                    wid, rest[1], rest[3], user))
+            raise ValidationError(f"no route for {self.path}")
 
         # ------------------------------------------------------------ GET
 
@@ -235,10 +411,20 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
             parts = [unquote(p) for p in parsed.path.split("/") if p]
             query = {k: _parse_scalar(v[-1]) for k, v in parse_qs(parsed.query).items()}
             try:
+                self._check_origin()
                 if not parts or parts[0] != "api":
                     return self._serve_web(parts)
                 if parts == ["api", "health"]:
                     provider = platform.ctx.llm
+                    engine_ready = smart_ui_engine_available()
+                    runtime_ready = (SMART_UI_DIR / "index.html").is_file()
+                    smart_ui_features = []
+                    if engine_ready:
+                        smart_ui_features += ["smart-ui.bridge", "smart-ui.actions"]
+                    if runtime_ready:
+                        smart_ui_features.append("smart-ui.runtime")
+                    if engine_ready and runtime_ready:
+                        smart_ui_features.insert(0, "smart-ui")
                     return self._send(200, {
                         "status": "ok",
                         "version": __version__,
@@ -251,13 +437,18 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
                         "auth_mode": (
                             "token" if os.environ.get("ONTO_API_TOKEN")
                             else "local"),
+                        "smart_ui": {
+                            "engine": engine_ready,
+                            "runtime": runtime_ready,
+                        },
                         "features": [
                             "ontology.draft", "ontology.lint", "ontology.revision",
                             "releases", "canary.isolated", "events", "metrics",
                             "slo", "slo.windowed", "verify", "reconcile",
                             "controller", "objective", "execution.ledger",
                             "execution.resolve", "scheduler", "history",
-                            "agent.runs",
+                            "agent.runs", "workspace.delete", "resource.delete",
+                            *smart_ui_features,
                         ],
                     })
                 if parts == ["api", "scheduler"]:
@@ -281,7 +472,13 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
             back to ``dist/index.html`` so client-side routes work. When the
             bundle has not been built we fall back to the legacy single-file
             console so the platform still starts and stays usable.
+
+            ``/smart-ui/`` is a separately built micro-frontend. It is served
+            from ``web/smart-ui`` and falls back to its own ``index.html`` so a
+            refreshed iframe keeps working.
             """
+            if parts and parts[0] == "smart-ui":
+                return self._serve_smart_ui(parts[1:])
             index = DIST_DIR / "index.html"
             if index.is_file():
                 root = DIST_DIR.resolve()
@@ -294,6 +491,22 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
             if legacy.is_file():
                 return self._send_file(legacy)
             return self._send(404, {"error": "web console not found"})
+
+        def _serve_smart_ui(self, parts: list[str]) -> None:
+            root = SMART_UI_DIR.resolve()
+            index = root / "index.html"
+            if not index.is_file():
+                return self._send(404, {
+                    "error": "smart-ui runtime not built",
+                    "hint": "run `npm run build:platform` in vibe-可视化engine/runtime-web",
+                })
+            if parts:
+                candidate = (root / "/".join(parts)).resolve()
+                if candidate.is_file() and candidate.is_relative_to(root):
+                    return self._send_file(candidate)
+                if "." in parts[-1]:
+                    return self._send(404, {"error": f"smart-ui asset not found: {'/'.join(parts)}"})
+            return self._send_file(index)
 
         def _send_file(self, path: Path) -> None:
             body = path.read_bytes()
@@ -335,6 +548,8 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
                     wid, rest[1], rest[3], user))
             if rest == ["capabilities"]:
                 return self._send(200, platform.capabilities.list(wid, actor=user))
+            if rest == ["smart-ui", "meta"]:
+                return self._send(200, smart_ui_meta(platform, wid, user))
             if rest == ["applications"]:
                 return self._send(200, platform.applications.list(wid, actor=user))
             if rest == ["releases"]:
@@ -506,6 +721,7 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
             parsed = urlparse(self.path)
             parts = [unquote(p) for p in parsed.path.split("/") if p]
             try:
+                self._check_origin()
                 body = self._body()
                 if parts == ["api", "llm"]:
                     return self._post_llm(body)
@@ -549,6 +765,13 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
                         body.get("name", ""), actor=user,
                         description=body.get("description", "")))
                 raise ValidationError("no route")
+            if rest == ["delete"]:
+                return self._send(200, platform.workspaces.delete(
+                    wid, actor=user, confirm=body.get("confirm") is True))
+            if rest == ["reset"]:
+                return self._send(200, platform.workspaces.reset(
+                    wid, actor=user, confirm=body.get("confirm") is True,
+                    confirm_name=str(body.get("confirm_name") or "")))
             if rest == ["members"]:
                 return self._send(200, platform.workspaces.add_member(
                     wid, body.get("member") or body["user_id"], body["role"],
@@ -560,6 +783,9 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
                     wid, body.get("name", ""), actor=user,
                     description=body.get("description", ""),
                     profile=body.get("profile", "closed")))
+            if rest == ["ontology", "discard"]:
+                return self._send(200, platform.ontologies.discard_draft(
+                    wid, user))
             if rest == ["ontology", "objects"]:
                 return self._send(200, platform.ontologies.upsert_object(
                     wid, user, body["name"], properties=body.get("properties", []),
@@ -603,6 +829,12 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
                 return self._send(200, platform.data.connect_source(
                     wid, user, body["name"], body.get("kind", "static"),
                     config=body.get("config", {}), assets=body.get("assets", [])))
+            if len(rest) == 3 and rest[0] == "datasources" and rest[2] == "test":
+                return self._send(200, platform.data.test_source(
+                    wid, user, rest[1]))
+            if len(rest) == 3 and rest[0] == "datasources" and rest[2] == "preview":
+                return self._send(200, platform.data.preview_source(
+                    wid, user, rest[1], body.get("asset"), body.get("limit")))
             if rest == ["projections"]:
                 return self._send(200, platform.data.create_projection(
                     wid, user, body["name"], body["datasource_id"],
@@ -622,6 +854,10 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
                     contract=body.get("contract")))
             if len(rest) == 3 and rest[0] == "capabilities" and rest[2] == "publish":
                 return self._send(200, platform.capabilities.publish(wid, rest[1], user))
+            if len(rest) == 3 and rest[0] == "capabilities" and rest[2] == "clone":
+                return self._send(200, platform.capabilities.clone(
+                    wid, user, rest[1], key=body.get("key"),
+                    name=body.get("name")))
             if rest == ["releases"]:
                 return self._send(200, platform.releases.cut(
                     wid, user, note=body.get("note", "")))
@@ -656,6 +892,14 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
                         if body.get("timeout") is not None else None))
                 status = 202 if result.get("status") == "unknown" else 200
                 return self._send(status, result)
+            if rest == ["smart-ui", "compile"]:
+                return self._send(200, compile_smart_ui(
+                    platform, wid, user,
+                    question=str(body.get("question") or ""),
+                    roles=[str(role) for role in (body.get("roles") or [])]))
+            if len(rest) == 3 and rest[0] == "smart-ui" and rest[1] == "actions":
+                return self._send(200, invoke_smart_action(
+                    platform, wid, user, rest[2], body))
             if rest == ["applications"]:
                 return self._send(200, platform.applications.create(
                     wid, user, body["name"], description=body.get("description", "")))
@@ -721,6 +965,73 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
                 return self._send(200, platform.intelligence.agent(
                     wid, user, body.get("goal", ""), provider=provider,
                     max_steps=int(body.get("max_steps", 8))))
+            raise ValidationError(f"no route for {self.path}")
+
+        # ------------------------------------------------------------ PATCH
+
+        def do_PATCH(self) -> None:
+            parsed = urlparse(self.path)
+            parts = [unquote(p) for p in parsed.path.split("/") if p]
+            query = {k: _parse_scalar(v[-1]) for k, v in parse_qs(parsed.query).items()}
+            try:
+                self._check_origin()
+                body = self._body()
+                if parts[:2] != ["api", "workspaces"] or len(parts) < 3:
+                    raise ValidationError(f"no route for {self.path}")
+                wid = parts[2]
+                rest = parts[3:]
+                return self._patch(wid, rest, query, body)
+            except PlatformError as exc:
+                return self._error(exc)
+            except (KeyError, json.JSONDecodeError) as exc:
+                return self._error(ValidationError(f"invalid request body: {exc}"))
+            except Exception as exc:  # pragma: no cover
+                return self._error(exc)
+
+        def _patch(self, wid: str, rest: list[str], query: dict,
+                   body: dict) -> None:
+            # PATCH accepts the actor from the body or the query string, like
+            # POST and DELETE respectively (token mode still overrides both)
+            declared = body.pop("user", None) or (query or {}).get("user")
+            user = self._actor(
+                body={"user": declared} if declared else None, query=query)
+            if rest == ["ontology"]:
+                return self._send(200, platform.ontologies.update_meta(
+                    wid, user, name=body.get("name"),
+                    description=body.get("description"),
+                    profile=body.get("profile"),
+                    expected_version=self._expected_version(body)))
+            if len(rest) == 2 and rest[0] == "capabilities":
+                return self._send(200, platform.capabilities.update(
+                    wid, user, rest[1], key=body.get("key"),
+                    name=body.get("name"),
+                    target_type=body.get("target_type"),
+                    description=body.get("description"),
+                    inputs=body.get("inputs"),
+                    implementation=body.get("implementation"),
+                    contract=body.get("contract")))
+            if len(rest) == 2 and rest[0] == "datasources":
+                return self._send(200, platform.data.update_source(
+                    wid, user, rest[1], name=body.get("name"),
+                    config=body.get("config"), assets=body.get("assets"),
+                    kind=body.get("kind"),
+                    test_connection=bool(body.get("test_connection", True))))
+            if len(rest) == 2 and rest[0] == "projections":
+                return self._send(200, platform.data.update_projection(
+                    wid, user, rest[1], name=body.get("name"),
+                    object_mappings=body.get("object_mappings"),
+                    relation_mappings=body.get("relation_mappings"),
+                    mode=body.get("mode"), row_limit=body.get("row_limit"),
+                    datasource_id=body.get("datasource_id")))
+            if rest == ["state", "objects"]:
+                ref = query.get("ref")
+                if not ref:
+                    raise ValidationError("query param 'ref' is required")
+                properties = body.get("properties")
+                if properties is None:
+                    raise ValidationError("body field 'properties' is required")
+                return self._send(200, platform.state.update_object(
+                    wid, user, str(ref), properties))
             raise ValidationError(f"no route for {self.path}")
 
     return PlatformHTTPHandler

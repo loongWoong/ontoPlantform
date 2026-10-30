@@ -220,30 +220,18 @@ export function Workbench() {
           </div>
 
           <div className="bento gap-top">
-            <div className="col-8">
-              <Card title="下一步" sub="按依赖顺序给出，完成前一步之前，后一步通常没有意义。"
-                    aside={<Tag kind={next.length ? "warn" : "ok"}>{next.length ? `${next.length} 项待办` : "骨架已通"}</Tag>}>
-                {bundle.loading && <Skeleton rows={4} />}
-                {!bundle.loading && next.length === 0 && (
-                  <Empty title="主流程已经打通" hint="建议去「对象实例」抽取几条真实记录核对，再在「运行」页看指标与发布。"
-                         action={<div className="btn-row flat">
-                           <Btn size="sm" variant="subtle" onClick={() => go("state")}>看对象实例</Btn>
-                           <Btn size="sm" variant="subtle" onClick={() => go("operations")}>看运行指标</Btn>
-                         </div>} />
+            <div className="col-6">
+              <Card title="业务世界状态" sub="只展示运行时里真正生效的定义。"
+                    aside={<Tag kind={b?.ont?.lifecycle === "published" ? "ok" : "warn"}>{LIFECYCLE_LABEL[b?.ont?.lifecycle || "none"]}</Tag>}>
+                {bundle.loading && <div className="skeleton"><span /><span /><span /></div>}
+                {!bundle.loading && !b?.rt && (
+                  <Empty title="业务世界还没启动" hint="到「本体」页把定义发布出去，这里会出现运行时索引。"
+                         action={<Btn size="sm" onClick={() => go("ontology")}>去发布本体</Btn>} />
                 )}
-                {next.map((t, i) => (
-                  <div className="todo-item" key={t.title + i}>
-                    <span className="mono muted todo-index">{String(i + 1).padStart(2, "0")}</span>
-                    <div className="todo-main">
-                      <div className="todo-title">{t.title}</div>
-                      <div className="todo-detail">{t.desc}</div>
-                    </div>
-                    <Btn size="sm" variant="subtle" onClick={() => go(t.to, t.tab ? { tab: t.tab } : undefined)}>{t.cta}</Btn>
-                  </div>
-                ))}
+                {b?.rt && <RuntimeIndex rt={b.rt} ont={b.ont} />}
               </Card>
             </div>
-            <div className="col-4">
+            <div className="col-6">
               <Card title="运行概况" tone={sloStatus === "breach" ? "amber" : undefined}
                     sub={sampleTime ? `最近一次采样：${formatLocal(sampleTime)}` : "还没有采样记录"}
                     aside={<Btn size="sm" variant="link" onClick={() => go("operations")}>运行页</Btn>}>
@@ -294,25 +282,29 @@ export function Workbench() {
           </Card>
 
           <div className="bento gap-top">
-            <div className="col-7">
-              <Card title="业务世界状态" sub="只展示运行时里真正生效的定义。"
-                    aside={<Tag kind={b?.ont?.lifecycle === "published" ? "ok" : "warn"}>{LIFECYCLE_LABEL[b?.ont?.lifecycle || "none"]}</Tag>}>
-                {bundle.loading && <div className="skeleton"><span /><span /><span /></div>}
-                {!bundle.loading && !b?.rt && (
-                  <Empty title="业务世界还没启动" hint="到「本体」页把定义发布出去，这里会出现运行时索引。"
-                         action={<Btn size="sm" onClick={() => go("ontology")}>去发布本体</Btn>} />
+            <div className="col-6">
+              <Card title="下一步" sub="按依赖顺序给出，完成前一步之前，后一步通常没有意义。"
+                    aside={<Tag kind={next.length ? "warn" : "ok"}>{next.length ? `${next.length} 项待办` : "骨架已通"}</Tag>}>
+                {bundle.loading && <Skeleton rows={4} />}
+                {!bundle.loading && next.length === 0 && (
+                  <Empty title="主流程已经打通" hint="建议去「对象实例」抽取几条真实记录核对，再在「运行」页看指标与发布。"
+                         action={<div className="btn-row flat">
+                           <Btn size="sm" variant="subtle" onClick={() => go("state")}>看对象实例</Btn>
+                           <Btn size="sm" variant="subtle" onClick={() => go("operations")}>看运行指标</Btn>
+                         </div>} />
                 )}
-                {b?.rt && <RuntimeIndex rt={b.rt} ont={b.ont} />}
+                {next.map((t, i) => (
+                  <div className="todo-item" key={t.title + i}>
+                    <span className="mono muted todo-index">{String(i + 1).padStart(2, "0")}</span>
+                    <div className="todo-main">
+                      <div className="todo-title">{t.title}</div>
+                      <div className="todo-detail">{t.desc}</div>
+                    </div>
+                    <Btn size="sm" variant="subtle" onClick={() => go(t.to, t.tab ? { tab: t.tab } : undefined)}>{t.cta}</Btn>
+                  </div>
+                ))}
               </Card>
             </div>
-            <div className="col-5">
-              <Card title="控制回路" sub="平台把“目标、执行、观测、纠偏”放在同一个闭环里。">
-                <LoopDiagram />
-              </Card>
-            </div>
-          </div>
-
-          <div className="bento gap-top">
             <div className="col-6">
               <Card title="最近活动" aside={<Btn size="sm" variant="link" onClick={() => go("settings", { tab: "audit" })}>全部记录</Btn>}>
                 {b && b.audit.length === 0 && <Empty title="暂无记录" hint="创建、发布、同步与调用都会留痕。" />}
@@ -326,6 +318,14 @@ export function Workbench() {
                     ))}
                   </div>
                 )}
+              </Card>
+            </div>
+          </div>
+
+          <div className="bento gap-top">
+            <div className="col-6">
+              <Card title="控制回路" sub="平台把“目标、执行、观测、纠偏”放在同一个闭环里。">
+                <LoopDiagram />
               </Card>
             </div>
             <div className="col-6">

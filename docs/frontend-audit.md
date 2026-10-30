@@ -126,7 +126,7 @@ function / target / args / list / name / value`，`{{path}}` 只允许
 ### P2 记录在案（本次不实施）
 
 - 本体版本化 / `revise`·`deprecate` 的 API 与 UI 流程（v0.1 用"新建工作空间"过渡）；
-- 对象/工作空间删除；find 分页；投影映射可视化构建器；chart/map 真实渲染；
+- ~~对象/工作空间删除~~（2026-10 已补齐本体对象/关系/术语、数据源/映射、能力、应用删除）；find 分页；投影映射可视化构建器；chart/map 真实渲染；
 - 应用查询结果在视图内联分页；多本体 per workspace（v0.2）。
 
 ## 四、验证

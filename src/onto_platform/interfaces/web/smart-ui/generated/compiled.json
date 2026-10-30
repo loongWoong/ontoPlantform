@@ -1,0 +1,732 @@
+{
+  "blueprint": {
+    "name": "VehicleAbnormalAnalysis",
+    "displayName": "车辆异常分析",
+    "description": "由本体 com.mypalantir.demo.toll.ontology@1.0 驱动的异常分析视图；按目标 VehiclePassRecord 的能力求交生成。",
+    "schemaVersion": "1.0",
+    "ontologyVersion": "com.mypalantir.demo.toll.ontology@1.0",
+    "context": {
+      "object": "VehiclePassRecord",
+      "goal": "anomaly_analysis",
+      "focus": {
+        "key": "plate_number",
+        "value": "鲁SX0579"
+      }
+    },
+    "views": [
+      {
+        "perspective": "identity"
+      },
+      {
+        "perspective": "relationship"
+      },
+      {
+        "perspective": "timeline"
+      },
+      {
+        "perspective": "location"
+      },
+      {
+        "perspective": "statistics"
+      },
+      {
+        "perspective": "state"
+      },
+      {
+        "perspective": "rule"
+      },
+      {
+        "perspective": "action"
+      }
+    ],
+    "actions": [
+      "trace_vehicle",
+      "analyze_exception"
+    ],
+    "layout": "auto",
+    "meta": {
+      "generatedBy": "ai_planner",
+      "sourceQuestion": "鲁SX0579 为什么异常？",
+      "intentVersion": "1.0",
+      "confidence": 0.9400000000000001
+    }
+  },
+  "program": "$plate = \"鲁SX0579\"\n$selected = null\n\nq_identity = Query(\"view_identity\", { plate: $plate }, { rows: [] })\nq_relationship = Query(\"view_relationship\", { plate: $plate }, { rows: [] })\nq_timeline = Query(\"view_timeline\", { plate: $plate }, { rows: [] })\nq_location = Query(\"view_location\", { plate: $plate }, { rows: [] })\nq_statistics = Query(\"view_statistics\", { plate: $plate }, { rows: [] })\nq_state = Query(\"view_state\", { plate: $plate }, { rows: [] })\nq_rule = Query(\"view_rule\", { plate: $plate }, { rows: [] })\nq_action = Query(\"view_action\", { plate: $plate }, { rows: [] })\n\nm_trace_vehicle = Mutation(\"trace_vehicle\", { plate: $plate })\nm_analyze_exception = Mutation(\"analyze_exception\", { plate: $plate })\n\nheader = SectionHeader(\"车辆异常分析\", \"鲁SX0579 · 异常分析\", \"8 视角 · 确定性编译\")\n\nb_trace_vehicle = ActionButton(\"车辆轨迹与画像追踪\", \"沿车辆关系链展开通行轨迹与画像\", @Run(m_trace_vehicle), \"secondary\", \"trace_vehicle\", \"analyst / operator\")\nb_analyze_exception = ActionButton(\"异常原因分析\", \"按规则链解释车型识别冲突与计费差异\", @Run(m_analyze_exception), \"primary\", \"analyze_exception\", \"analyst\")\n\nv_identity = ObjectCard(\"对象画像\", q_identity.rows)\nv_relationship = RelationGraph(\"关系网络\", q_relationship.rows, $selected)\nv_timeline = EventTimeline(\"事件时间线\", q_timeline.rows, $selected)\nv_location = GeoMap(\"轨迹地图\", q_location.rows, $selected)\nv_statistics = StatisticChart(\"通行统计\", q_statistics.rows)\nv_state = StatePanel(\"通行状态\", q_state.rows)\nv_rule = AnalysisPanel(\"异常解释\", q_rule.rows)\nv_action = ActionPanel(\"处置动作\", [b_trace_vehicle, b_analyze_exception], q_action.rows, \"当前角色可执行 2 个动作 · 生成处置任务需更高权限，已从可执行程序裁剪\")\n\nroot = Stack([header, v_identity, v_statistics, v_state, v_relationship, v_rule, v_timeline, v_location, v_action], \"dashboard\")\n",
+  "tools": [
+    {
+      "name": "view_identity",
+      "kind": "query",
+      "description": "读取 identity 视角的业务数据（单次聚合查询，不依赖其他 Query）",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "plate"
+        ],
+        "properties": {
+          "plate": {
+            "type": "string"
+          },
+          "selected": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "roles": []
+    },
+    {
+      "name": "view_relationship",
+      "kind": "query",
+      "description": "读取 relationship 视角的业务数据（单次聚合查询，不依赖其他 Query）",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "plate"
+        ],
+        "properties": {
+          "plate": {
+            "type": "string"
+          },
+          "selected": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "roles": []
+    },
+    {
+      "name": "view_timeline",
+      "kind": "query",
+      "description": "读取 timeline 视角的业务数据（单次聚合查询，不依赖其他 Query）",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "plate"
+        ],
+        "properties": {
+          "plate": {
+            "type": "string"
+          },
+          "selected": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "roles": []
+    },
+    {
+      "name": "view_location",
+      "kind": "query",
+      "description": "读取 location 视角的业务数据（单次聚合查询，不依赖其他 Query）",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "plate"
+        ],
+        "properties": {
+          "plate": {
+            "type": "string"
+          },
+          "selected": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "roles": []
+    },
+    {
+      "name": "view_statistics",
+      "kind": "query",
+      "description": "读取 statistics 视角的业务数据（单次聚合查询，不依赖其他 Query）",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "plate"
+        ],
+        "properties": {
+          "plate": {
+            "type": "string"
+          },
+          "selected": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "roles": []
+    },
+    {
+      "name": "view_state",
+      "kind": "query",
+      "description": "读取 state 视角的业务数据（单次聚合查询，不依赖其他 Query）",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "plate"
+        ],
+        "properties": {
+          "plate": {
+            "type": "string"
+          },
+          "selected": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "roles": []
+    },
+    {
+      "name": "view_rule",
+      "kind": "query",
+      "description": "读取 rule 视角的业务数据（单次聚合查询，不依赖其他 Query）",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "plate"
+        ],
+        "properties": {
+          "plate": {
+            "type": "string"
+          },
+          "selected": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "roles": []
+    },
+    {
+      "name": "view_action",
+      "kind": "query",
+      "description": "读取 action 视角的业务数据（单次聚合查询，不依赖其他 Query）",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "plate"
+        ],
+        "properties": {
+          "plate": {
+            "type": "string"
+          },
+          "selected": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "roles": []
+    },
+    {
+      "name": "trace_vehicle",
+      "kind": "mutation",
+      "description": "业务动作：车辆轨迹与画像追踪（执行前必须通过角色校验）",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "plate"
+        ],
+        "properties": {
+          "plate": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "roles": [
+        "analyst",
+        "operator"
+      ]
+    },
+    {
+      "name": "analyze_exception",
+      "kind": "mutation",
+      "description": "业务动作：异常原因分析（执行前必须通过角色校验）",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "plate"
+        ],
+        "properties": {
+          "plate": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "roles": [
+        "analyst"
+      ]
+    }
+  ],
+  "diagnostics": [
+    {
+      "code": "E_ACTION_PROVENANCE",
+      "severity": "info",
+      "layer": "L0",
+      "message": "actions[] 来自扩展后的本体 YAML 声明（演示用）；生产环境应以 Action 数据库实体为唯一事实源",
+      "path": "ontology-demo.yaml"
+    },
+    {
+      "code": "E_FORBIDDEN",
+      "severity": "warn",
+      "layer": "L3",
+      "message": "动作 create_task 不满足角色要求，已从可执行程序中剪除",
+      "path": "actions[create_task]",
+      "detail": {
+        "requiredRoles": [
+          "operator",
+          "supervisor"
+        ],
+        "callerRoles": [
+          "analyst"
+        ]
+      }
+    },
+    {
+      "code": "E_COMPILE_OK",
+      "severity": "info",
+      "layer": "L4",
+      "message": "确定性编译完成：8 个视角，10 个工具，2 个动作",
+      "path": "program"
+    }
+  ],
+  "permissions": {
+    "callerRoles": [
+      "analyst"
+    ],
+    "decisions": [
+      {
+        "actionId": "trace_vehicle",
+        "displayName": "车辆轨迹与画像追踪",
+        "allowed": true,
+        "roles": [
+          "analyst",
+          "operator"
+        ],
+        "reason": ""
+      },
+      {
+        "actionId": "analyze_exception",
+        "displayName": "异常原因分析",
+        "allowed": true,
+        "roles": [
+          "analyst"
+        ],
+        "reason": ""
+      },
+      {
+        "actionId": "create_task",
+        "displayName": "生成处置任务",
+        "allowed": false,
+        "roles": [
+          "operator",
+          "supervisor"
+        ],
+        "reason": "当前角色 analyst 不在 operator, supervisor 中"
+      }
+    ],
+    "allowed": [
+      "trace_vehicle",
+      "analyze_exception"
+    ],
+    "denied": [
+      {
+        "actionId": "create_task",
+        "displayName": "生成处置任务",
+        "roles": [
+          "operator",
+          "supervisor"
+        ],
+        "reason": "当前角色 analyst 不在 operator, supervisor 中"
+      }
+    ]
+  },
+  "viewMap": [
+    {
+      "perspective": "identity",
+      "type": "object_card",
+      "component": "ObjectCard",
+      "title": "对象画像",
+      "evidence": [
+        "object:VehiclePassRecord",
+        "property:pass_id",
+        "property:plate_number"
+      ]
+    },
+    {
+      "perspective": "relationship",
+      "type": "relation_graph",
+      "component": "RelationGraph",
+      "title": "关系网络",
+      "evidence": [
+        "link:vehicle_has_pass_records",
+        "link:pass_record_involves_vehicle",
+        "link:pass_record_through_gate",
+        "link:pass_record_at_station",
+        "link:pass_record_has_transaction"
+      ]
+    },
+    {
+      "perspective": "timeline",
+      "type": "timeline",
+      "component": "EventTimeline",
+      "title": "事件时间线",
+      "evidence": [
+        "property:pass_time(datetime)"
+      ]
+    },
+    {
+      "perspective": "location",
+      "type": "map",
+      "component": "GeoMap",
+      "title": "轨迹地图",
+      "evidence": [
+        "property:Gate.longitude/latitude",
+        "property:Station.longitude/latitude"
+      ]
+    },
+    {
+      "perspective": "statistics",
+      "type": "statistic_chart",
+      "component": "StatisticChart",
+      "title": "通行统计",
+      "evidence": [
+        "property:Vehicle.plate_color(int)",
+        "property:Vehicle.axle_count(int)",
+        "property:Gate.gantry_type(int)",
+        "property:Station.station_type(int)",
+        "property:Transaction.transaction_type(int)",
+        "property:Transaction.fee_type(int)",
+        "property:Transaction.fee(long)"
+      ]
+    },
+    {
+      "perspective": "state",
+      "type": "state_panel",
+      "component": "StatePanel",
+      "title": "通行状态",
+      "evidence": [
+        "property:VehiclePassRecord.abnormal_flag(derived boolean)"
+      ]
+    },
+    {
+      "perspective": "rule",
+      "type": "analysis_panel",
+      "component": "AnalysisPanel",
+      "title": "异常解释",
+      "evidence": [
+        "rule:pass_record_abnormal_context",
+        "rule:vehicle_type_fee_rule_conflict",
+        "rule:vehicle_repeat_abnormal"
+      ]
+    },
+    {
+      "perspective": "action",
+      "type": "action_panel",
+      "component": "ActionPanel",
+      "title": "处置动作",
+      "evidence": [
+        "action:trace_vehicle->Vehicle",
+        "action:analyze_exception->VehiclePassRecord",
+        "action:create_task->VehiclePassRecord"
+      ]
+    }
+  ],
+  "toolsInProgram": [
+    "analyze_exception",
+    "trace_vehicle",
+    "view_action",
+    "view_identity",
+    "view_location",
+    "view_relationship",
+    "view_rule",
+    "view_state",
+    "view_statistics",
+    "view_timeline"
+  ],
+  "compileMs": 12.237,
+  "programHash": "sha256:f03bb72b61a3fe5a0a2c768cc5b0a3100a7390cc08dcd449b53c073b0a2fff73",
+  "artifacts": {
+    "engineVersion": "0.1.0",
+    "generatedAt": "2026-10-29T00:44:50+00:00",
+    "question": "鲁SX0579 为什么异常？",
+    "intent": {
+      "goal": "anomaly_analysis",
+      "object": "VehiclePassRecord",
+      "focus": {
+        "key": "plate_number",
+        "value": "鲁SX0579"
+      },
+      "sourceQuestion": "鲁SX0579 为什么异常？",
+      "confidence": 0.9400000000000001,
+      "resolution": [
+        "focus:Vehicle.plate_number=鲁SX0579",
+        "root:Vehicle -> VehiclePassRecord"
+      ],
+      "attempts": 1
+    },
+    "ontology": {
+      "version": "1.0",
+      "ontologyVersion": "com.mypalantir.demo.toll.ontology@1.0",
+      "namespace": "com.mypalantir.demo.toll.ontology",
+      "objects": 7,
+      "links": 8,
+      "rules": 3,
+      "actions": 3,
+      "errors": 0,
+      "object_names": [
+        "Vehicle",
+        "OBU",
+        "ETCCard",
+        "Station",
+        "Gate",
+        "Transaction",
+        "VehiclePassRecord"
+      ],
+      "link_names": [
+        "vehicle_has_obu",
+        "obu_has_etc_card",
+        "etc_card_issued_at_station",
+        "vehicle_has_pass_records",
+        "pass_record_involves_vehicle",
+        "pass_record_through_gate",
+        "pass_record_at_station",
+        "pass_record_has_transaction"
+      ],
+      "action_ids": [
+        "trace_vehicle",
+        "analyze_exception",
+        "create_task"
+      ]
+    },
+    "capabilities": [
+      {
+        "perspective": "identity",
+        "viewType": "object_card",
+        "component": "ObjectCard",
+        "evidence": [
+          "object:VehiclePassRecord",
+          "property:pass_id",
+          "property:plate_number"
+        ],
+        "title": "对象画像",
+        "derivedFrom": {
+          "object": "VehiclePassRecord",
+          "ontologyVersion": "com.mypalantir.demo.toll.ontology@1.0"
+        }
+      },
+      {
+        "perspective": "relationship",
+        "viewType": "relation_graph",
+        "component": "RelationGraph",
+        "evidence": [
+          "link:vehicle_has_pass_records",
+          "link:pass_record_involves_vehicle",
+          "link:pass_record_through_gate",
+          "link:pass_record_at_station",
+          "link:pass_record_has_transaction"
+        ],
+        "title": "关系网络",
+        "derivedFrom": {
+          "object": "VehiclePassRecord",
+          "ontologyVersion": "com.mypalantir.demo.toll.ontology@1.0"
+        }
+      },
+      {
+        "perspective": "timeline",
+        "viewType": "timeline",
+        "component": "EventTimeline",
+        "evidence": [
+          "property:pass_time(datetime)"
+        ],
+        "title": "事件时间线",
+        "derivedFrom": {
+          "object": "VehiclePassRecord",
+          "ontologyVersion": "com.mypalantir.demo.toll.ontology@1.0"
+        }
+      },
+      {
+        "perspective": "location",
+        "viewType": "map",
+        "component": "GeoMap",
+        "evidence": [
+          "property:Gate.longitude/latitude",
+          "property:Station.longitude/latitude"
+        ],
+        "title": "轨迹地图",
+        "derivedFrom": {
+          "object": "VehiclePassRecord",
+          "ontologyVersion": "com.mypalantir.demo.toll.ontology@1.0"
+        }
+      },
+      {
+        "perspective": "statistics",
+        "viewType": "statistic_chart",
+        "component": "StatisticChart",
+        "evidence": [
+          "property:Vehicle.plate_color(int)",
+          "property:Vehicle.axle_count(int)",
+          "property:Gate.gantry_type(int)",
+          "property:Station.station_type(int)",
+          "property:Transaction.transaction_type(int)",
+          "property:Transaction.fee_type(int)",
+          "property:Transaction.fee(long)"
+        ],
+        "title": "通行统计",
+        "derivedFrom": {
+          "object": "VehiclePassRecord",
+          "ontologyVersion": "com.mypalantir.demo.toll.ontology@1.0"
+        }
+      },
+      {
+        "perspective": "state",
+        "viewType": "state_panel",
+        "component": "StatePanel",
+        "evidence": [
+          "property:VehiclePassRecord.abnormal_flag(derived boolean)"
+        ],
+        "title": "通行状态",
+        "derivedFrom": {
+          "object": "VehiclePassRecord",
+          "ontologyVersion": "com.mypalantir.demo.toll.ontology@1.0"
+        }
+      },
+      {
+        "perspective": "rule",
+        "viewType": "analysis_panel",
+        "component": "AnalysisPanel",
+        "evidence": [
+          "rule:pass_record_abnormal_context",
+          "rule:vehicle_type_fee_rule_conflict",
+          "rule:vehicle_repeat_abnormal"
+        ],
+        "title": "异常解释",
+        "derivedFrom": {
+          "object": "VehiclePassRecord",
+          "ontologyVersion": "com.mypalantir.demo.toll.ontology@1.0"
+        }
+      },
+      {
+        "perspective": "action",
+        "viewType": "action_panel",
+        "component": "ActionPanel",
+        "evidence": [
+          "action:trace_vehicle->Vehicle",
+          "action:analyze_exception->VehiclePassRecord",
+          "action:create_task->VehiclePassRecord"
+        ],
+        "title": "处置动作",
+        "derivedFrom": {
+          "object": "VehiclePassRecord",
+          "ontologyVersion": "com.mypalantir.demo.toll.ontology@1.0"
+        }
+      }
+    ],
+    "requestedPerspectives": [
+      "identity",
+      "relationship",
+      "timeline",
+      "location",
+      "statistics",
+      "state",
+      "rule",
+      "action"
+    ],
+    "finalPerspectives": [
+      "identity",
+      "relationship",
+      "timeline",
+      "location",
+      "statistics",
+      "state",
+      "rule",
+      "action"
+    ],
+    "prunedPerspectives": [],
+    "planningDiagnostics": [
+      {
+        "code": "E_ACTION_PROVENANCE",
+        "severity": "info",
+        "layer": "L0",
+        "message": "actions[] 来自扩展后的本体 YAML 声明（演示用）；生产环境应以 Action 数据库实体为唯一事实源",
+        "path": "ontology-demo.yaml"
+      },
+      {
+        "code": "E_FORBIDDEN",
+        "severity": "warn",
+        "layer": "L3",
+        "message": "动作 create_task 不满足角色要求，已从可执行程序中剪除",
+        "path": "actions[create_task]",
+        "detail": {
+          "requiredRoles": [
+            "operator",
+            "supervisor"
+          ],
+          "callerRoles": [
+            "analyst"
+          ]
+        }
+      }
+    ],
+    "programBytes": 1966,
+    "programLines": 30,
+    "toolClosure": {
+      "programTools": [
+        "analyze_exception",
+        "trace_vehicle",
+        "view_action",
+        "view_identity",
+        "view_location",
+        "view_relationship",
+        "view_rule",
+        "view_state",
+        "view_statistics",
+        "view_timeline"
+      ],
+      "compiledTools": [
+        "view_identity",
+        "view_relationship",
+        "view_timeline",
+        "view_location",
+        "view_statistics",
+        "view_state",
+        "view_rule",
+        "view_action",
+        "trace_vehicle",
+        "analyze_exception"
+      ],
+      "closed": true
+    }
+  },
+  "question": "鲁SX0579 为什么异常？",
+  "ok": true
+}

@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowRight, Lightning, Play } from "@phosphor-icons/react";
+import { ArrowRight, Copy, Lightning, PencilSimple, Play, Trash } from "@phosphor-icons/react";
 import { api, ApiError, type Capability, type InvokeResult, type Obj } from "../api";
 import { useAction, usePlatform } from "../store";
 import {
-  Btn, Card, Collapsible, Drawer, Empty, Field, JsonField, KIND_LABEL, labelOf,
-  LIFECYCLE_LABEL, Loading, PageHead, RowEditor, Select, TableWrap, Tag,
+  Area, Btn, Card, Collapsible, Drawer, Empty, ErrorNote, Field, JsonField, KIND_LABEL,
+  labelOf, LIFECYCLE_LABEL, Loading, PageHead, RowEditor, Select, TableWrap, Tag,
   TextInput, useLoad, type Row,
 } from "../ui";
 import { StatusBadge } from "../components/StatusBadge";
@@ -38,6 +38,8 @@ const TEMPLATES: Record<string, string> = {
 export function CapabilityView() {
   const { wid, toast, confirm, go, refreshRuntime } = usePlatform();
   const [runTarget, setRunTarget] = useState<Capability | null>(null);
+  const [editing, setEditing] = useState<Capability | null>(null);
+  const [cloning, setCloning] = useState<Capability | null>(null);
   const [filter, setFilter] = useState<"all" | "published" | "draft">("all");
   const load = useLoad(() => (wid ? api.capabilities(wid) : Promise.resolve([] as Capability[])), [wid]);
   const caps = load.data || [];
@@ -50,6 +52,16 @@ export function CapabilityView() {
     if (!wid) return;
     await api.publishCapability(wid, c.id);
     toast(`能力「${c.name}」已发布，业务人员现在可以执行它了`, "ok");
+    load.reload();
+    void refreshRuntime();
+  }, [wid, refreshRuntime]);
+
+  const { run: remove, running: removing } = useAction(async (c: Capability) => {
+    if (!wid) return;
+    const result = await api.deleteCapability(wid, c.id);
+    const detached = result.detached_from?.length
+      ? `，并从 ${result.detached_from.join("、")} 应用中移除` : "";
+    toast(`能力「${c.name}」已删除${detached}`, "ok");
     load.reload();
     void refreshRuntime();
   }, [wid, refreshRuntime]);
@@ -117,11 +129,42 @@ export function CapabilityView() {
                                      run: async () => { await publish(c); },
                                    })}>发布</Btn>
                             )}
+                            {c.lifecycle !== "published" && (
+                              <Btn size="sm" variant="subtle"
+                                   aria-label={`编辑能力 ${c.name}`}
+                                   title="只有草稿能改；已发布请用「克隆为草稿」演进"
+                                   onClick={() => setEditing(c)}>
+                                <PencilSimple size={12} /> 编辑
+                              </Btn>
+                            )}
                             {c.lifecycle === "published" && (
                               <Btn size="sm" variant="tint" onClick={() => setRunTarget(c)}>
                                 <Play size={12} weight="fill" /> 执行
                               </Btn>
                             )}
+                            <Btn size="sm" variant="subtle"
+                                 aria-label={`克隆能力 ${c.name} 为草稿`}
+                                 title="复制一份定义成新草稿，原能力保持不变"
+                                 onClick={() => setCloning(c)}>
+                              <Copy size={12} /> 克隆为草稿
+                            </Btn>
+                            <Btn size="sm" variant="subtle" disabled={removing}
+                                 aria-label={`删除能力 ${c.name}`}
+                                 onClick={() => confirm({
+                                   title: `删除能力「${c.name}」？`,
+                                   danger: true,
+                                   confirmText: "确认删除",
+                                   body: (
+                                     <p className="muted">
+                                       {c.lifecycle === "published"
+                                         ? "该能力已发布：删除会把它从运行时契约中移除、从所有应用中解绑，并切出一个新的发布版本。历史执行记录与审计会保留。"
+                                         : "草稿能力将直接从设计态删除；历史执行记录与审计会保留。"}
+                                     </p>
+                                   ),
+                                   run: async () => { await remove(c); },
+                                 })}>
+                              <Trash size={12} /> 删除
+                            </Btn>
                           </div>
                         </td>
                       </tr>
@@ -151,7 +194,196 @@ export function CapabilityView() {
       </div>
 
       {runTarget && <RunDrawer cap={runTarget} onClose={() => setRunTarget(null)} />}
+      {editing && wid && (
+        <EditCapability cap={editing} onClose={() => setEditing(null)}
+                        onSaved={() => { setEditing(null); load.reload(); }} />
+      )}
+      {cloning && wid && (
+        <CloneCapability cap={cloning} onClose={() => setCloning(null)}
+                         onSaved={() => { setCloning(null); load.reload(); }} />
+      )}
     </>
+  );
+}
+
+/** 从能力里取出某一种实现方式的编辑文本（切换实现方式时不会串内容）。 */
+function implText(impl: Capability["implementation"] | undefined, kind: string): string {
+  const i: Capability["implementation"] = impl || { kind: "python" };
+  if (kind === "workflow") return JSON.stringify(i.steps ?? [], null, 2);
+  if (kind === "agent") return String(i.goal ?? "");
+  return String(i.source ?? "");
+}
+
+/** 草稿能力编辑：只改定义，不发布、不碰运行时。 */
+function EditCapability({ cap, onClose, onSaved }: {
+  cap: Capability; onClose: () => void; onSaved: () => void;
+}) {
+  const { wid, toast, objectTypes } = usePlatform();
+  const implKind = String(cap.implementation?.kind || "python");
+  const [name, setName] = useState(cap.name);
+  const [key, setKey] = useState(cap.key);
+  const [target, setTarget] = useState(cap.target_type);
+  const [desc, setDesc] = useState(cap.description || "");
+  const [inputs, setInputs] = useState<Row[]>(
+    (cap.inputs || []).map(i => ({ a: i.name, b: i.type || "string" })));
+  const [kind, setKind] = useState(implKind);
+  // 三种实现方式各留一份编辑文本：切换实现方式再切回来，刚才写的还在。
+  const [texts, setTexts] = useState<Record<string, string>>(() => ({
+    python: implText(cap.implementation, "python"),
+    workflow: implText(cap.implementation, "workflow"),
+    agent: implText(cap.implementation, "agent"),
+  }));
+  const [contract, setContract] = useState(() =>
+    cap.contract && Object.keys(cap.contract).length ? JSON.stringify(cap.contract, null, 2) : "");
+  const [error, setError] = useState<string | null>(null);
+  const impl = texts[kind] ?? "";
+  const setImpl = (v: string) => setTexts(t => ({ ...t, [kind]: v }));
+
+  const nextKey = key.trim();
+  const functionChanged = nextKey !== cap.key || target !== cap.target_type;
+
+  const { run, running } = useAction(async () => {
+    if (!wid) return;
+    setError(null);
+    if (!name.trim() || !nextKey || !target) { setError("业务名称、标识、作用对象都要填"); return; }
+    if (!/^[A-Za-z0-9_]+$/.test(nextKey)) { setError("标识只能是字母、数字、下划线"); return; }
+    let implementation: Record<string, unknown>;
+    if (kind === "workflow") {
+      let steps: unknown;
+      try { steps = JSON.parse(impl || "[]"); }
+      catch (e) { setError(`编排步骤不是合法 JSON：${(e as Error).message}`); return; }
+      if (!Array.isArray(steps)) { setError("编排步骤要是一个数组"); return; }
+      implementation = { kind, steps };
+    } else if (kind === "agent") {
+      if (!impl.trim()) { setError("智能目标不能为空：补一句它要完成什么"); return; }
+      implementation = { kind, goal: impl.trim() };
+    } else {
+      if (!impl.trim()) { setError("脚本实现不能为空"); return; }
+      implementation = { kind, source: impl };
+    }
+    const parsed = parseContract(contract);
+    if (parsed.error) { setError(parsed.error); return; }
+    try {
+      await api.updateCapability(wid, cap.id, {
+        key: nextKey,
+        name: name.trim(),
+        target_type: target,
+        description: desc.trim(),
+        inputs: inputs.filter(r => r.a.trim()).map(r => ({ name: r.a.trim(), type: r.b || "string" })),
+        implementation,
+        contract: parsed.value || {},
+      });
+      toast(`能力「${name.trim()}」已更新；它还是草稿，发布后才会生效`, "ok");
+      onSaved();
+    } catch (e) {
+      // 后端拒绝（标识冲突 / 契约不合法 / 目标对象不存在等）要看得到、能改完再存
+      setError((e as ApiError).message);
+      throw e;
+    }
+  }, [wid, cap.id, nextKey, name, target, desc, inputs, kind, impl, contract]);
+
+  return (
+    <Drawer title={`编辑能力 · ${cap.name}`} sub="只改草稿定义：保存后仍是草稿，发布才会进入运行时。"
+            onClose={onClose} wide
+            footer={<div className="btn-row flat">
+              <Btn busy={running} onClick={() => void run()}>保存更正</Btn>
+              <Btn variant="subtle" disabled={running} onClick={onClose}>取消</Btn>
+            </div>}>
+      {error && <ErrorNote text={`保存被拒绝：${error}`} />}
+      <Field label="业务名称" hint="业务人员看到的名字。">
+        <TextInput value={name} onChange={e => setName(e.target.value)} disabled={running} />
+      </Field>
+      <Field label="标识" hint="内部引用用的英文短词；函数名是「作用对象.标识」。">
+        <TextInput value={key} onChange={e => setKey(e.target.value)} disabled={running} />
+      </Field>
+      <Field label="作用对象" hint="可执行能力挂在对象类型上；换对象等于换一个函数名。">
+        <Select value={target} onChange={e => setTarget(e.target.value)} disabled={running}>
+          {!objectTypes.includes(target) && <option value={target}>{target}（当前值）</option>}
+          {objectTypes.map(t => <option key={t} value={t}>{t}</option>)}
+        </Select>
+      </Field>
+      {functionChanged && (
+        <p className="muted small">
+          函数名会从「{cap.target_type}.{cap.key}」变成「{target}.{nextKey || "…"}」；
+          发布后调用方与运行时动作面板都按新名字来，旧的函数名不再存在（旧版本发布记录仍保留）。
+        </p>
+      )}
+      <Field label="一句话说明">
+        <TextInput value={desc} placeholder="给车辆账户充值" onChange={e => setDesc(e.target.value)} disabled={running} />
+      </Field>
+      <Field label="参数" top hint="一行一个：参数名 + 类型。执行时会按这里生成输入框。">
+        <RowEditor rows={inputs} onChange={setInputs} phA="参数名，如 amount" phB="类型"
+                   bKind="select" bOptions={["string", "number", "integer", "boolean"]} />
+      </Field>
+      <Field label="怎么实现">
+        <Select value={kind} onChange={e => setKind(e.target.value)} disabled={running}>
+          <option value="python">脚本（Python）</option>
+          <option value="workflow">编排（步骤）</option>
+          <option value="agent">智能目标</option>
+        </Select>
+      </Field>
+      {kind === "workflow" ? (
+        <JsonField label="编排步骤" value={impl} onChange={setImpl} rows={12} required hint={HINTS.workflow} />
+      ) : (
+        <Field label={kind === "agent" ? "智能目标" : "脚本实现"} top hint={HINTS[kind]}>
+          <Area className="code" rows={kind === "agent" ? 3 : 12} value={impl}
+                aria-label={kind === "agent" ? "智能目标" : "脚本实现"}
+                onChange={e => setImpl(e.target.value)} disabled={running} />
+        </Field>
+      )}
+      <JsonField label="执行契约（可选）" value={contract} onChange={setContract} rows={6}
+                 hint='描述执行前后的世界状态，不是参数 JSON Schema。顶层键：preconditions / postconditions / effects / idempotent / compensate；留空表示不声明。' />
+      <div className="btn-row">
+        <Btn size="sm" variant="subtle" type="button" onClick={() => setImpl(TEMPLATES[kind] || "")}>填入示例</Btn>
+        <Btn size="sm" variant="subtle" type="button" onClick={() => setContract(contractExampleText())}>填入契约示例</Btn>
+      </div>
+    </Drawer>
+  );
+}
+
+/** 克隆为草稿：复制定义，不复制发布状态；旧能力保持发布，不受影响。 */
+function CloneCapability({ cap, onClose, onSaved }: {
+  cap: Capability; onClose: () => void; onSaved: () => void;
+}) {
+  const { wid, toast } = usePlatform();
+  const [key, setKey] = useState(`${cap.key}_v2`);
+  const [name, setName] = useState(`${cap.name} 副本`);
+  const [error, setError] = useState<string | null>(null);
+  const { run, running } = useAction(async () => {
+    if (!wid) return;
+    setError(null);
+    const nextKey = key.trim();
+    if (!nextKey) { setError("新标识不能为空"); return; }
+    if (!/^[A-Za-z0-9_]+$/.test(nextKey)) { setError("标识只能是字母、数字、下划线"); return; }
+    try {
+      const created = await api.cloneCapability(wid, cap.id, { key: nextKey, name: name.trim() || `${cap.name} 副本` });
+      toast(`已克隆为草稿「${created.name}」（${created.target_type}.${created.key}）：它还没发布，发布后旧能力仍然保留`, "ok");
+      onSaved();
+    } catch (e) {
+      setError((e as ApiError).message);
+      throw e;
+    }
+  }, [wid, cap, key, name]);
+
+  return (
+    <Drawer title={`克隆为草稿 · ${cap.name}`} sub="复制一份定义成新草稿；原能力与运行时都不受影响。"
+            onClose={onClose}
+            footer={<div className="btn-row flat">
+              <Btn busy={running} onClick={() => void run()}>克隆为草稿</Btn>
+              <Btn variant="subtle" disabled={running} onClick={onClose}>取消</Btn>
+            </div>}>
+      {error && <ErrorNote text={`克隆没成功：${error}`} />}
+      <Field label="新标识" hint="函数名是「作用对象.标识」；默认在原标识后加 _v2。">
+        <TextInput value={key} onChange={e => setKey(e.target.value)} disabled={running} />
+      </Field>
+      <Field label="新名称" hint="业务人员看到的名字；默认加「副本」。">
+        <TextInput value={name} onChange={e => setName(e.target.value)} disabled={running} />
+      </Field>
+      <p className="muted small">
+        克隆会复制作用对象、参数、实现与执行契约，但不会复制发布状态：新能力是草稿，
+        发布后才会进入运行时；旧能力继续保持已发布，两者可以并存。
+      </p>
+    </Drawer>
   );
 }
 

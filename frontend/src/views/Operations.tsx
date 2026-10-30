@@ -208,7 +208,7 @@ export function OperationsView() {
           </div>
 
           <div className="bento gap-top">
-            <div className="col-8">
+            <div className="col-12">
               <Card title="运行时指标" sub="来自后端 /metrics 的最近一次采样，不由界面推算；切换窗口不会补造样本。"
                     aside={<>
                       <Select value={String(windowSeconds)} aria-label="评估窗口"
@@ -234,15 +234,6 @@ export function OperationsView() {
                     reason={slo?.reason}
                   />
                 )}
-              </Card>
-            </div>
-            <div className="col-4">
-              <Card title="服务目标 SLO" sub="目标越线时，先看证据再动作；没有样本时显示灰色。"
-                    aside={<StatusBadge status={sloStatus} />}>
-                {obs.loading && <Skeleton rows={4} />}
-                {!obs.loading && !slo && <Empty title="还没有 SLO 数据" />}
-                {slo && <SloList slo={slo} />}
-                {slo && <p className="muted small">{slo.reason || `窗口 ${formatWindow(slo.window_seconds ?? windowSeconds)}，样本不足时不判定达标。`}</p>}
               </Card>
             </div>
           </div>
@@ -272,8 +263,17 @@ export function OperationsView() {
             )}
           </Card>
 
-          <div className="bento gap-top">
-            <div className="col-6">
+          <div className="bento gap-top ops-row">
+            <div className="col-4">
+              <Card title="服务目标 SLO" sub="目标越线时，先看证据再动作；没有样本时显示灰色。"
+                    aside={<StatusBadge status={sloStatus} />}>
+                {obs.loading && <Skeleton rows={4} />}
+                {!obs.loading && !slo && <Empty title="还没有 SLO 数据" />}
+                {slo && <SloList slo={slo} />}
+                {slo && <p className="muted small">{slo.reason || `窗口 ${formatWindow(slo.window_seconds ?? windowSeconds)}，样本不足时不判定达标。`}</p>}
+              </Card>
+            </div>
+            <div className="col-4">
               <Card title="发布与部署" aside={<Btn size="sm" variant="link" onClick={() => selectTab("releases")}>管理</Btn>}>
                 {rel.loading && <Skeleton rows={3} />}
                 {!rel.loading && !r?.releases.length && (
@@ -315,7 +315,7 @@ export function OperationsView() {
                 )}
               </Card>
             </div>
-            <div className="col-6">
+            <div className="col-4">
               <Card title="最近事件" aside={<Btn size="sm" variant="link" onClick={() => selectTab("events")}>全部事件</Btn>}>
                 <RecentEvents />
               </Card>
@@ -451,28 +451,39 @@ export function OperationsView() {
                     {r.releases.slice().reverse().map(relRow => {
                       const isCurrent = relRow.id === r.deployment?.release_id;
                       const isCanary = relRow.id === r.canary?.release_id && !r.canary?.promoted;
+                      const missing = relRow.missing_capability_ids || [];
+                      const missingTitle = missing.length
+                        ? `该发布引用的能力已被删除（${missing.join("、")}），需重新发布后再部署`
+                        : undefined;
                       return (
                         <tr key={relRow.id}>
                           <td className="mono nowrap">{relRow.id}</td>
                           <td className="mono">{relRow.schema_version ? `v${relRow.schema_version}` : "–"}</td>
                           <td className="mono">{relRow.fingerprint}</td>
-                          <td className="mono">{relRow.capability_ids.length}</td>
+                          <td className="mono">
+                            {relRow.capability_ids.length}
+                            {!!missing.length && <span className="muted"> · {missing.length} 缺失</span>}
+                          </td>
                           <td className="wrap">{relRow.note || "–"}</td>
                           <td className="mono nowrap">{fmtTime(relRow.created_at)}</td>
                           <td className="nowrap">
-                            {isCurrent ? <Tag kind="ok">当前</Tag> : isCanary ? <Tag kind="warn">隔离验证环</Tag> : <span className="muted">历史</span>}
+                            <span className="tag-list">
+                              {isCurrent ? <Tag kind="ok">当前</Tag> : isCanary ? <Tag kind="warn">隔离验证环</Tag> : <span className="muted">历史</span>}
+                              {!!missing.length && <Tag kind="err">能力缺失</Tag>}
+                            </span>
                           </td>
                           <td className="nowrap">
                             {!isCurrent && (
-                              <button type="button" className="link" onClick={() => confirm({
-                                title: "部署这个发布？",
-                                body: <p className="muted">内核接受后才会移动部署指针；失败会保持现状。</p>,
-                                confirmText: "部署",
-                                run: async () => { await deploy.run(relRow.id); },
-                              })}>部署</button>
+                              <button type="button" className="link" disabled={!!missing.length} title={missingTitle}
+                                      onClick={() => confirm({
+                                        title: "部署这个发布？",
+                                        body: <p className="muted">内核接受后才会移动部署指针；失败会保持现状。</p>,
+                                        confirmText: "部署",
+                                        run: async () => { await deploy.run(relRow.id); },
+                                      })}>部署</button>
                             )}
                             {!isCanary && (
-                              <button type="button" className="link act-gap"
+                              <button type="button" className="link act-gap" disabled={!!missing.length} title={missingTitle}
                                       onClick={() => confirm({
                                         title: "部署到隔离验证环？",
                                         body: <p className="muted">会安装隔离 shadow 运行时（不接真实流量），当前环不动。</p>,

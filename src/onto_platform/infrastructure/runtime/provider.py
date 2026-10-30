@@ -64,6 +64,35 @@ class WorkspaceGatewayProvider:
         store = getattr(gateway, "_store_kind", None)
         return "cloned" if store == "sqlite" else "schema_only"
 
+    def drop_workspace(self, workspace_id: str) -> None:
+        """Forget and close all cached runtimes for a deleted workspace.
+
+        Only the default runtime files this provider created are removed; an
+        explicit ``runtime_config.db_path`` may be shared or owned elsewhere,
+        so it is closed but never unlinked.  Cleanup is best-effort: a
+        workspace deletion must not fail because Windows still has a handle.
+        """
+        for key in [k for k in self._gateways if k[0] == workspace_id]:
+            gateway = self._gateways.pop(key)
+            store = getattr(gateway, "_store", None)
+            connection = getattr(store, "_conn", None)
+            if connection is not None:
+                try:
+                    connection.close()
+                except Exception:
+                    pass
+        data_dir = Path(self._runtime_data_dir or ".onto/runtime")
+        for name in (
+            f"runtime_{workspace_id}.db",
+            f"runtime_{workspace_id}_canary.db",
+            f"changes_{workspace_id}.jsonl",
+            f"changes_{workspace_id}_canary.jsonl",
+        ):
+            try:
+                (data_dir / name).unlink(missing_ok=True)
+            except OSError:
+                pass
+
     def _clone_current_sqlite(self, workspace_id: str,
                               canary_path: str) -> None:
         """Copy the serving SQLite state into the canary before it opens.

@@ -125,7 +125,7 @@ JS 渲染串里：**alias ×24、JSON ×16、ref ×15、key ×11、published ×5
 
 ### P2 — 记录在案，本期不做
 
-对象/关系/术语/能力/应用删除与编辑（后端无 delete 路由）；find/变更流分页；投影 dry-run 预览；chart/map 真实渲染；本体版本化 revise/deprecate；多本体 per workspace。
+~~对象/关系/术语/能力/应用删除~~（2026-10 已补齐：四域 `DELETE` 路由 + 用例引用保护 + 控制台删除入口，见 `frontend-react-implementation.md` §8；编辑仍部分依赖新增入口覆盖）；find/变更流分页；投影 dry-run 预览；chart/map 真实渲染；本体版本化 revise/deprecate；多本体 per workspace。
 
 ---
 

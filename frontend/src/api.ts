@@ -3,16 +3,47 @@
 
 export type Lifecycle = "draft" | "validated" | "published" | "deprecated" | "none";
 
-export interface Workspace { id: string; name: string; description: string; created_at: string; runtime_config?: Record<string, unknown> }
-export interface PropertySpec { name: string; type: string; description?: string }
-export interface ObjectTypeSpec { name: string; description: string; properties: Record<string, PropertySpec> }
-export interface RelationSpec { name: string; source: string; target: string; description?: string; cardinality?: string }
+export interface Workspace { id: string; name: string; description: string; created_at: string; runtime_config?: Record<string, unknown>; deletable?: boolean; blockers?: string[] }
+/** 属性的 facet 全部可选：编辑器按原样回传，缺省时后端用默认值，绝不丢 required/enum。 */
+export interface PropertySpec {
+  name: string; type: string; description?: string;
+  required?: boolean; enum?: unknown[]; minimum?: number | null; maximum?: number | null;
+  unique?: boolean; unit?: string; precision?: number | null; default?: unknown; temporal?: string;
+}
+export interface ObjectTypeSpec {
+  name: string; description: string; properties: Record<string, PropertySpec>;
+  /** 业务主键（去重与引用同一实体的判据）；空数组表示按 id_field 派生。 */
+  identity?: string[];
+  /** object / event / value 三类元语义。 */
+  category?: string;
+  /** 可选的生命周期声明；编辑器不改它，但整对象 upsert 时必须原样回传，否则后端会清空。 */
+  state_machine?: Record<string, unknown> | null;
+}
+export interface RelationSpec {
+  name: string; source: string; target: string; description?: string; cardinality?: string;
+  /** 反向关系名；空串表示没有声明。 */
+  inverse?: string;
+}
 export interface VocabTerm { term: string; concept: string; kind: string; aliases?: string[] }
 export interface Ontology {
+  id?: string; workspace_id?: string;
   name: string; description: string; version: number; schema_version?: number; lifecycle: Lifecycle;
+  /** 修订来源：草稿由哪个已发布版本复制而来；为空表示不是修订草稿。 */
+  parent_version?: number | null;
+  /** closed（缺省即假）或 open（缺省未知）；影响问答与校验的推理口径。 */
+  profile?: string;
+  schema_fingerprint?: string;
+  created_at?: string; updated_at?: string;
   objects: Record<string, ObjectTypeSpec>;
   relations: Record<string, RelationSpec>;
   vocabulary: Record<string, VocabTerm>;
+}
+/** PATCH /ontology 的请求：至少给一个字段，只允许在草稿上改。 */
+export interface OntologyMetaUpdate { name?: string; description?: string; profile?: string }
+/** POST /ontology/discard 的响应：丢弃当前修订草稿，恢复 parent 版本。 */
+export interface DiscardDraftResult {
+  discarded: number | string;
+  restored: Ontology;
 }
 /* ---------------- AI 快速建模：一段业务描述 → 对象/关系/术语草稿 ---------------- */
 export interface DraftProperty { name: string; type?: string; description?: string }
@@ -45,23 +76,95 @@ export interface RuntimeDescribe {
   functions: { name: string; description?: string }[];
 }
 export interface DataAsset { name: string; description?: string; config?: Record<string, unknown> }
-export interface DataSource { id: string; name: string; kind: string; config: Record<string, unknown>; assets: Record<string, DataAsset> | DataAsset[] }
+/** PATCH /datasources 提交的数据表声明格式（与连接数据源时一致，后端只收数组）。 */
+export interface DataAssetInput { name: string; config?: Record<string, unknown>; description?: string }
+export interface DataSource {
+  id: string; name: string; kind: string;
+  config: Record<string, unknown>;
+  assets: Record<string, DataAsset> | DataAsset[];
+  workspace_id?: string; created_at?: string;
+}
+/** POST /datasources/{sid}/test 的结果：只说明这次连通性检查。 */
+export interface SourceTestResult { ok: boolean; kind: string; tested_at?: string }
+/** POST /datasources/{sid}/preview 的结果：total 是全量行数，rows 只是被截到 limit 的那一页。 */
+export interface PreviewResult {
+  asset: string;
+  /** 全量行数（不是 rows.length）；旧进程不返回时按 rows.length 兜底。 */
+  total?: number;
+  /** 有序字段名；旧进程不返回时按 rows[0] 的键兜底。 */
+  columns?: string[];
+  rows: Record<string, unknown>[];
+}
 export interface ObjectMapping { asset: string; object_type: string; id_field: string; filter?: Record<string, unknown>; fields: { source_field: string; property: string }[] }
 export interface RelationMapping { asset: string; relation: string; source_field: string; target_field: string }
 export interface Projection {
   id: string; name: string; datasource_id: string;
   object_mappings: ObjectMapping[]; relation_mappings: RelationMapping[];
   mode?: "additive" | "authoritative" | string;
+  /** 每次同步每个数据表最多写多少行；0 表示不限制。 */
+  row_limit?: number;
+  lifecycle?: string;
   managed_types?: string[];
   sync_interval_seconds?: number;
   last_check_at?: string | null;
   last_change_at?: string | null;
+  created_at?: string;
+  updated_at?: string;
 }
 export interface CapabilityInput { name: string; type: string; description?: string }
 export interface Capability {
   id: string; key: string; name: string; target_type: string; description: string;
   inputs: CapabilityInput[]; implementation: { kind: string; [k: string]: unknown };
+  /** 执行契约：pre/postconditions、effects、idempotent、compensate；空对象表示没声明。 */
+  contract?: Record<string, unknown>;
   lifecycle: Lifecycle;
+  workspace_id?: string; created_at?: string; updated_at?: string;
+}
+/** 改能力的请求体：只传要改的字段。 */
+export interface CapabilityUpdate {
+  key?: string; name?: string; target_type?: string; description?: string;
+  inputs?: CapabilityInput[]; implementation?: Record<string, unknown>;
+  /** 传 {} 表示清空契约。 */
+  contract?: Record<string, unknown>;
+}
+/** 发布能力同时切一个新发布版本（与能力的发布语义一致）。 */
+export interface CapabilityPublishResult {
+  capability: Capability;
+  runtime?: RuntimeDescribe;
+  release?: Record<string, unknown>;
+  deployment?: Record<string, unknown>;
+}
+/** 平台智能视图桥：真实工作空间 → 本体编译器 → iframe 运行时。 */
+export interface SmartUiMeta {
+  ready: boolean;
+  reason?: string;
+  guidance?: string[];
+  focus?: {
+    objectType: string;
+    label: string;
+    identityKey: string | null;
+    value: string;
+  } | null;
+  workspace: { id: string; name: string; description: string };
+  defaultQuestion: string;
+  roles: { id: string; name: string; glyph: string }[];
+  objectTypes: string[];
+  counts: Record<string, number>;
+  capabilities: { key: string; name: string; target: string }[];
+  /** 真正进入生成程序动作面板的能力（无参数、非 agent、已发布）。 */
+  actions: { key: string; name: string; target: string }[];
+  bridge: {
+    focusObject: string | null;
+    focusLabel?: string | null;
+    focusValue?: string | null;
+    identityKey?: string | null;
+    identityLabel?: string | null;
+    relatedObjects?: { type: string; relation: string }[];
+    vehicleObject: string | null;
+    stationObject: string | null;
+    laneObject: string | null;
+    engineVersion: string;
+  };
 }
 export interface AppView { alias: string; title: string; kind: string; object_type: string; properties: string[]; query_alias: string }
 export interface AppQuery { alias: string; title: string; object_type: string; filters: Record<string, unknown>; expand: { relation: string; direction: string }[] }
@@ -137,6 +240,9 @@ export interface Release {
   fingerprint: string; capability_ids: string[];
   previous_release_id: string | null;
   created_at: string; actor: string; note: string;
+  /** 发布快照引用的能力里，已经不存在（或不再是 published）的那些 id。
+   *  非空表示这份发布装不起来，必须先重新切发布；界面只据此禁用部署，不猜原因。 */
+  missing_capability_ids?: string[];
 }
 export interface Deployment {
   id: string; release_id: string; schema_version?: number | null;
@@ -407,7 +513,7 @@ export function friendly(msg: string): string {
   if (m.includes("no LLM provider configured"))
     return "还没有配置模型：到「设置 · 模型服务」里填一个 OpenAI 兼容服务，或先打开「演示模式」体验流程。「业务问答」不需要模型，可以直接用。";
   if (m.includes("published ontology is immutable"))
-    return "本体已发布，定义已锁定。要改动请先确认是否要新建一个工作空间（当前版本的限制）。";
+    return "本体已发布，定义已锁定，不能直接改。点右上角「修订」复制出新草稿，改完再发布；如果这次修订写错了，可以在草稿上用「丢弃草稿」回到上一版。";
   if (m.includes("cannot publish from") || m.includes("cannot validate from"))
     return "当前生命周期状态不允许这个操作（很可能已经发布过了）。";
   if (m.includes("no schema published"))
@@ -416,6 +522,131 @@ export function friendly(msg: string): string {
     return "这个工作空间还没有本体：请先到「本体」页创建。";
   if (m.includes("ontology validation failed"))
     return "本体检查没通过：" + m.replace("ontology validation failed: ", "");
+  // ---- 应用发布：后端把所有问题一次性返回，逐条翻成中文；认不出的原文原样保留 ----
+  if (m.includes("application validation failed")) {
+    const detail = m.replace("application validation failed: ", "");
+    const problems = detail
+      .split(/;\s*(?=(?:view|query|attached|application|duplicate|the workspace)\b)/)
+      .filter(Boolean)
+      .map(translateApplicationProblem);
+    return `应用发布没通过（${problems.length} 条）：${problems.join("；")}`;
+  }
+  if (m.includes("cannot publish application") || m.includes("application cannot be published"))
+    return `应用不能被发布：${m}`;
+  // ---- 能力：只有草稿能改；函数名冲突要说清是「改」还是「克隆」 ----
+  if (/only a draft capability can be edited/i.test(m))
+    return "只有草稿能力能改：已发布（或已校验）的能力不能直接编辑。用行末「克隆为草稿」复制出新草稿，改好再发布，旧版本继续可用。";
+  if (/capability .{0,90}(is not a draft|is already published|is published)/i.test(m))
+    return "这个能力不是草稿：已发布的能力不能直接编辑。用「克隆为草稿」复制出新草稿再改，旧版本会继续保留。";
+  if (m.includes("clone key must not be empty"))
+    return "新标识不能为空：填一个英文短词，例如原标识后加 _v2。";
+  if (m.includes("clone name must not be empty"))
+    return "新名称不能为空：给克隆出来的能力起一个业务名字。";
+  if (m.includes("already exists (capability")) {
+    // 后端两种说法：改能力是「choose a different key or target_type」，克隆是「choose a different key」
+    const hit = /capability function ([^;]+) already exists \(capability '([^']*)'\)/.exec(m);
+    const fn = (hit?.[1] || "").replace(/'/g, "").trim();
+    if (m.includes("or target_type"))
+      return `函数名冲突${fn ? `（${fn}）` : ""}：同一个作用对象下已经有同名能力。换一个标识（例如加 _v2），或换一个作用对象；也可以改用「克隆为草稿」保留旧版本、生成新标识。`;
+    return `克隆用的新标识冲突${fn ? `（${fn}）` : ""}：同一作用对象下已经有这个函数名。换一个标识再试（默认是「原标识_v2」）；克隆失败不会影响原能力和运行时。`;
+  }
+  if (/clone/i.test(m) && /(conflict|is taken|duplicate)/i.test(m))
+    return "克隆用的新标识冲突：同一作用对象下已经有这个标识。换一个（默认是「原标识_v2」）再试；克隆失败不会影响原能力。";
+  if (/(capability (key|function)|function) .{0,90}(already exists|conflicts? with|is taken)/i.test(m))
+    return "函数名冲突：同一个作用对象下已经有同名能力。换一个标识（例如在原标识后加 _v2），或者用「克隆为草稿」自动生成新标识。";
+  if (m.includes("target object type") && m.includes("is not defined in the ontology")) {
+    const hit = /target object type '([^']*)' is not defined in the ontology/.exec(m);
+    return hit
+      ? `作用对象「${hit[1]}」在本体里不存在：先到「本体」页加上这个对象类型，或换一个作用对象。`
+      : `作用对象不在本体里。${m}`;
+  }
+  if (m.includes("capability validation failed")) {
+    const detail = m.replace("capability validation failed: ", "")
+      .replace(/is not an identifier/g, "只能是字母、数字、下划线")
+      .replace(/python implementation needs 'source' or 'entrypoint'/g, "脚本实现需要有 source")
+      .replace(/agent implementation needs a 'goal'/g, "智能目标需要一句 goal")
+      .replace(/implementation kind '([^']*)' not in/g, "实现方式「$1」不合法，允许的是")
+      .replace(/contract\.(\w+) must be a list/g, "契约 $1 要是数组")
+      .replace(/contract\.idempotent must be a boolean/g, "契约 idempotent 要是布尔值")
+      .replace(/contract\.compensate\.kind '([^']*)' not in/g, "契约补偿方式「$1」不合法，允许的是");
+    return `能力定义没通过检查：${detail}`;
+  }
+  if (m.includes("cannot drop properties")) {
+    // object type 'Vehicle' cannot drop properties ['plate']: still referenced by identity fields ['plate']; remove those references first
+    const hit = /cannot drop properties (\[[^\]]*\]): still referenced by (.+?); remove those references first/.exec(m);
+    if (!hit) return `不能删属性：仍被其他定义引用。${m}`;
+    const dropped = hit[1].replace(/[[\]']/g, "");
+    const refs = hit[2]
+      .replace(/identity fields/gi, "身份键")
+      .replace(/state machine field/gi, "状态机字段")
+      .replace(/vocabulary terms/gi, "业务术语")
+      .replace(/projections/gi, "投影")
+      .replace(/applications/gi, "应用");
+    return `不能删属性 ${dropped}：仍被${refs}引用。先去「术语 / 投影 / 应用 / 身份键」里去掉这些引用，再删属性。`;
+  }
+  if (m.includes("only a draft ontology can be edited"))
+    return "只有草稿能改本体信息：当前版本不是草稿（多半已发布）。点右上角「修订」复制出新草稿，再改。";
+  if (m.includes("only a draft ontology can be discarded"))
+    return "只有修订草稿能丢弃：当前版本不是草稿，没有可恢复的上一版。";
+  if (m.includes("cannot discard this ontology draft: it was not created by a revision"))
+    return "这版草稿不是由「修订」复制来的，没有可恢复的上一发布版本；直接改完发布即可，或先删掉工作空间重来。";
+  if (m.includes("cannot discard this ontology draft: parent version"))
+    return "这版草稿对应的上一发布版本已经不在库里的，无法恢复；请先确认历史版本再操作。";
+  if (/cannot (drop|remove) assets/i.test(m) || /assets? .*still (used|referenced) by/i.test(m)) {
+    // cannot remove datasource assets ['vehicles']: still used by projections ['车辆映射']; update or delete those projections first
+    const hit = /cannot remove datasource assets (\[[^\]]*\]): still used by projections (.+?);/.exec(m);
+    if (hit) {
+      const dropped = hit[1].replace(/[[\]']/g, "");
+      const used = hit[2].replace(/[[\]']/g, "");
+      return `不能删数据表 ${dropped}：仍被映射 ${used} 引用。先改这些映射（去掉对这张表的依赖）或删掉映射，再回来删数据表。`;
+    }
+    return `不能删除数据表：它仍被映射引用着，先改映射或删掉映射，再删数据表。${m}`;
+  }
+  if (/datasource kind .{0,40}(immutable|cannot be changed|can not be changed|is fixed)/i.test(m))
+    return "数据源类型不能改：改类型等于换一个数据源。请新建一个数据源，再把映射逐个改过去（现有数据源可以继续用）。";
+  if (m.includes("datasource connection failed"))
+    return `连不上数据源：${m.replace("datasource connection failed: ", "")}。这次改动没有保存，旧配置原样保留。`;
+  if (m.includes("invalid datasource config for kind")) {
+    const hit = /invalid datasource config for kind '([^']*)': (.+)/.exec(m);
+    return hit
+      ? `数据源的连接参数不完整或格式不对（来源类型 ${hit[1]}）：${hit[2]}`
+      : `数据源的连接参数不完整或格式不对。${m}`;
+  }
+  if (/unknown asset .* in datasource/i.test(m))
+    return "这个数据表不在数据源的声明里：先到数据源「编辑」里补上它的声明，再预览或同步。";
+  if (m.includes("failed to fetch asset"))
+    return `读取数据表失败：${m.replace("failed to fetch asset ", "").replace(/: /, " —— ")}。检查这张表的配置（查询语句、接口路径或样例数据）后重试。`;
+  if (m.includes("projection validation failed")) {
+    const detail = m.replace("projection validation failed: ", "")
+      .replace(/unknown asset/g, "引用了未声明的数据表")
+      .replace(/missing id_field/g, "缺少 id_field")
+      .replace(/projection has no mappings/g, "至少要有一条对象或关系映射");
+    return `映射检查没通过：${detail}`;
+  }
+  if (m.includes("projection mode must be"))
+    return "写入模式只能是 additive 或 authoritative。";
+  if (m.includes("projection row_limit must be an integer"))
+    return "每次同步的行上限必须是不小于 0 的整数（0 表示不限制）。";
+  if (m.includes("object mapping targets unknown object type"))
+    return `映射指向了本体里没有的对象类型：${m.replace("object mapping targets unknown object type ", "")}。先在本体里加上它，或改映射里的 object_type。`;
+  if (m.includes("relation mapping targets unknown relation"))
+    return `映射指向了本体里没有的关系：${m.replace("relation mapping targets unknown relation ", "")}。先在本体里加上它，或改映射里的 relation。`;
+  if (m.includes("does not match the declared identity field")) {
+    const hit = /object mapping '([^']*)': id_field '([^']*)' does not match the declared identity field '([^']*)'/.exec(m);
+    return hit
+      ? `对象「${hit[1]}」的业务键对不上：映射写的是 id_field「${hit[2]}」，本体声明的身份键是「${hit[3]}」。两边改一致再保存。`
+      : `映射的业务键与本体的身份键不一致。${m}`;
+  }
+  if (m.includes("is used by ")) {
+    const hit = /^(.+?) is used by (.+?);/.exec(m);
+    return hit
+      ? `不能删除：${hit[1]} 仍被 ${hit[2]} 引用。请先删除或改写这些引用，再回来删除。`
+      : `不能删除：仍被其他定义引用。${m}`;
+  }
+  if (m.includes("has no published ontology revision"))
+    return "这个工作空间没有可用的已发布本体版本；请先发布本体，再重试删除。";
+  if (m.includes("the workspace ontology is not published; publish it first"))
+    return "当前本体还没发布：请先到「本体」页点「发布」，再重试这个操作。";
   if (m.includes("has no previous release"))
     return "当前发布已经是最早版本，没有可回滚的历史发布。";
   if (m.includes("no route")) {
@@ -431,6 +662,47 @@ export function friendly(msg: string): string {
     return "这个工作空间已经有一个本体了（当前版本每个空间一个）。";
   if (m.includes("not found")) return m.replace("not found", "没找到");
   return m;
+}
+
+/** 一条应用发布校验问题的中文说法。认不出的原样返回：宁可留英文，也不篡改后端语义。 */
+function translateApplicationProblem(raw: string): string {
+  const s = raw.trim();
+  let hit: RegExpExecArray | null;
+  if (/^application needs at least one view or query/.test(s))
+    return "至少需要一个视图或一个查询：空应用不能发布。";
+  if ((hit = /^view '([^']*)': unknown kind '([^']*)'/.exec(s)))
+    return `视图「${hit[1]}」形式不合法（${hit[2]}）：只能是表格 / 卡片 / 图表 / 地图。`;
+  if ((hit = /^view '([^']*)': object_type is required/.exec(s)))
+    return `视图「${hit[1]}」没绑定对象类型。`;
+  if ((hit = /^view '([^']*)': unknown object type '([^']*)'/.exec(s)))
+    return `视图「${hit[1]}」指向不存在的对象类型「${hit[2]}」：本体里没有它，或这次发布用的是别的本体版本。`;
+  if ((hit = /^view '([^']*)': unknown property '([^']*)' on '([^']*)'/.exec(s)))
+    return `视图「${hit[1]}」在对象类型「${hit[3]}」上引用了不存在的属性「${hit[2]}」。`;
+  if ((hit = /^view '([^']*)': query_alias '([^']*)' does not name a query/.exec(s)))
+    return `视图「${hit[1]}」绑定的查询「${hit[2]}」不在这个应用里：先加这个查询，或把视图改成按对象类型取数。`;
+  if ((hit = /^query '([^']*)': object_type is required/.exec(s)))
+    return `查询「${hit[1]}」没选对象类型。`;
+  if ((hit = /^query '([^']*)': unknown object type '([^']*)'/.exec(s)))
+    return `查询「${hit[1]}」的目标对象类型「${hit[2]}」不存在。`;
+  if ((hit = /^query '([^']*)': unknown filter property '([^']*)' on '([^']*)'/.exec(s)))
+    return `查询「${hit[1]}」的过滤条件用了「${hit[3]}」上不存在的属性「${hit[2]}」。`;
+  if ((hit = /^query '([^']*)': unknown relation '([^']*)' in expand/.exec(s)))
+    return `查询「${hit[1]}」要展开的关系「${hit[2]}」不存在。`;
+  if ((hit = /^query '([^']*)': expand direction '([^']*)' must be/.exec(s)))
+    return `查询「${hit[1]}」的展开方向「${hit[2]}」不合法：只能是 out（出边）或 in（入边）。`;
+  if ((hit = /^attached capability '([^']*)' does not exist/.exec(s)))
+    return `应用挂载的能力（id ${hit[1]}）已经不存在：到「挂载能力」里取消它，或重新挂一个已发布能力。`;
+  if ((hit = /^attached capability '([^']*)' is not published \(lifecycle '([^']*)'\)/.exec(s)))
+    return `应用挂载的能力（id ${hit[1]}）还是${hit[2] === "draft" ? "草稿" : hit[2]}状态：先把它发布，或从应用里取消挂载。`;
+  if ((hit = /^duplicate application agent alias '([^']*)'/.exec(s)))
+    return `智能体标识「${hit[1]}」重复了：每个智能体的标识要唯一。`;
+  if (/^application agent needs a non-empty alias/.test(s))
+    return "有智能体没填标识：每个智能体都要有一个英文短名。";
+  if ((hit = /^application agent '?([^':]*)'?: goal must not be empty/.exec(s)))
+    return `智能体「${hit[1]}」的目标是空的：补一句它要完成什么。`;
+  if (/the workspace has no published ontology revision/i.test(s))
+    return "工作空间还没有已发布的本体：先发布本体，再发布应用（视图和查询都按已发布本体校验）。";
+  return s;
 }
 
 const TIMEOUT = 15000;
@@ -468,6 +740,15 @@ const post = <T,>(path: string, body: unknown, timeoutMs = TIMEOUT) =>
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body ?? {}),
   }, timeoutMs);
+
+const del = <T,>(path: string) => call<T>(path, { method: "DELETE" });
+
+const patch = <T,>(path: string, body: unknown) =>
+  call<T>(path, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body ?? {}),
+  });
 
 /* ---------------- 身份：令牌只放在 sessionStorage ---------------- */
 const TOKEN_KEY = "onto.api_token";
@@ -540,17 +821,71 @@ export interface SchedulerStatus {
   tasks: SchedulerTask[];
 }
 
+export interface DeleteResult {
+  deleted: boolean;
+  id: string;
+  name?: string;
+  function?: string;
+  detached_from?: string[];
+  removed_runs?: number;
+  runtime_objects_retained?: boolean;
+}
+
+/* ---------------- 第一步完整性：清空工作空间 / 对象实例删除与更正 ---------------- */
+
+/** POST /reset：清空工作空间里的业务内容，工作空间本身、成员、模型配置与审计保留。 */
+export interface ResetWorkspaceResult {
+  workspace_id: string;
+  name: string;
+  reset: boolean;
+  removed_documents: number;
+  /** 按文档种类统计的删除数量；后端未返回或形状不同时界面只显示总数。 */
+  removed_kinds?: Record<string, number> | string[];
+}
+
+/** DELETE /state/objects?ref=Type/Id：missing 是本次请求里本来就不存在的引用。 */
+export interface DeleteObjectsResult {
+  deleted: string[];
+  missing: string[];
+  changes: ChangeEvent[];
+}
+
+/** PATCH /state/objects?ref=Type/Id：changed 是本次实际被改动的属性名。 */
+export interface UpdateObjectResult {
+  ref: string;
+  object: Obj;
+  changed: string[];
+}
+
 export interface Api {
   health(): Promise<Health>;
   scheduler(): Promise<SchedulerStatus>;
   workspaces(): Promise<Workspace[]>;
   createWorkspace(name: string, description: string): Promise<Workspace>;
+  deleteWorkspace(wid: string): Promise<{ id: string; name: string; deleted: boolean; removed_documents: number }>;
+  /** 清空工作空间的业务内容（保留空间、成员、模型配置与审计）；confirmName 必须精确等于空间名。 */
+  resetWorkspace(wid: string, confirmName: string): Promise<ResetWorkspaceResult>;
 
   ontology(wid: string): Promise<Ontology>;
   createOntology(wid: string, name: string, description: string): Promise<Ontology>;
-  addObject(wid: string, body: { name: string; description: string; properties: PropertySpec[] }): Promise<Ontology>;
-  addRelation(wid: string, body: { name: string; source: string; target: string; description: string }): Promise<Ontology>;
+  /** 整对象 upsert：不传的字段会被后端按缺省值覆盖（identity 变空、category 变 object），
+   *  所以编辑器必须回传完整 payload。删属性=少提交一项。 */
+  addObject(wid: string, body: {
+    name: string; description: string; properties: PropertySpec[];
+    identity?: string[]; category?: string; state_machine?: Record<string, unknown> | null;
+  }): Promise<Ontology>;
+  addRelation(wid: string, body: {
+    name: string; source: string; target: string; description: string;
+    cardinality?: string; inverse?: string;
+  }): Promise<Ontology>;
   addTerm(wid: string, body: { term: string; concept: string; kind: string; aliases: string[] }): Promise<Ontology>;
+  removeObject(wid: string, name: string): Promise<Ontology>;
+  removeRelation(wid: string, name: string): Promise<Ontology>;
+  removeTerm(wid: string, term: string): Promise<Ontology>;
+  /** 只改本体元信息（名称/说明/口径）；仅在草稿上允许。 */
+  updateOntologyMeta(wid: string, body: OntologyMetaUpdate): Promise<Ontology>;
+  /** 丢弃当前修订草稿并恢复 parent 版本；不动运行时与发布指针。 */
+  discardOntologyDraft(wid: string): Promise<DiscardDraftResult>;
   /** AI 快速建模：预览时传 text；apply=true 时回传预览得到的 draft 写入草稿本体 */
   draftOntology(wid: string, body: DraftRequest): Promise<DraftResult>;
   validateOntology(wid: string): Promise<{ ok: boolean; problems: string[] }>;
@@ -559,13 +894,34 @@ export interface Api {
   runtime(wid: string): Promise<RuntimeDescribe>;
   datasources(wid: string): Promise<DataSource[]>;
   connectSource(wid: string, body: Record<string, unknown>): Promise<DataSource>;
+  /** 改名称/连接参数/数据表声明；kind 不可改，后端默认先测连接再落库。 */
+  updateSource(wid: string, sid: string, body: {
+    name?: string; config?: Record<string, unknown>; assets?: DataAssetInput[]; test_connection?: boolean;
+  }): Promise<DataSource>;
+  /** 只做连通性检查，不改配置。 */
+  testSource(wid: string, sid: string): Promise<SourceTestResult>;
+  /** 真实读取一个数据表的前 limit 行（默认 20，后端 clamp 1..100）；不落库。 */
+  previewSource(wid: string, sid: string, asset: string, limit?: number): Promise<PreviewResult>;
+  deleteSource(wid: string, sid: string): Promise<DeleteResult>;
   projections(wid: string): Promise<Projection[]>;
   createProjection(wid: string, body: Record<string, unknown>): Promise<Projection>;
+  /** 改名称/映射/写入模式/行上限；数据源绑定不可改。 */
+  updateProjection(wid: string, pid: string, body: {
+    name?: string; object_mappings?: ObjectMapping[]; relation_mappings?: RelationMapping[];
+    mode?: string; row_limit?: number;
+  }): Promise<Projection>;
+  deleteProjection(wid: string, pid: string): Promise<DeleteResult>;
   runProjection(wid: string, pid: string): Promise<ProjectionRun>;
 
   capabilities(wid: string): Promise<Capability[]>;
+  smartUiMeta(wid: string): Promise<SmartUiMeta>;
   createCapability(wid: string, body: Record<string, unknown>): Promise<Capability>;
-  publishCapability(wid: string, cid: string): Promise<Capability>;
+  /** 改能力定义；后端只允许改草稿（已发布请用 cloneCapability 复制出新草稿）。 */
+  updateCapability(wid: string, cid: string, body: CapabilityUpdate): Promise<Capability>;
+  /** 复制成新草稿：不发布、不碰运行时，旧能力原样保留。key 省略时后端用 `${key}_v2`。 */
+  cloneCapability(wid: string, cid: string, body: { key?: string; name?: string }): Promise<Capability>;
+  publishCapability(wid: string, cid: string): Promise<CapabilityPublishResult>;
+  deleteCapability(wid: string, cid: string): Promise<DeleteResult>;
   invoke(wid: string, body: {
     function: string; target: string | null; args: Record<string, unknown>;
     idempotency_key: string;
@@ -579,6 +935,11 @@ export interface Api {
   addQuery(wid: string, aid: string, body: Record<string, unknown>): Promise<Application>;
   addAgent(wid: string, aid: string, body: Record<string, unknown>): Promise<Application>;
   attachCapability(wid: string, aid: string, capability_id: string): Promise<Application>;
+  deleteApplication(wid: string, aid: string): Promise<DeleteResult>;
+  removeView(wid: string, aid: string, alias: string): Promise<Application>;
+  removeQuery(wid: string, aid: string, alias: string): Promise<Application>;
+  removeAgent(wid: string, aid: string, alias: string): Promise<Application>;
+  detachCapability(wid: string, aid: string, capability_id: string): Promise<Application>;
   runQuery(wid: string, aid: string, alias: string): Promise<QueryResult>;
   runAppAgent(wid: string, aid: string, alias: string, body: { goal?: string; max_steps?: number; llm?: LlmChoice }): Promise<AgentRun>;
   objective(wid: string, aid: string): Promise<ObjectiveEvaluation>;
@@ -623,6 +984,10 @@ export interface Api {
 
   find(wid: string, type: string, filters: Record<string, string>): Promise<Obj[]>;
   get(wid: string, ref: string): Promise<Obj | null>;
+  /** 删除对象实例；关联关系由后端级联处理，不可撤销。 */
+  deleteObject(wid: string, ref: string): Promise<DeleteObjectsResult>;
+  /** 更正对象属性；identity 属性由后端拒绝，返回实际改动的属性名。 */
+  updateObject(wid: string, ref: string, properties: Record<string, unknown>): Promise<UpdateObjectResult>;
   related(wid: string, ref: string, relation: string, direction: string): Promise<string[]>;
   changes(wid: string, after: number): Promise<ChangeEvent[]>;
   history(wid: string, ref: string, limit?: number): Promise<ObjectHistory>;
@@ -647,12 +1012,23 @@ export const api: Api = {
   scheduler: () => call("/api/scheduler"),
   workspaces: () => call("/api/workspaces"),
   createWorkspace: (name, description) => post("/api/workspaces", { name, description }),
+  deleteWorkspace: wid => post(ws(wid, "/delete"), { confirm: true }),
+  resetWorkspace: (wid, confirmName) =>
+    post(ws(wid, "/reset"), { confirm: true, confirm_name: confirmName }),
 
   ontology: wid => call(ws(wid, "/ontology")),
   createOntology: (wid, name, description) => post(ws(wid, "/ontology"), { name, description }),
   addObject: (wid, b) => post(ws(wid, "/ontology/objects"), b),
   addRelation: (wid, b) => post(ws(wid, "/ontology/relations"), b),
   addTerm: (wid, b) => post(ws(wid, "/ontology/vocabulary"), b),
+  removeObject: (wid, name) =>
+    del(ws(wid, `/ontology/objects/${encodeURIComponent(name)}`)),
+  removeRelation: (wid, name) =>
+    del(ws(wid, `/ontology/relations/${encodeURIComponent(name)}`)),
+  removeTerm: (wid, term) =>
+    del(ws(wid, `/ontology/vocabulary/${encodeURIComponent(term)}`)),
+  updateOntologyMeta: (wid, b) => patch(ws(wid, "/ontology"), b),
+  discardOntologyDraft: wid => post(ws(wid, "/ontology/discard"), {}),
   draftOntology: (wid, b) => post(ws(wid, "/ontology/draft"), b, LLM_TIMEOUT),
   validateOntology: wid => post(ws(wid, "/ontology/validate"), {}),
   publishOntology: wid => post(ws(wid, "/ontology/publish"), {}),
@@ -660,13 +1036,32 @@ export const api: Api = {
   runtime: wid => call(ws(wid, "/runtime")),
   datasources: wid => call(ws(wid, "/datasources")),
   connectSource: (wid, b) => post(ws(wid, "/datasources"), b),
+  updateSource: (wid, sid, b) =>
+    patch(ws(wid, `/datasources/${encodeURIComponent(sid)}`), b),
+  testSource: (wid, sid) =>
+    post(ws(wid, `/datasources/${encodeURIComponent(sid)}/test`), {}),
+  previewSource: (wid, sid, asset, limit = 20) =>
+    post(ws(wid, `/datasources/${encodeURIComponent(sid)}/preview`), { asset, limit }),
+  deleteSource: (wid, sid) =>
+    del(ws(wid, `/datasources/${encodeURIComponent(sid)}`)),
   projections: wid => call(ws(wid, "/projections")),
   createProjection: (wid, b) => post(ws(wid, "/projections"), b),
+  updateProjection: (wid, pid, b) =>
+    patch(ws(wid, `/projections/${encodeURIComponent(pid)}`), b),
+  deleteProjection: (wid, pid) =>
+    del(ws(wid, `/projections/${encodeURIComponent(pid)}`)),
   runProjection: (wid, pid) => post(ws(wid, `/projections/${encodeURIComponent(pid)}/run`), {}),
 
   capabilities: wid => call(ws(wid, "/capabilities")),
+  smartUiMeta: wid => call(ws(wid, "/smart-ui/meta")),
   createCapability: (wid, b) => post(ws(wid, "/capabilities"), b),
+  updateCapability: (wid, cid, b) =>
+    patch(ws(wid, `/capabilities/${encodeURIComponent(cid)}`), b),
+  cloneCapability: (wid, cid, b) =>
+    post(ws(wid, `/capabilities/${encodeURIComponent(cid)}/clone`), b),
   publishCapability: (wid, cid) => post(ws(wid, `/capabilities/${encodeURIComponent(cid)}/publish`), {}),
+  deleteCapability: (wid, cid) =>
+    del(ws(wid, `/capabilities/${encodeURIComponent(cid)}`)),
   invoke: (wid, b) => post(ws(wid, "/invoke"), b),
   applications: wid => call(ws(wid, "/applications")),
   application: (wid, aid) => call(ws(wid, `/applications/${encodeURIComponent(aid)}`)),
@@ -676,6 +1071,16 @@ export const api: Api = {
   addQuery: (wid, aid, b) => post(ws(wid, `/applications/${encodeURIComponent(aid)}/queries`), b),
   addAgent: (wid, aid, b) => post(ws(wid, `/applications/${encodeURIComponent(aid)}/agents`), b),
   attachCapability: (wid, aid, capability_id) => post(ws(wid, `/applications/${encodeURIComponent(aid)}/capabilities`), { capability_id }),
+  deleteApplication: (wid, aid) =>
+    del(ws(wid, `/applications/${encodeURIComponent(aid)}`)),
+  removeView: (wid, aid, alias) =>
+    del(ws(wid, `/applications/${encodeURIComponent(aid)}/views/${encodeURIComponent(alias)}`)),
+  removeQuery: (wid, aid, alias) =>
+    del(ws(wid, `/applications/${encodeURIComponent(aid)}/queries/${encodeURIComponent(alias)}`)),
+  removeAgent: (wid, aid, alias) =>
+    del(ws(wid, `/applications/${encodeURIComponent(aid)}/agents/${encodeURIComponent(alias)}`)),
+  detachCapability: (wid, aid, capability_id) =>
+    del(ws(wid, `/applications/${encodeURIComponent(aid)}/capabilities/${encodeURIComponent(capability_id)}`)),
   runQuery: (wid, aid, alias) => post(ws(wid, `/applications/${encodeURIComponent(aid)}/query`), { alias }),
   runAppAgent: (wid, aid, alias, b) =>
     post(ws(wid, `/applications/${encodeURIComponent(aid)}/agents/${encodeURIComponent(alias)}/agent`), b),
@@ -703,6 +1108,10 @@ export const api: Api = {
     return call(ws(wid, `/state/find?${q.toString()}`));
   },
   get: (wid, ref) => call(ws(wid, `/state/get?ref=${encodeURIComponent(ref)}`)),
+  deleteObject: (wid, ref) =>
+    del(ws(wid, `/state/objects?ref=${encodeURIComponent(ref)}`)),
+  updateObject: (wid, ref, properties) =>
+    patch(ws(wid, `/state/objects?ref=${encodeURIComponent(ref)}`), { properties }),
   related: (wid, ref, relation, direction) =>
     call(ws(wid, `/state/related?ref=${encodeURIComponent(ref)}&relation=${encodeURIComponent(relation)}&direction=${direction}`)),
   changes: (wid, after) => call(ws(wid, `/changes?after=${after}`)),

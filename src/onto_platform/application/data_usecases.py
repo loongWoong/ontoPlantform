@@ -19,7 +19,11 @@ from ..domain.data.model import (
 )
 from ..errors import ConnectorError, NotFoundError, ValidationError
 from ..ports.runtime import LinkAssert, ObjectUpsert, SemanticDelta
-from .common import ApplicationContext
+from .common import (
+    ApplicationContext,
+    active_ontology_row,
+    published_ontology_row,
+)
 
 
 def _source_watermark(rows_by_asset: dict[str, list[dict]]) -> str:
@@ -30,6 +34,55 @@ def _source_watermark(rows_by_asset: dict[str, list[dict]]) -> str:
         sort_keys=True, ensure_ascii=False, default=str,
     )
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:32]
+
+
+def _source_connector(kind: str, config: dict):
+    """Build a connector for ``kind``/``config``, mapping bad input to 400."""
+    from ..infrastructure.datasource.registry import connector_for
+
+    try:
+        return connector_for(kind, dict(config or {}))
+    except ValidationError:
+        raise
+    except Exception as exc:  # connector configs raise ValueError from __init__
+        raise ValidationError(
+            f"invalid datasource config for kind {kind!r}: {exc}") from exc
+
+
+def _assert_connection(connector) -> None:
+    """Run the connector's cheap probe; failures never touch the stored doc."""
+    try:
+        ok = connector.test()
+    except Exception as exc:
+        raise ConnectorError(f"datasource connection failed: {exc}") from exc
+    if ok is False:
+        raise ConnectorError(
+            "datasource connection failed: connector reported it is not ready")
+
+
+def _parse_assets(assets) -> dict[str, DataAsset]:
+    """Validate the asset list of a datasource update."""
+    if not isinstance(assets, list):
+        raise ValidationError("datasource assets must be a list")
+    parsed: dict[str, DataAsset] = {}
+    for item in assets:
+        if not isinstance(item, dict):
+            raise ValidationError("each datasource asset must be a JSON object")
+        asset_name = str(item.get("name") or "").strip()
+        if not asset_name:
+            raise ValidationError("datasource asset name must not be empty")
+        if asset_name in parsed:
+            raise ValidationError(
+                f"duplicate datasource asset name {asset_name!r}")
+        asset_config = item.get("config") or {}
+        if not isinstance(asset_config, dict):
+            raise ValidationError(
+                f"datasource asset {asset_name!r} config must be a JSON object")
+        parsed[asset_name] = DataAsset(
+            name=asset_name,
+            config=dict(asset_config),
+            description=str(item.get("description") or ""))
+    return parsed
 
 
 class ConnectDataSource:
@@ -70,6 +123,179 @@ class ConnectDataSource:
         return source.to_dict()
 
 
+class UpdateDataSource:
+    """Edit a datasource in place; the kind is immutable.
+
+    Editing keeps the id, so existing projections keep pointing at the same
+    source.  An asset may only disappear while no projection of this source
+    maps it.  ``test_connection`` defaults to True: the resulting config must
+    connect before anything is saved, so a failed edit leaves the old document
+    exactly as it was.
+    """
+
+    def __init__(self, ctx: ApplicationContext) -> None:
+        self._ctx = ctx
+
+    def __call__(self, workspace_id: str, actor: str, source_id: str,
+                 name: str | None = None, config: dict | None = None,
+                 assets: list[dict] | None = None, kind: str | None = None,
+                 test_connection: bool = True) -> dict:
+        self._ctx.require(actor, workspace_id, "editor")
+        data = self._ctx.must_get("datasource", workspace_id, source_id)
+        source = DataSource.from_dict(data)
+        if kind is not None and str(kind) != source.kind:
+            raise ValidationError(
+                f"datasource kind cannot be changed (it is {source.kind!r}); "
+                "connect a new datasource instead")
+        if name is None and config is None and assets is None:
+            raise ValidationError(
+                "nothing to update: provide at least one of name, config or assets")
+        if name is not None:
+            name = str(name).strip()
+            if not name:
+                raise ValidationError("datasource name must not be empty")
+            source.name = name
+        if config is not None:
+            if not isinstance(config, dict):
+                raise ValidationError("datasource config must be a JSON object")
+            source.config = dict(config)
+        if assets is not None:
+            source.assets = _parse_assets(assets)
+        removed = sorted(set(data.get("assets") or {}) - set(source.assets))
+        if removed:
+            removed_set = set(removed)
+            used_by = []
+            for projection in self._ctx.repo.list("projection", workspace_id):
+                if projection.get("datasource_id") != source.id:
+                    continue
+                mapped = {
+                    m.get("asset")
+                    for m in (projection.get("object_mappings") or [])
+                } | {
+                    m.get("asset")
+                    for m in (projection.get("relation_mappings") or [])
+                }
+                if removed_set & mapped:
+                    used_by.append(projection.get("name") or projection["id"])
+            if used_by:
+                raise ValidationError(
+                    f"cannot remove datasource assets {removed}: still used by "
+                    f"projections {used_by}; update or delete those projections "
+                    "first")
+        connector = _source_connector(source.kind, source.config)
+        if test_connection:
+            _assert_connection(connector)
+        self._ctx.save("datasource", source.to_dict())
+        self._ctx.audit_event(
+            actor, workspace_id, "data.update_source", source.id,
+            {"kind": source.kind, "assets": sorted(source.assets),
+             "removed_assets": removed})
+        return source.to_dict()
+
+
+class TestDataSource:
+    """Probe a stored datasource without changing anything."""
+
+    def __init__(self, ctx: ApplicationContext) -> None:
+        self._ctx = ctx
+
+    def __call__(self, workspace_id: str, actor: str, source_id: str) -> dict:
+        self._ctx.require(actor, workspace_id, "editor")
+        source = DataSource.from_dict(
+            self._ctx.must_get("datasource", workspace_id, source_id))
+        _assert_connection(_source_connector(source.kind, source.config))
+        return {"ok": True, "kind": source.kind, "tested_at": self._ctx.clock()}
+
+
+class PreviewDataSource:
+    """Fetch one asset for real so the console can show actual rows.
+
+    Preview is read-only: nothing is projected into the kernel and no
+    document is written.  ``limit`` defaults to 20 and is clamped to 1..100.
+    """
+
+    def __init__(self, ctx: ApplicationContext) -> None:
+        self._ctx = ctx
+
+    def __call__(self, workspace_id: str, actor: str, source_id: str,
+                 asset_name: str | None = None,
+                 limit: int | None = 20) -> dict:
+        self._ctx.require(actor, workspace_id, "editor")
+        source = DataSource.from_dict(
+            self._ctx.must_get("datasource", workspace_id, source_id))
+        asset = source.assets.get(str(asset_name or ""))
+        if asset is None:
+            raise ValidationError(
+                f"unknown asset {asset_name!r} in datasource")
+        try:
+            limit_value = int(limit if limit is not None else 20)
+        except (TypeError, ValueError) as exc:
+            raise ValidationError("preview limit must be an integer") from exc
+        limit_value = max(1, min(100, limit_value))
+        connector = _source_connector(source.kind, source.config)
+        try:
+            rows = connector.fetch(asset.config)
+        except Exception as exc:
+            raise ConnectorError(
+                f"failed to fetch asset {asset_name!r}: {exc}") from exc
+        if not isinstance(rows, list):
+            raise ConnectorError(
+                f"connector for kind {source.kind!r} returned a non-list payload")
+        columns: list[str] = []
+        for row in rows:
+            for key in row:
+                if key not in columns:
+                    columns.append(str(key))
+        return {"asset": asset.name, "total": len(rows),
+                "columns": columns, "rows": rows[:limit_value]}
+
+
+def _validate_projection_definition(ctx: ApplicationContext, workspace_id: str,
+                                    projection: Projection,
+                                    source: DataSource) -> None:
+    """Shared validation for creating and editing a projection.
+
+    Kept in one place so ``CreateProjection`` and ``UpdateProjection`` cannot
+    drift: editing must reject exactly what creating rejects (unknown asset or
+    object type, missing id_field, identity mismatch, unit mismatch, unknown
+    relation).
+    """
+    problems = validate_projection(projection, source)
+    if problems:
+        raise ValidationError("projection validation failed: " + "; ".join(problems))
+    # every mapped object type / relation must exist in the ontology being
+    # edited (draft wins); never depend on storage row order across revisions
+    ontology = active_ontology_row(ctx, workspace_id)
+    ontology_objects = (ontology.get("objects", {}) if ontology else {})
+    ontology_relations = (ontology.get("relations", {}) if ontology else {})
+    for m in projection.object_mappings:
+        if m.object_type not in ontology_objects:
+            raise ValidationError(
+                f"object mapping targets unknown object type {m.object_type!r}"
+            )
+        # identity criterion is declared in the TBox; the projection's
+        # business key must be exactly that criterion (O-1)
+        identity = list(ontology_objects[m.object_type].get("identity") or [])
+        if identity and m.id_field != identity[0]:
+            raise ValidationError(
+                f"object mapping {m.object_type!r}: id_field {m.id_field!r} "
+                f"does not match the declared identity field {identity[0]!r}"
+            )
+        properties = ontology_objects[m.object_type].get("properties") or {}
+        for field_map in m.fields:
+            declared = (properties.get(field_map.property) or {}).get("unit") or ""
+            if field_map.unit and declared and field_map.unit != declared:
+                raise ValidationError(
+                    f"object mapping {m.object_type}.{field_map.property}: "
+                    f"source unit {field_map.unit!r} does not match the "
+                    f"ontology unit {declared!r}")
+    for m in projection.relation_mappings:
+        if m.relation not in ontology_relations:
+            raise ValidationError(
+                f"relation mapping targets unknown relation {m.relation!r}"
+            )
+
+
 class CreateProjection:
     def __init__(self, ctx: ApplicationContext) -> None:
         self._ctx = ctx
@@ -98,42 +324,90 @@ class CreateProjection:
             created_at=self._ctx.clock(),
             updated_at=self._ctx.clock(),
         )
-        problems = validate_projection(projection, source)
-        if problems:
-            raise ValidationError("projection validation failed: " + "; ".join(problems))
-        # every mapped object type / relation must exist in the ontology
-        ontologies = self._ctx.repo.list("ontology", workspace_id)
-        ontology_objects = (ontologies[0].get("objects", {}) if ontologies else {})
-        ontology_relations = (ontologies[0].get("relations", {}) if ontologies else {})
-        for m in projection.object_mappings:
-            if m.object_type not in ontology_objects:
-                raise ValidationError(
-                    f"object mapping targets unknown object type {m.object_type!r}"
-                )
-            # identity criterion is declared in the TBox; the projection's
-            # business key must be exactly that criterion (O-1)
-            identity = list(ontology_objects[m.object_type].get("identity") or [])
-            if identity and m.id_field != identity[0]:
-                raise ValidationError(
-                    f"object mapping {m.object_type!r}: id_field {m.id_field!r} "
-                    f"does not match the declared identity field {identity[0]!r}"
-                )
-            properties = ontology_objects[m.object_type].get("properties") or {}
-            for field_map in m.fields:
-                declared = (properties.get(field_map.property) or {}).get("unit") or ""
-                if field_map.unit and declared and field_map.unit != declared:
-                    raise ValidationError(
-                        f"object mapping {m.object_type}.{field_map.property}: "
-                        f"source unit {field_map.unit!r} does not match the "
-                        f"ontology unit {declared!r}")
-        for m in projection.relation_mappings:
-            if m.relation not in ontology_relations:
-                raise ValidationError(
-                    f"relation mapping targets unknown relation {m.relation!r}"
-                )
+        _validate_projection_definition(self._ctx, workspace_id, projection, source)
         self._ctx.save("projection", projection.to_dict())
         self._ctx.audit_event(actor, workspace_id, "data.create_projection", projection.id,
                               {"name": name})
+        return projection.to_dict()
+
+
+class UpdateProjection:
+    """Edit a projection in place; the datasource binding is immutable.
+
+    Creating a projection validates it against the ontology; editing reuses the
+    very same helper so an edit can never accept something creation would
+    reject.  Changing the mapping only affects the next run - already projected
+    objects are not rolled back.
+    """
+
+    def __init__(self, ctx: ApplicationContext) -> None:
+        self._ctx = ctx
+
+    def __call__(self, workspace_id: str, actor: str, projection_id: str,
+                 name: str | None = None,
+                 object_mappings: list[dict] | None = None,
+                 relation_mappings: list[dict] | None = None,
+                 mode: str | None = None, row_limit: int | None = None,
+                 datasource_id: str | None = None) -> dict:
+        self._ctx.require(actor, workspace_id, "editor")
+        projection = Projection.from_dict(
+            self._ctx.must_get("projection", workspace_id, projection_id))
+        if datasource_id is not None \
+                and str(datasource_id) != projection.datasource_id:
+            raise ValidationError(
+                "projection datasource cannot be changed (it is "
+                f"{projection.datasource_id!r}); create a new projection instead")
+        if name is None and object_mappings is None and relation_mappings is None \
+                and mode is None and row_limit is None:
+            raise ValidationError(
+                "nothing to update: provide at least one of name, "
+                "object_mappings, relation_mappings, mode or row_limit")
+        if name is not None:
+            name = str(name).strip()
+            if not name:
+                raise ValidationError("projection name must not be empty")
+            projection.name = name
+        if mode is not None:
+            if mode not in ("additive", "authoritative"):
+                raise ValidationError(
+                    "projection mode must be 'additive' or 'authoritative'")
+            projection.mode = str(mode)
+        if row_limit is not None:
+            try:
+                projection.row_limit = max(0, int(row_limit or 0))
+            except (TypeError, ValueError) as exc:
+                raise ValidationError(
+                    "projection row_limit must be an integer") from exc
+        if object_mappings is not None:
+            if not isinstance(object_mappings, list):
+                raise ValidationError("object_mappings must be a list")
+            try:
+                projection.object_mappings = [
+                    ObjectMapping.from_dict(m) for m in object_mappings]
+            except (KeyError, TypeError, ValueError) as exc:
+                raise ValidationError(
+                    f"invalid object mapping: {exc}") from exc
+        if relation_mappings is not None:
+            if not isinstance(relation_mappings, list):
+                raise ValidationError("relation_mappings must be a list")
+            try:
+                projection.relation_mappings = [
+                    RelationMapping.from_dict(m) for m in relation_mappings]
+            except (KeyError, TypeError, ValueError) as exc:
+                raise ValidationError(
+                    f"invalid relation mapping: {exc}") from exc
+        source = DataSource.from_dict(
+            self._ctx.must_get("datasource", workspace_id,
+                               projection.datasource_id))
+        _validate_projection_definition(
+            self._ctx, workspace_id, projection, source)
+        projection.updated_at = self._ctx.clock()
+        self._ctx.save("projection", projection.to_dict())
+        self._ctx.audit_event(
+            actor, workspace_id, "data.update_projection", projection.id,
+            {"name": projection.name,
+             "datasource_id": projection.datasource_id,
+             "mode": projection.mode, "row_limit": projection.row_limit})
         return projection.to_dict()
 
 
@@ -158,8 +432,14 @@ class RunProjection:
         source = DataSource.from_dict(
             self._ctx.must_get("datasource", workspace_id, projection.datasource_id)
         )
-        ontologies = self._ctx.repo.list("ontology", workspace_id)
-        relations = (ontologies[0].get("relations", {}) if ontologies else {})
+        # the runtime is serving the published contract; never take relations
+        # from an un-published draft (they may not exist in the kernel yet)
+        ontology = published_ontology_row(self._ctx, workspace_id)
+        if ontology is None:
+            raise ValidationError(
+                "workspace has no published ontology; publish the ontology "
+                "before running a projection")
+        relations = ontology.get("relations", {})
 
         from ..infrastructure.datasource.registry import connector_for
 
@@ -407,3 +687,72 @@ class ListProjections:
     def __call__(self, workspace_id: str, actor: str) -> list[dict]:
         self._ctx.require(actor, workspace_id, "viewer")
         return self._ctx.repo.list("projection", workspace_id)
+
+
+class DeleteDataSource:
+    """Remove a datasource configuration, never the projections using it."""
+
+    def __init__(self, ctx: ApplicationContext) -> None:
+        self._ctx = ctx
+
+    def __call__(self, workspace_id: str, actor: str, datasource_id: str) -> dict:
+        self._ctx.require(actor, workspace_id, "editor")
+        source = self._ctx.must_get("datasource", workspace_id, datasource_id)
+        used_by = [
+            p.get("name") or p["id"]
+            for p in self._ctx.repo.list("projection", workspace_id)
+            if p.get("datasource_id") == datasource_id
+        ]
+        if used_by:
+            raise ValidationError(
+                f"datasource {datasource_id!r} is used by projections {used_by}; "
+                "delete them first")
+        if not self._ctx.repo.delete("datasource", workspace_id, datasource_id):
+            raise NotFoundError(f"datasource not found: {datasource_id!r}")
+        self._ctx.audit_event(
+            actor, workspace_id, "data.delete_source", datasource_id,
+            {"name": source.get("name"), "kind": source.get("kind")})
+        return {"deleted": True, "id": datasource_id,
+                "name": source.get("name", ""), "kind": source.get("kind", "")}
+
+
+class DeleteProjection:
+    """Remove a projection recipe and its run history.
+
+    Runtime objects materialized by earlier runs are intentionally preserved:
+    deleting a mapping is a design-time operation, not a business-data delete.
+    The audit row records what the last run wrote so the effect is traceable.
+    """
+
+    def __init__(self, ctx: ApplicationContext) -> None:
+        self._ctx = ctx
+
+    def __call__(self, workspace_id: str, actor: str, projection_id: str) -> dict:
+        self._ctx.require(actor, workspace_id, "editor")
+        projection = self._ctx.must_get("projection", workspace_id, projection_id)
+        runs = [
+            run for run in self._ctx.repo.list("projection_run", workspace_id)
+            if run.get("projection_id") == projection_id
+        ]
+        last = runs[-1] if runs else {}
+        with self._ctx.transaction():
+            self._ctx.repo.delete("projection", workspace_id, projection_id)
+            for run in runs:
+                self._ctx.repo.delete("projection_run", workspace_id, run["id"])
+        self._ctx.audit_event(
+            actor, workspace_id, "data.delete_projection", projection_id,
+            {
+                "name": projection.get("name"),
+                "datasource_id": projection.get("datasource_id"),
+                "removed_runs": len(runs),
+                "last_run_id": last.get("id"),
+                "last_run_upserted": last.get("objects_upserted"),
+                "runtime_objects_retained": True,
+            })
+        return {
+            "deleted": True,
+            "id": projection_id,
+            "name": projection.get("name", ""),
+            "removed_runs": len(runs),
+            "runtime_objects_retained": True,
+        }

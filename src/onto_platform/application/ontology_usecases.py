@@ -12,6 +12,7 @@ from __future__ import annotations
 from ..domain.governance.model import transition
 from ..domain.ontology.compiler import OntologyCompiler
 from ..domain.ontology.model import (
+    PROFILES,
     Ontology,
     ObjectTypeSpec,
     PropertySpec,
@@ -152,6 +153,64 @@ def _state_violations(ctx: ApplicationContext, workspace_id: str,
 
 
 
+def _property_references(ctx: ApplicationContext, workspace_id: str,
+                        ontology: Ontology, object_name: str,
+                        removed: set[str]) -> list[str]:
+    """Editable assets that still reference dropping properties.
+
+    A property cannot silently disappear from the schema while the aggregate
+    (identity / state machine / vocabulary) or a sibling asset (projection,
+    application view/query) still consumes it; the publish would otherwise
+    install a runtime that cannot satisfy those references.  Returns
+    human-readable reasons, empty when the deletion is safe.
+    """
+    previous = ontology.objects[object_name]
+    reasons: list[str] = []
+
+    identity = [prop for prop in previous.identity if prop in removed]
+    if identity:
+        reasons.append(f"identity fields {identity}")
+
+    state_field = (previous.state_machine or {}).get("field")
+    if state_field in removed:
+        reasons.append(f"state machine field {state_field!r}")
+
+    terms = sorted(
+        term for term, item in ontology.vocabulary.items()
+        if item.kind == "property"
+        and item.concept.startswith(object_name + ".")
+        and item.concept[len(object_name) + 1:] in removed)
+    if terms:
+        reasons.append(f"vocabulary terms {terms}")
+
+    projections = sorted(
+        p.get("name") or p["id"]
+        for p in ctx.repo.list("projection", workspace_id)
+        if any(
+            mapping.get("object_type") == object_name
+            and any(field.get("property") in removed
+                    for field in mapping.get("fields") or [])
+            for mapping in p.get("object_mappings") or []))
+    if projections:
+        reasons.append(f"projections {projections}")
+
+    applications = sorted(
+        app.get("name") or app["id"]
+        for app in ctx.repo.list("application", workspace_id)
+        if any(
+            query.get("object_type") == object_name
+            and any(str(key).split("__")[0] in removed
+                    for key in (query.get("filters") or {}))
+            for query in (app.get("queries") or {}).values())
+        or any(
+            view.get("object_type") == object_name
+            and any(prop in removed for prop in view.get("properties") or [])
+            for view in (app.get("views") or {}).values()))
+    if applications:
+        reasons.append(f"applications {applications}")
+    return reasons
+
+
 class CreateOntology:
     def __init__(self, ctx: ApplicationContext) -> None:
         self._ctx = ctx
@@ -191,6 +250,57 @@ class GetOntology:
         return ontology.to_dict()
 
 
+class UpdateOntologyMeta:
+    """Edit the display metadata (name/description/profile) of a draft.
+
+    The published/validated artifact is immutable, so this only accepts the
+    active *draft*: a published ontology can only change through a revision.
+    The write is a normal versioned aggregate update (optimistic lock) and is
+    audited as ``ontology.update_meta``.
+    """
+
+    def __init__(self, ctx: ApplicationContext) -> None:
+        self._ctx = ctx
+
+    def __call__(self, workspace_id: str, actor: str,
+                 name: str | None = None, description: str | None = None,
+                 profile: str | None = None,
+                 expected_version: int | None = None) -> dict:
+        self._ctx.require(actor, workspace_id, "editor")
+        ontology, version = _load_versioned_ontology(self._ctx, workspace_id)
+        if ontology.lifecycle != "draft":
+            raise ValidationError(
+                "only a draft ontology can be edited; the active version is "
+                f"{ontology.lifecycle!r} - create a revision first")
+        if name is None and description is None and profile is None:
+            raise ValidationError(
+                "nothing to update: provide at least one of name, description "
+                "or profile")
+        if name is not None:
+            stripped = str(name).strip()
+            if not stripped:
+                raise ValidationError("ontology name must not be empty")
+            ontology.name = stripped
+        if description is not None:
+            ontology.description = str(description)
+        if profile is not None:
+            normalized = str(profile).strip().lower()
+            if normalized not in PROFILES:
+                raise ValidationError(
+                    f"unknown ontology profile {profile!r}; expected "
+                    f"{list(PROFILES)}")
+            ontology.profile = normalized
+        ontology.updated_at = self._ctx.clock()
+        self._ctx.save_versioned(
+            "ontology", ontology.to_dict(),
+            expected_version if expected_version is not None else version,
+        )
+        self._ctx.audit_event(
+            actor, workspace_id, "ontology.update_meta", ontology.id,
+            {"name": ontology.name, "profile": ontology.profile})
+        return ontology.to_dict()
+
+
 class UpsertObjectType:
     def __init__(self, ctx: ApplicationContext) -> None:
         self._ctx = ctx
@@ -216,6 +326,20 @@ class UpsertObjectType:
             category=category,
             state_machine=state_machine,
         )
+        # Dropping a property is a schema narrowing; refuse it while the
+        # aggregate or a sibling asset still references that property.
+        previous = ontology.objects.get(name)
+        if previous is not None and ontology.lifecycle != "published":
+            dropped = set(previous.properties) - set(spec.properties)
+            if dropped:
+                reasons = _property_references(
+                    self._ctx, workspace_id, ontology, name, dropped)
+                if reasons:
+                    raise ValidationError(
+                        f"object type {name!r} cannot drop properties "
+                        f"{sorted(dropped)}: still referenced by "
+                        + "; ".join(reasons)
+                        + "; remove those references first")
         ontology.upsert_object(spec)
         ontology.updated_at = self._ctx.clock()
         self._ctx.save_versioned(
@@ -273,6 +397,143 @@ class AddVocabularyTerm:
         )
         self._ctx.audit_event(actor, workspace_id, "ontology.add_term", term,
                               {"concept": concept})
+        return ontology.to_dict()
+
+
+def _app_rows_using(ctx: ApplicationContext, workspace_id: str,
+                    predicate) -> list[dict]:
+    return [app for app in ctx.repo.list("application", workspace_id)
+            if predicate(app)]
+
+
+class RemoveObjectType:
+    """Remove one object type from the editable ontology draft.
+
+    Deleting a type is a schema edit, not a data delete: runtime instances of
+    that type may still exist and are deliberately left untouched.  The use
+    case refuses while other editable assets still reference the type, so a
+    delete cannot leave capabilities/projections/applications dangling.
+    """
+
+    def __init__(self, ctx: ApplicationContext) -> None:
+        self._ctx = ctx
+
+    def __call__(self, workspace_id: str, actor: str, name: str) -> dict:
+        self._ctx.require(actor, workspace_id, "editor")
+        ontology, version = _load_versioned_ontology(self._ctx, workspace_id)
+        if name not in ontology.objects:
+            raise NotFoundError(f"object type not found: {name!r}")
+
+        capabilities = [
+            c.get("name") or c.get("key") or c["id"]
+            for c in self._ctx.repo.list("capability", workspace_id)
+            if c.get("target_type") == name
+        ]
+        if capabilities:
+            raise ValidationError(
+                f"object type {name!r} is used by capabilities {capabilities}; "
+                "delete or retarget them first")
+        projections = [
+            p.get("name") or p["id"]
+            for p in self._ctx.repo.list("projection", workspace_id)
+            if any(m.get("object_type") == name
+                   for m in p.get("object_mappings") or [])
+        ]
+        if projections:
+            raise ValidationError(
+                f"object type {name!r} is used by projections {projections}; "
+                "delete or update them first")
+        applications = [
+            app.get("name") or app["id"]
+            for app in _app_rows_using(
+                self._ctx, workspace_id,
+                lambda app: any(v.get("object_type") == name
+                                for v in (app.get("views") or {}).values())
+                or any(q.get("object_type") == name
+                       for q in (app.get("queries") or {}).values()))
+        ]
+        if applications:
+            raise ValidationError(
+                f"object type {name!r} is used by applications {applications}; "
+                "remove those views/queries first")
+        terms = [
+            term for term, item in ontology.vocabulary.items()
+            if item.concept == name or item.concept.startswith(name + ".")
+        ]
+        if terms:
+            raise ValidationError(
+                f"object type {name!r} is used by vocabulary terms {terms}; "
+                "remove them first")
+
+        ontology.remove_object(name)  # also guards relations inside the aggregate
+        ontology.updated_at = self._ctx.clock()
+        self._ctx.save_versioned("ontology", ontology.to_dict(), version)
+        self._ctx.audit_event(actor, workspace_id, "ontology.remove_object", name, {})
+        return ontology.to_dict()
+
+
+class RemoveRelation:
+    """Remove one relation type while no editable asset references it."""
+
+    def __init__(self, ctx: ApplicationContext) -> None:
+        self._ctx = ctx
+
+    def __call__(self, workspace_id: str, actor: str, name: str) -> dict:
+        self._ctx.require(actor, workspace_id, "editor")
+        ontology, version = _load_versioned_ontology(self._ctx, workspace_id)
+        if name not in ontology.relations:
+            raise NotFoundError(f"relation not found: {name!r}")
+
+        projections = [
+            p.get("name") or p["id"]
+            for p in self._ctx.repo.list("projection", workspace_id)
+            if any(m.get("relation") == name
+                   for m in p.get("relation_mappings") or [])
+        ]
+        if projections:
+            raise ValidationError(
+                f"relation {name!r} is used by projections {projections}; "
+                "delete or update them first")
+        applications = [
+            app.get("name") or app["id"]
+            for app in _app_rows_using(
+                self._ctx, workspace_id,
+                lambda app: any(
+                    entry.get("relation") == name
+                    for q in (app.get("queries") or {}).values()
+                    for entry in q.get("expand") or []))
+        ]
+        if applications:
+            raise ValidationError(
+                f"relation {name!r} is used by applications {applications}; "
+                "remove those query expansions first")
+        terms = [
+            term for term, item in ontology.vocabulary.items()
+            if item.kind == "relation" and item.concept == name
+        ]
+        if terms:
+            raise ValidationError(
+                f"relation {name!r} is used by vocabulary terms {terms}; "
+                "remove them first")
+
+        ontology.remove_relation(name)
+        ontology.updated_at = self._ctx.clock()
+        self._ctx.save_versioned("ontology", ontology.to_dict(), version)
+        self._ctx.audit_event(actor, workspace_id, "ontology.remove_relation", name, {})
+        return ontology.to_dict()
+
+
+class RemoveVocabularyTerm:
+    def __init__(self, ctx: ApplicationContext) -> None:
+        self._ctx = ctx
+
+    def __call__(self, workspace_id: str, actor: str, term: str) -> dict:
+        self._ctx.require(actor, workspace_id, "editor")
+        ontology, version = _load_versioned_ontology(self._ctx, workspace_id)
+        ontology.remove_term(term)
+        ontology.updated_at = self._ctx.clock()
+        self._ctx.save_versioned("ontology", ontology.to_dict(), version)
+        self._ctx.audit_event(actor, workspace_id, "ontology.remove_term", term, {})
         return ontology.to_dict()
 
 
@@ -433,6 +694,62 @@ class ReviseOntology:
                               {"version": data["version"],
                                "previous": ontology.id})
         return data
+
+
+class DiscardOntologyDraft:
+    """Drop the active revision draft and restore the published version.
+
+    Revision deprecates the served version and creates a draft copy; discarding
+    reverses exactly that: the deprecated parent row is transitioned back to
+    ``published`` and the draft row is deleted in one transaction.  Neither the
+    runtime nor the deployment pointer is touched - the served Release keeps
+    running the restored version's schema.
+    """
+
+    def __init__(self, ctx: ApplicationContext) -> None:
+        self._ctx = ctx
+
+    def __call__(self, workspace_id: str, actor: str) -> dict:
+        self._ctx.require(actor, workspace_id, "editor")
+        item = _active_ontology_item(self._ctx, workspace_id)
+        if item is None:
+            raise NotFoundError(
+                f"workspace {workspace_id!r} has no ontology yet; create one first"
+            )
+        if item.get("lifecycle") != "draft":
+            raise ValidationError(
+                "only a draft ontology can be discarded; the active version "
+                f"is {item.get('lifecycle')!r}")
+        parent_version = item.get("parent_version")
+        if parent_version is None:
+            raise ValidationError(
+                "cannot discard this ontology draft: it was not created by a "
+                "revision, so there is no parent version to restore")
+        candidates = [
+            row for row in self._ctx.repo.list("ontology", workspace_id)
+            if row["id"] != item["id"]
+            and int(row.get("version") or 0) == int(parent_version)
+            and row.get("lifecycle") in ("published", "deprecated")
+        ]
+        if not candidates:
+            raise ValidationError(
+                f"cannot discard this ontology draft: parent version "
+                f"v{parent_version} was not found")
+        restored_row = max(candidates,
+                           key=lambda row: row.get("created_at") or "")
+        restored, restored_version = self._ctx.load_versioned(
+            "ontology", workspace_id, restored_row["id"])
+        if restored.get("lifecycle") == "deprecated":
+            restored["lifecycle"] = transition(restored["lifecycle"], "restore")
+        restored["updated_at"] = self._ctx.clock()
+        with self._ctx.transaction():
+            self._ctx.save_versioned("ontology", restored, restored_version)
+            self._ctx.repo.delete("ontology", workspace_id, item["id"])
+            self._ctx.audit_event(
+                actor, workspace_id, "ontology.discard_draft", item["id"],
+                {"restored_id": restored["id"],
+                 "restored_version": restored.get("version")})
+        return {"discarded": item["id"], "restored": restored}
 
 
 class LintOntology:

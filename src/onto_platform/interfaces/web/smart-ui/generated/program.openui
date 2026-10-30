@@ -1,0 +1,30 @@
+$plate = "鲁SX0579"
+$selected = null
+
+q_identity = Query("view_identity", { plate: $plate }, { rows: [] })
+q_relationship = Query("view_relationship", { plate: $plate }, { rows: [] })
+q_timeline = Query("view_timeline", { plate: $plate }, { rows: [] })
+q_location = Query("view_location", { plate: $plate }, { rows: [] })
+q_statistics = Query("view_statistics", { plate: $plate }, { rows: [] })
+q_state = Query("view_state", { plate: $plate }, { rows: [] })
+q_rule = Query("view_rule", { plate: $plate }, { rows: [] })
+q_action = Query("view_action", { plate: $plate }, { rows: [] })
+
+m_trace_vehicle = Mutation("trace_vehicle", { plate: $plate })
+m_analyze_exception = Mutation("analyze_exception", { plate: $plate })
+
+header = SectionHeader("车辆异常分析", "鲁SX0579 · 异常分析", "8 视角 · 确定性编译")
+
+b_trace_vehicle = ActionButton("车辆轨迹与画像追踪", "沿车辆关系链展开通行轨迹与画像", @Run(m_trace_vehicle), "secondary", "trace_vehicle", "analyst / operator")
+b_analyze_exception = ActionButton("异常原因分析", "按规则链解释车型识别冲突与计费差异", @Run(m_analyze_exception), "primary", "analyze_exception", "analyst")
+
+v_identity = ObjectCard("对象画像", q_identity.rows)
+v_relationship = RelationGraph("关系网络", q_relationship.rows, $selected)
+v_timeline = EventTimeline("事件时间线", q_timeline.rows, $selected)
+v_location = GeoMap("轨迹地图", q_location.rows, $selected)
+v_statistics = StatisticChart("通行统计", q_statistics.rows)
+v_state = StatePanel("通行状态", q_state.rows)
+v_rule = AnalysisPanel("异常解释", q_rule.rows)
+v_action = ActionPanel("处置动作", [b_trace_vehicle, b_analyze_exception], q_action.rows, "当前角色可执行 2 个动作 · 生成处置任务需更高权限，已从可执行程序裁剪")
+
+root = Stack([header, v_identity, v_statistics, v_state, v_relationship, v_rule, v_timeline, v_location, v_action], "dashboard")

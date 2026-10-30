@@ -26,6 +26,9 @@ TRANSITIONS: dict[str, tuple[tuple[str, ...], str]] = {
     "publish": (("validated",), "published"),
     "deprecate": (("published",), "deprecated"),
     "revise": (("validated",), "draft"),
+    # discarding a draft restores the version it revised; the previously
+    # deprecated row becomes the served published artifact again
+    "restore": (("deprecated",), "published"),
 }
 
 
@@ -76,6 +79,8 @@ class AccessPolicy:
     ACTION_POLICY: dict[str, tuple[str, str]] = {
         "workspace.read": ("viewer", "workspace"),
         "workspace.manage_members": ("owner", "workspace"),
+        "workspace.delete": ("owner", "workspace"),
+        "workspace.reset": ("owner", "workspace"),
         "ontology.edit": ("editor", "ontology"),
         "ontology.publish": ("editor", "ontology"),
         "capability.publish": ("editor", "capability"),

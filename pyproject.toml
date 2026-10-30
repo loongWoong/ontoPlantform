@@ -44,6 +44,10 @@ include-package-data = true
   "web/dist/index.html",
   "web/dist/assets/*",
   "web/dist/*",
+  "web/smart-ui/index.html",
+  "web/smart-ui/assets/*",
+  "web/smart-ui/*",
+  "web/smart-ui/generated/*",
 ]
 
 [tool.pytest.ini_options]

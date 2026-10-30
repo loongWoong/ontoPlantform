@@ -5,7 +5,7 @@
 > 结论「不宜作为默认控制台发布」不再成立。逐条处置与仍未完成项见
 > `docs/frontend-react-implementation.md` §4。本文保留为评审记录。
 
-> 评审对象：`frontend/`（React 18 + TS + Vite，约 3900 行，未提交 git）。
+> 评审对象：`frontend/`（React 19 + TS + Vite，约 3900 行，未提交 git）。
 > 对照基准：`docs/frontend-redesign-react.md`（设计方案）、`docs/frontend-layout-plan.md`（布局验收）、
 > `docs/completeness-review.md`（A1/A2/A3 缺口）、后端 `api.py` 实际契约。
 > 验证方式：通读全部源码 + `tsc --noEmit`（通过）+ 与后端 agent_runner/api.py 逐字段比对。

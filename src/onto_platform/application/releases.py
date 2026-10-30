@@ -42,9 +42,17 @@ def _payload_problem(payload: dict | None) -> str | None:
 
 
 def cut_release(ctx: ApplicationContext, workspace_id: str, actor: str,
-                note: str = "") -> dict:
-    """Snapshot the current published schema as a new immutable Release."""
-    ontology = ctx.repo.get("ontology", workspace_id, _ontology_id(ctx, workspace_id))
+                note: str = "", ontology: dict | None = None) -> dict:
+    """Snapshot the current published schema as a new immutable Release.
+
+    ``ontology`` normally defaults to the active row.  A caller that installs
+    a schema compiled from an older published revision (for example deleting
+    a published capability while a newer draft is active) passes that row so
+    the release metadata matches the payload actually installed.
+    """
+    if ontology is None:
+        ontology = ctx.repo.get(
+            "ontology", workspace_id, _ontology_id(ctx, workspace_id))
     payload = ctx.repo.get("schema_payload", workspace_id, workspace_id)
     problem = _payload_problem(payload)
     if problem:
@@ -81,6 +89,27 @@ def _ontology_id(ctx: ApplicationContext, workspace_id: str) -> str:
     return rows[0]["id"]
 
 
+def _published_capability_ids(ctx: ApplicationContext,
+                              workspace_id: str) -> set[str]:
+    return {row.get("id")
+            for row in ctx.repo.list("capability", workspace_id)
+            if row.get("lifecycle") == "published"}
+
+
+def missing_capability_ids(ctx: ApplicationContext, workspace_id: str,
+                           release: dict) -> list[str]:
+    """Capability ids a Release references that are no longer published.
+
+    Deleting a published capability removes it from the runtime contract but
+    older Releases still name it.  Deploying one of those Releases would
+    install a schema whose functions list no longer matches the release
+    metadata, so it must be refused up front (build a new release instead).
+    """
+    published = _published_capability_ids(ctx, workspace_id)
+    return sorted(cid for cid in (release.get("capability_ids") or [])
+                  if cid not in published)
+
+
 def deploy_release(ctx: ApplicationContext, workspace_id: str, actor: str,
                    release_id: str, *, action: str = "release.deployed",
                    ring: str = DEPLOYMENT_ID) -> dict:
@@ -94,6 +123,16 @@ def deploy_release(ctx: ApplicationContext, workspace_id: str, actor: str,
     release = ctx.repo.get("release", workspace_id, release_id)
     if release is None:
         raise NotFoundError(f"release not found: {release_id!r}")
+    # Integrity guard: every capability the Release was cut from must still be
+    # published.  Validate *before* the pending intent is written so a
+    # rejected deploy/rollback/canary/promote cannot partially modify the
+    # deployment pointer.
+    missing = missing_capability_ids(ctx, workspace_id, release)
+    if missing:
+        raise ValidationError(
+            f"release {release['id']!r} references capabilities that are no "
+            f"longer published: {', '.join(missing)}; re-cut the release or "
+            f"republish those capabilities before deploying it")
     previous = ctx.repo.get("deployment", workspace_id, ring) or {}
     if ring == CANARY_ID:
         # a canary is a shadow of the serving ring, so its base is the
@@ -256,8 +295,19 @@ def _release_functions(ctx: ApplicationContext, workspace_id: str,
 
 
 def list_releases(ctx: ApplicationContext, workspace_id: str) -> list[dict]:
-    releases = ctx.repo.list("release", workspace_id)
-    return sorted(releases, key=lambda r: r.get("created_at") or "")
+    """Release rows with derived integrity metadata.
+
+    ``missing_capability_ids`` is computed on read and never written back to
+    the stored Release document: a Release is an immutable artifact, so the
+    list must not rewrite history while reporting that it can no longer be
+    deployed.
+    """
+    releases = sorted(ctx.repo.list("release", workspace_id),
+                      key=lambda r: r.get("created_at") or "")
+    return [{**release,
+             "missing_capability_ids": missing_capability_ids(
+                 ctx, workspace_id, release)}
+            for release in releases]
 
 
 class ReleaseUseCases:

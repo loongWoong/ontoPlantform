@@ -68,7 +68,7 @@
 
 | 层 | 选择 | 理由 |
 |----|------|------|
-| 构建 | Vite + React 18 + TypeScript | 现有代码无类型，DTO 先行定义可防前后端契约漂移 |
+| 构建 | Vite 7 + React 19 + TypeScript | 现有代码无类型，DTO 先行定义可防前后端契约漂移 |
 | 路由 | React Router v6（嵌套路由 + URL 参数） | wid/选中对象/抽屉内容全部深链化 |
 | 服务端状态 | TanStack Query v5 | 缓存、失效、轮询（变更流/健康检查）开箱即用 |
 | 客户端 UI 态 | React Context（Sidebar/Drawer/Toast 三个小 Context） | 不引入 redux/zustand——UI 态很薄 |

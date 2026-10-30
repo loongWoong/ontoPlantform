@@ -215,6 +215,30 @@ class SqliteRepository:
                 ).fetchall()
         return [json.loads(r[0]) for r in rows]
 
+    def workspace_kinds(self, workspace_id: str) -> dict[str, int]:
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT kind, COUNT(*) FROM documents "
+                "WHERE workspace_id IS ? GROUP BY kind",
+                (workspace_id,),
+            ).fetchall()
+        return {str(kind): int(count) for kind, count in rows}
+
+    def delete_workspace_documents(self, workspace_id: str) -> int:
+        if self._in_tx():
+            with self._lock:
+                cur = self._conn.execute(
+                    "DELETE FROM documents WHERE workspace_id IS ?",
+                    (workspace_id,),
+                )
+                return cur.rowcount
+        with self._lock, self._conn:
+            cur = self._conn.execute(
+                "DELETE FROM documents WHERE workspace_id IS ?",
+                (workspace_id,),
+            )
+        return cur.rowcount
+
     # ---- internals ----
 
     def _current_version(

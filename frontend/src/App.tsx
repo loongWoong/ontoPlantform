@@ -1,4 +1,4 @@
-import { Component, useEffect, useState, type ReactNode } from "react";
+import { Component, useEffect, useState, type ReactElement, type ReactNode } from "react";
 import {
   CaretRight, Command as CommandIcon, Graph, MagnifyingGlass,
   SidebarSimple, Sparkle, SquaresFour,
@@ -15,17 +15,19 @@ import { DataView } from "./views/Data";
 import { CapabilityView } from "./views/Capability";
 import { ApplicationView } from "./views/Application";
 import { StateView } from "./views/StateBrowser";
+import { SmartUIView } from "./views/SmartUI";
 import { OperationsView } from "./views/Operations";
 import { AssistantView } from "./views/Assistant";
 import { SettingsView } from "./views/Settings";
 
-const VIEWS: Record<string, () => JSX.Element> = {
+const VIEWS: Record<string, () => ReactElement> = {
   workbench: Workbench,
   ontology: OntologyView,
   data: DataView,
   capability: CapabilityView,
   application: ApplicationView,
   state: StateView,
+  smartui: SmartUIView,
   operations: OperationsView,
   assistant: AssistantView,
   settings: SettingsView,

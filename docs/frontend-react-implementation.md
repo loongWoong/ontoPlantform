@@ -11,7 +11,7 @@
 ## 1. 架构与一键启动
 
 ```
-frontend/                         源码（React 18 + TS strict + Vite）
+frontend/                         源码（React 19 + TS strict + Vite 7）
   src/api.ts        与后端 REST 契约一一对应的类型化客户端 + 中文错误友好化
   src/store.tsx     全局状态：工作空间 / 连接 / 模型选择 / Toast / 确认框 / hash 路由
   src/ui.tsx        展示原语：Card Field Btn TableWrap Drawer Timeline RowEditor
@@ -172,7 +172,145 @@ input/textarea 的 `scrollWidth` 由内容决定（不计入溢出）；14px 勾
 
 ```bash
 npm --prefix frontend run build          # 构建（tsc strict + vite）
-python -m pytest tests/ -q               # 79 passed（后端契约未被破坏）
+python -m pytest tests/ -q               # 336 passed（后端契约未被破坏）
 node tests/manual/react_layout_probe.mjs http://127.0.0.1:8123 9333   # 0 项未达标
 python tests/manual/e2e_probe.py         # 后端契约探针（全 PASS）
 ```
+
+---
+
+## 7. React 19 升级与智能视图联调（2026-10）
+
+### 7.1 React 19
+
+`frontend/package.json` 已升级到：
+
+| 包 | 版本 |
+|----|------|
+| `react` / `react-dom` | `^19.3.1` |
+| `@types/react` / `@types/react-dom` | `^19.3.0` |
+| `vite` | `^7.3.0`（实际安装 7.3.7） |
+| `@vitejs/plugin-react` | `^5.0.0`（实际 5.2.0） |
+
+升级中唯一源码级破坏是 React 19 移除了全局 `JSX` 命名空间：
+`App.tsx` 的视图表从 `Record<string, () => JSX.Element>` 改为
+`Record<string, () => ReactElement>`（显式 `import type { ReactElement }`）。
+`tsc --noEmit`、Vitest 46 项、Python 全量 310 项均通过。
+
+**Windows 构建临时目录问题**：Vite 7/esbuild 在该机器上删除
+`C:\Users\...\AppData\Local\Temp\esbuild-*` 会报 `Access is denied`。构建脚本改为
+`frontend/scripts/vite-build.mjs`，在动态 `import("vite")` 之前把 `TMP`/`TEMP`
+指向仓库内 `frontend/.vite-tmp`；`npm run build` 不再依赖外部 TEMP 权限。
+
+### 7.2 智能视图（本体驱动 UI 接入主平台）
+
+新增页面 `frontend/src/views/SmartUI.tsx` 与导航项「业务世界 → 智能视图」。
+它不复制运行时 CSS，而是用**sandbox 隔离 iframe** 挂载独立构建的 OpenUI 运行时：
+
+```
+GET  /smart-ui/?workspace=<wid>&api=<console-origin>
+     └─ web/smart-ui/（Vite base=/smart-ui/，由 runtime-web 的 build:platform 生成）
+GET  /api/workspaces/{wid}/smart-ui/meta
+POST /api/workspaces/{wid}/smart-ui/compile
+POST /api/workspaces/{wid}/smart-ui/actions/{actionId}
+```
+
+iframe 不再授予 `allow-same-origin`：浏览器给它不透明源（`self.origin === "null"`），
+父页面与 iframe 互相读不到 DOM/storage。控制台在 iframe `load` 和子页面的
+`onto.smartui.ready` 消息上，用 `postMessage` 把 bearer token 交给运行时内存；运行时
+带上该 token 跨源调用 API（CORS 已允许 `Content-Type / Idempotency-Key /
+Authorization`）。令牌不写进 iframe URL，也不依赖 `sessionStorage` 同源可见。
+
+后端 `interfaces/smart_ui.py` 是唯一适配层：
+
+1. 平台已发布本体 + 当前实例 → 通用语义层：自动选择有实例的焦点对象，推导身份键、
+   名称/时间/数值/状态字段与关联对象；只补 `is_abnormal` 这一个派生状态别名；
+2. 平台能力（非 agent、已发布，含参数化能力）→ 引擎 `Action`，调用仍走
+   `platform.capabilities.invoke`，保留授权、执行账本和审计；能力 `inputs` 转成
+   `ActionParameter` 进入 L4 `ActionButton`，后端按声明校验并转换 `args`；
+3. 每次 compile 从当前工作空间投影实时构造 `viewPayloads`（画像、关系、时间线、
+   位置、统计、状态、解释、动作），不是引擎示例 fixture；焦点/关联对象有经纬度时
+   提供 `view_location`，没有坐标时不生成地图；
+4. 任何行业本体只要有已发布对象类型和实例即可编译；不要求车辆/车牌/收费站。
+   没有实例时 `meta.ready=false` 并返回下一步指引，不伪造数据。
+5. 角色从 actor 的真实工作空间成员关系推导：`meta.actorRole` + 只含不高于该角色的
+   `roles`，编译与动作都做“请求角色 ≤ actor 角色”校验；写动作只对 `editor/owner`
+   开放，避免把 `viewer` 广告成可执行身份。
+
+运行时 `runtime-web/src/platform.ts` 提供 meta/compile/action 客户端；`bridge.ts` 负责
+父子 postMessage 令牌握手，`platformAction.tsx` 提供参数化动作执行上下文。
+`toolProvider.ts` 的 `ToolHooks.onMutation` 继续处理无参数动作，动作失败会抛错而不是
+显示成功。所有动作都先弹出应用内确认弹窗（`ConfirmActionDialog`，含参数输入、类型
+校验、错误提示），不再使用 `window.confirm`；动作请求带幂等键，成功后重新 compile
+刷新平台数据。
+
+浏览器实测（Chrome headless + CDP）：
+
+- 控制台 `#/w/7c33935df1d1/smartui`：iframe sandbox 为
+  `allow-scripts allow-forms allow-popups`，子页面 `self.origin === "null"`，
+  读取父页面 `document`/`sessionStorage` 均抛 `SecurityError`；主页面无
+  `allow-scripts + allow-same-origin` 沙箱告警；
+- 实时数据：`鲁C56789`、84 个实例、3 个可执行动作（含参数化「状态处置」）；
+- 点击「站点日报」：确认弹窗无参数，确认后 `daily_report` POST 200；
+- 点击「状态处置」：弹窗渲染 `status` 输入；空值被前端拦截为「请填写…」；
+  填 `busy` 后 POST `set_status` 200，请求带 `Authorization: Bearer <token>`
+  （令牌由父页面 postMessage 传入），随后 compile 刷新；
+- 0 个 iframe console error，父页面 0 security 告警；
+- 角色从 `owner` 切到 `editor` 会重新编译，`congestion_scan` 仍可用；
+  `viewer` 只能请求 `viewer` 视角且在编译期被裁掉写动作（L3/权限）；实际平台鉴权
+  仍以登录 actor 为准，运行时 `role` 不能提升后端权限。
+
+### 7.3 已修复项与剩余边界
+
+| 项 | 说明 |
+|----|------|
+| 非 toll 本体的通用性 | 已由通用语义层覆盖：焦点对象、身份键、时间/数值/状态字段、关联对象都从本体与实例推导；不再要求 `plate`。自动化测试含 `Device/Site` 无车牌本体、高速 `Vehicle`、AI 建模 `PassageTransaction`，以及金融租赁 `LeaseContract`（合同/租赁物/账单/预警）场景 |
+| 参数化动作 | 已修复：能力 `inputs` 经适配层 → 引擎 `Action.parameters` → L4 `ActionButton` 的 `parameters` JSON 进入运行时；确认弹窗按 `type` 渲染输入并校验，后端 `_action_args` 拒绝未知/缺失/类型不符的 `args`。无参数动作仍走原 mutation 路径 |
+| 动作后数据刷新 | 已修复：动作成功（`ok !== false`）后运行时以当前问题重新 compile，刷新平台真实状态；动作请求带幂等键 |
+| iframe 沙箱告警 | 已修复：去掉 `allow-same-origin`，运行时在 opaque origin 中执行；令牌经 postMessage 传入内存，API 走 CORS。浏览器验证父/子 DOM 与 storage 互相不可读，页面无沙箱逃逸告警 |
+| 确认弹窗可测试性 | 已修复：`window.confirm` 换成应用内 `role="dialog"` 弹窗，包含参数输入与错误区；CDP e2e 覆盖取消、空值校验、成功执行 |
+| 平台角色 vs 运行时角色 | 运行时默认使用 `meta.actorRole`，切换只影响编译视角；后端校验“请求角色 ≤ actor 角色”，真实写权限仍由平台 actor 决定 |
+
+---
+
+## 8. 四个管理域的删除能力（2026-10）
+
+控制台此前只有新增与查询；本次补齐本体 / 数据 / 能力 / 应用的删除链路，UI 一律走应用内
+`confirm` 弹窗，服务端用 `DELETE` 路由和用例层引用检查，不把删除逻辑放进视图。
+
+### 8.1 API 与客户端
+
+| 域 | 路由 | 行为 |
+|----|------|------|
+| 本体 | `DELETE /api/workspaces/{wid}/ontology/objects/{name}` | 删除草稿对象；被关系/术语/能力/映射/应用引用时 400 |
+| 本体 | `DELETE .../ontology/relations/{name}` | 删除草稿关系；被映射/查询展开/术语引用时 400 |
+| 本体 | `DELETE .../ontology/vocabulary/{term}` | 删除草稿术语 |
+| 数据 | `DELETE .../datasources/{sid}` | 仍被映射引用时 400 |
+| 数据 | `DELETE .../projections/{pid}` | 删除映射及其同步运行记录；运行时对象保留 |
+| 能力 | `DELETE .../capabilities/{cid}` | 草稿直接删；已发布按最近发布本体重编译安装剩余能力，再解绑应用并切新 Release；更新中的草稿本体保持不变 |
+| 应用 | `DELETE .../applications/{aid}` | 删除应用聚合 |
+| 应用 | `DELETE .../applications/{aid}/views/{alias}`（queries / agents 同理） | 移除组成项；查询被视图引用时 400 |
+| 应用 | `DELETE .../applications/{aid}/capabilities/{cid}` | 仅取消挂载 |
+
+`frontend/src/api.ts` 新增 `del()` 与 `DeleteResult`，各页删除按钮调用类型化客户端；
+`Access-Control-Allow-Methods` 增加 `DELETE`，`/api/health.features` 增加
+`resource.delete`，客户端可探测服务端是否支持删除。
+
+### 8.2 交互位置
+
+- 本体：对象表、关系表新增「删除」操作列，术语 chip 内的 `×`；已发布本体隐藏删除入口，
+  提示先「修订」。
+- 数据：数据源与映射表格的「操作」列；映射删除后同步结果 banner 立即清空。
+- 能力：能力表格操作列；已发布能力的确认弹窗明确说明运行时重发与应用解绑。
+- 应用：页头「删除应用」；视图/查询/智能体行内「移除」，挂载能力 chip 的 `×`。
+
+### 8.3 验收
+
+`tests/test_delete.py` 覆盖四个域的引用保护、级联修复、已发布能力重发与 Release、
+HTTP DELETE/CORS（8 项）；`npm --prefix frontend run build` 通过 `tsc --noEmit`，
+控制台 46 项单测通过；全量后端 336 项通过。
+
+真实浏览器（CDP）实测：发布态不显示删除入口 →「修订」出草稿后出现删除列；删除仍被
+能力引用的对象被服务端拒绝并提示；删除术语、关系、无引用对象成功；删除映射后同步回执
+清空，再删除数据源成功；在存在更新草稿时删除已发布能力成功（运行时动作消失、应用解绑）；
+应用内视图/查询/智能体逐个移除后整体删除应用成功。
