@@ -20,6 +20,7 @@ from .application.application_usecases import (    AddAgent,
     AddQuery,
     AddView,
     AttachCapability,
+    CloneApplication,
     CreateApplication,
     DeleteApplication,
     DetachCapability,
@@ -31,6 +32,9 @@ from .application.application_usecases import (    AddAgent,
     RemoveView,
     RunAppAgent,
     RunAppQuery,
+    UpdateApplication,
+    UpdateQuery,
+    UpdateView,
 )
 from .application.capability_usecases import (
     CloneCapability,
@@ -280,6 +284,10 @@ class ApplicationUseCases:
         self.create = CreateApplication(ctx)
         self.add_view = AddView(ctx)
         self.add_query = AddQuery(ctx)
+        self.update = UpdateApplication(ctx)
+        self.update_view = UpdateView(ctx)
+        self.update_query = UpdateQuery(ctx)
+        self.clone = CloneApplication(ctx)
         self.attach_capability = AttachCapability(ctx)
         self.add_agent = AddAgent(ctx)
         self.publish = PublishApplication(ctx)

@@ -1587,3 +1587,40 @@ dl.kv > dd { margin: 0 0 2px; font-size: 12.5px; }
 }
 .smartui-flow b { display: block; font-size: 13px; margin-bottom: 4px; }
 .smartui-flow span { display: block; color: var(--muted); font-size: 12px; line-height: 1.5; }
+
+/* ---------------- 应用：列表目标状态 / 图表与地图 / 视图配置 ---------------- */
+.app-item-tags { display: flex; align-items: center; gap: 4px; flex: 0 0 auto; flex-wrap: wrap; justify-content: flex-end; }
+.app-tags { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
+.chart-wrap, .map-wrap {
+  margin: 4px 0 6px;
+  padding: 14px 16px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-2);
+}
+.chart-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
+.chart-head h3 { font-size: 13px; font-weight: 600; margin: 0; }
+.chart-svg, .map-svg { display: block; width: 100%; height: auto; overflow: visible; }
+.chart-grid { stroke: var(--line-soft); stroke-width: 1; }
+.chart-axis { stroke: var(--line-strong); stroke-width: 1.2; }
+.chart-tick { font-family: var(--mono); font-size: 10px; fill: var(--muted); }
+.chart-label { font-family: var(--sans); font-size: 10px; fill: var(--ink-2); }
+.chart-value { font-family: var(--mono); font-size: 9.5px; fill: var(--ink-2); }
+.chart-caption { font-family: var(--sans); font-size: 9.5px; fill: var(--faint); }
+.chart-bar { fill: var(--ink-2); }
+.chart-bar.neg { fill: var(--red-ink); }
+.map-frame { fill: none; stroke: var(--line-strong); stroke-width: 1.2; }
+.map-grid { stroke: var(--line-soft); stroke-width: 1; }
+.map-tick { font-family: var(--mono); font-size: 10px; fill: var(--muted); }
+.map-dot { fill: var(--blue-ink); fill-opacity: 0.85; stroke: var(--surface); stroke-width: 1.5; }
+.map-label { font-family: var(--sans); font-size: 10px; fill: var(--ink-2); }
+
+.view-config {
+  margin-top: 4px;
+  padding: 12px 14px 4px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-2);
+}
+.view-config .field:last-of-type { margin-bottom: 8px; }

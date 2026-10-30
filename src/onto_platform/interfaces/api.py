@@ -45,6 +45,10 @@ use cases the CLI uses - no domain logic here.
     GET  /api/workspaces/{wid}/events?limit=200&type=
     POST /api/workspaces/{wid}/events/dispatch
     GET  /api/workspaces/{wid}/applications     POST (same)
+    PATCH /api/workspaces/{wid}/applications/{aid}  {name?,description?}
+    PATCH /api/workspaces/{wid}/applications/{aid}/views/{alias}
+    PATCH /api/workspaces/{wid}/applications/{aid}/queries/{alias}
+    POST /api/workspaces/{wid}/applications/{aid}/clone  {name?}
     DELETE /api/workspaces/{wid}/applications/{aid}
     DELETE /api/workspaces/{wid}/applications/{aid}/views/{alias}
     DELETE /api/workspaces/{wid}/applications/{aid}/queries/{alias}
@@ -926,7 +930,11 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
                     kind=body.get("kind", "table"),
                     object_type=body.get("object_type", ""),
                     properties=body.get("properties"),
-                    query_alias=body.get("query_alias", "")))
+                    query_alias=body.get("query_alias", ""),
+                    config=body.get("config")))
+            if len(rest) == 3 and rest[0] == "applications" and rest[2] == "clone":
+                return self._send(200, platform.applications.clone(
+                    wid, rest[1], user, name=body.get("name")))
             if len(rest) == 3 and rest[0] == "applications" and rest[2] == "queries":
                 return self._send(200, platform.applications.add_query(
                     wid, rest[1], user, body["alias"], body["object_type"],
@@ -1023,6 +1031,25 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
                     relation_mappings=body.get("relation_mappings"),
                     mode=body.get("mode"), row_limit=body.get("row_limit"),
                     datasource_id=body.get("datasource_id")))
+            if len(rest) == 2 and rest[0] == "applications":
+                return self._send(200, platform.applications.update(
+                    wid, rest[1], user, name=body.get("name"),
+                    description=body.get("description")))
+            if len(rest) == 4 and rest[0] == "applications" \
+                    and rest[2] == "views":
+                return self._send(200, platform.applications.update_view(
+                    wid, rest[1], user, rest[3], title=body.get("title"),
+                    kind=body.get("kind"),
+                    object_type=body.get("object_type"),
+                    properties=body.get("properties"),
+                    query_alias=body.get("query_alias"),
+                    config=body.get("config")))
+            if len(rest) == 4 and rest[0] == "applications" \
+                    and rest[2] == "queries":
+                return self._send(200, platform.applications.update_query(
+                    wid, rest[1], user, rest[3], title=body.get("title"),
+                    object_type=body.get("object_type"),
+                    filters=body.get("filters"), expand=body.get("expand")))
             if rest == ["state", "objects"]:
                 ref = query.get("ref")
                 if not ref:

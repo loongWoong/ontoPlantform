@@ -1,13 +1,17 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  CaretRight, Lightning, Play, Plus, Trash,
+  CaretRight, Copy, Lightning, PencilSimple, Play, Plus, Trash,
 } from "@phosphor-icons/react";
-import { api, type Application, type AppView, type Capability, type Obj, type QueryResult, type Verification } from "../api";
+import {
+  api, type Application, type AppQuery, type AppView, type Capability, type Obj,
+  type ObjectiveEvaluation, type QueryResult, type Verification,
+} from "../api";
 import { toChoice, useAction, usePlatform } from "../store";
 import {
-  buildFilters, Btn, Card, Drawer, Empty, Field, FilterRowEditor,
-  KIND_LABEL, labelOf, LIFECYCLE_LABEL, Loading, ObjectTable, PageHead, Select,
-  Sparkline, TableWrap, Tag, TextInput, useLoad, type FilterRow,
+  buildFilters, Btn, Card, Collapsible, Drawer, Empty, ErrorNote, Field, FilterRowEditor,
+  JsonField, KIND_LABEL, labelOf, LIFECYCLE_LABEL, Loading, ObjectTable, PageHead,
+  RowEditor, Select, Sparkline, TableWrap, Tag, TextInput, useLoad,
+  type FilterRow, type Row,
 } from "../ui";
 import { fmtNum } from "../metrics";
 import { StatusBadge } from "../components/StatusBadge";
@@ -15,6 +19,7 @@ import { ValueView } from "../components/ValueView";
 import { executionStatus } from "../lib/status";
 import { formatLocal, formatWindow } from "../lib/time";
 import { valuePreview } from "../lib/value";
+import { ChartView, MapView } from "./AppCharts";
 
 type Stage =
   | { kind: "none" }
@@ -24,7 +29,31 @@ type Stage =
     kind: "agent"; alias: string; answer: string; steps: number; ok: boolean;
     status?: string; verification?: Verification | null;
     trace_id?: string; run_id?: string; failed_predicates?: string[];
+    /** 本次运行实际用的目标：运行时覆盖优先，否则是应用里配置的目标。 */
+    goal?: string;
   };
+
+/** 目标状态的五种说法：未设置 / 无数据 / 样本不足 / 达标 / 越界。 */
+export type ObjectiveState = "unset" | "no_data" | "insufficient" | "ok" | "breach";
+export const OBJECTIVE_STATE_LABEL: Record<ObjectiveState, string> = {
+  unset: "未设置", no_data: "无数据", insufficient: "样本不足", ok: "达标", breach: "越界",
+};
+
+function objectiveTagKind(state: ObjectiveState): "ok" | "warn" | "err" | "plain" {
+  if (state === "ok") return "ok";
+  if (state === "breach") return "err";
+  if (state === "insufficient" || state === "no_data") return "warn";
+  return "plain";
+}
+
+/** 从应用定义 + 最近一次评估推目标状态：没有样本时绝不显示达标。 */
+export function objectiveState(app: Application, ev?: ObjectiveEvaluation | null): ObjectiveState {
+  if (!app.objective) return "unset";
+  if (!ev) return "no_data";
+  const samples = ev.samples?.length ?? 0;
+  if (ev.available === false || samples === 0) return "insufficient";
+  return ev.ok ? "ok" : "breach";
+}
 
 export function ApplicationView() {
   const { wid, params, go, toast, confirm, refreshRuntime } = usePlatform();
@@ -33,6 +62,11 @@ export function ApplicationView() {
   const [stage, setStage] = useState<Stage>({ kind: "none" });
   // 发布校验的一次性多问题清单：成功后清空，失败时常驻展示（不只依赖 toast）
   const [publishProblem, setPublishProblem] = useState<string | null>(null);
+  // 目标状态：只缓存「当前应用」的最近一次评估（AppDetail 本来就要取，不额外发请求）
+  const [objEvals, setObjEvals] = useState<Record<string, ObjectiveEvaluation | null>>({});
+  const reportObjective = useCallback((id: string, ev: ObjectiveEvaluation | null) => {
+    setObjEvals(prev => (prev[id] === ev ? prev : { ...prev, [id]: ev }));
+  }, []);
 
   const load = useLoad(async () => {
     if (!wid) return { apps: [] as Application[], caps: [] as Capability[] };
@@ -146,7 +180,14 @@ export function ApplicationView() {
                       {Object.keys(a.views || {}).length} 视图 · {Object.keys(a.queries || {}).length} 查询 · {(a.agents || []).length} 智能体
                     </span>
                   </span>
-                  <Tag kind={a.lifecycle === "published" ? "ok" : "warn"}>{LIFECYCLE_LABEL[a.lifecycle]}</Tag>
+                  <span className="app-item-tags">
+                    <span title="目标状态">
+                      <Tag kind={objectiveTagKind(objectiveState(a, objEvals[a.id]))}>
+                        {OBJECTIVE_STATE_LABEL[objectiveState(a, objEvals[a.id])]}
+                      </Tag>
+                    </span>
+                    <Tag kind={a.lifecycle === "published" ? "ok" : "warn"}>{LIFECYCLE_LABEL[a.lifecycle]}</Tag>
+                  </span>
                 </button>
               ))}
             </div>
@@ -158,7 +199,9 @@ export function ApplicationView() {
 
         {current ? (
           <AppDetail key={current.id} app={current} caps={caps} stage={stage} setStage={setStage}
-                     onChanged={load.reload} onOpenObject={ref => go("state", { ref })} />
+                     onChanged={load.reload} onOpenObject={ref => go("state", { ref })}
+                     onObjective={reportObjective}
+                     onCloned={id => { setSelected(id); go("application", { app: id }); load.reload(); }} />
         ) : (
           <Card title="应用做什么" sub="把「谁看什么数据、能做什么动作」固定下来，业务人员点一下就有结果。">
             <Empty title="选一个应用" hint="或者在左侧新建一个应用。"
@@ -236,12 +279,14 @@ function CreateApp({ onDone }: { onDone: () => void }) {
   );
 }
 
-type AppTab = "views" | "queries" | "agents" | "caps";
-const APP_TABS: readonly AppTab[] = ["views", "queries", "agents", "caps"];
+type AppTab = "views" | "queries" | "agents" | "caps" | "objective";
+const APP_TABS: readonly AppTab[] = ["views", "queries", "agents", "caps", "objective"];
 
-function AppDetail({ app, caps, stage, setStage, onChanged, onOpenObject }: {
+function AppDetail({ app, caps, stage, setStage, onChanged, onOpenObject, onObjective, onCloned }: {
   app: Application; caps: Capability[]; stage: Stage;
   setStage: (s: Stage) => void; onChanged: () => void; onOpenObject: (ref: string) => void;
+  onObjective: (id: string, ev: ObjectiveEvaluation | null) => void;
+  onCloned: (id: string) => void;
 }) {
   const { wid, params, go, toast, confirm } = usePlatform();
   const urlTab = APP_TABS.find(t => t === params.tab);
@@ -255,6 +300,25 @@ function AppDetail({ app, caps, stage, setStage, onChanged, onOpenObject }: {
   const queries = Object.values(app.queries || {});
   const agents = app.agents || [];
   const attached = (app.capabilities || []).map(id => caps.find(c => c.id === id)).filter(Boolean) as Capability[];
+  const published = app.lifecycle === "published";
+  const [infoOpen, setInfoOpen] = useState(false);
+  const [viewEditor, setViewEditor] = useState<{ mode: "create" } | { mode: "edit"; view: AppView } | null>(null);
+  const [queryEditor, setQueryEditor] = useState<AppQuery | null>(null);
+
+  // 目标评估：应用详情本来就要显示它，列表行复用同一份结果，不额外发请求。
+  const objLoad = useLoad(async () => {
+    if (!wid || !app.objective) return null;
+    return api.objective(wid, app.id).catch(() => null);
+  }, [wid, app.id, app.objective]);
+  const objEv = objLoad.data ?? null;
+  useEffect(() => { onObjective(app.id, objEv); }, [app.id, objEv, onObjective]);
+
+  const { run: cloneApp, running: cloningApp } = useAction(async () => {
+    if (!wid) return;
+    const created = await api.cloneApplication(wid, app.id, {});
+    toast(`已克隆为草稿「${created.name}」：新应用是草稿，发布后旧应用保持原样`, "ok");
+    onCloned(created.id);
+  }, [wid, app.id, toast, onCloned]);
 
   type PartKind = "view" | "query" | "agent" | "cap";
   const { run: removePart, running: removingPart } = useAction(
@@ -281,22 +345,61 @@ function AppDetail({ app, caps, stage, setStage, onChanged, onOpenObject }: {
     <Card title={app.name}
           sub="上面改定义，下面看结果；增删视图或查询不会清掉上一次跑出来的数据。"
           aside={<>
-            <Tag kind={app.lifecycle === "published" ? "ok" : "warn"}>{LIFECYCLE_LABEL[app.lifecycle]}</Tag>
-            <Tag kind="plain">{views.length} 视图</Tag>
+            <span className="app-tags">
+              <span title="目标状态">
+                <Tag kind={objectiveTagKind(objectiveState(app, objEv))}>
+                  {OBJECTIVE_STATE_LABEL[objectiveState(app, objEv)]}
+                </Tag>
+              </span>
+              <Tag kind={published ? "ok" : "warn"}>{LIFECYCLE_LABEL[app.lifecycle]}</Tag>
+              <Tag kind="plain">{views.length} 视图</Tag>
+            </span>
+            <Btn size="sm" variant="subtle" aria-label={`编辑应用信息 ${app.name}`}
+                 onClick={() => setInfoOpen(true)}>
+              <PencilSimple size={12} /> 编辑信息
+            </Btn>
+            {published && (
+              <Btn size="sm" variant="subtle" busy={cloningApp}
+                   aria-label={`克隆应用 ${app.name} 为草稿`}
+                   onClick={() => confirm({
+                     title: `克隆应用「${app.name}」为草稿？`,
+                     confirmText: "克隆为草稿",
+                     body: (
+                       <p className="muted">
+                         复制一份应用定义（视图 / 查询 / 智能体 / 挂载能力 / 目标）成新草稿。
+                         旧应用保持发布状态继续服务，改动只影响新草稿；发布新应用后再决定是否替换旧的。
+                       </p>
+                     ),
+                     run: async () => { await cloneApp(); },
+                   })}>
+                <Copy size={12} /> 克隆为草稿
+              </Btn>
+            )}
           </>}>
-      <ObjectivePanel app={app} onChanged={onChanged} />
+      {published && (
+        <div className="banner warn">
+          已发布应用不可就地改，先克隆为草稿：视图、查询、智能体与挂载能力只能查看和运行；
+          要改定义就在头部点「克隆为草稿」，改新草稿并发布后替换旧的。
+        </div>
+      )}
 
       <div className="subtabs" role="tablist" tabIndex={0} aria-label="应用组成">
         {([["views", `视图 ${views.length}`], ["queries", `查询 ${queries.length}`],
-           ["agents", `智能体 ${agents.length}`], ["caps", `挂载能力 ${attached.length}`]] as [AppTab, string][])
+           ["agents", `智能体 ${agents.length}`], ["caps", `挂载能力 ${attached.length}`],
+           ["objective", "目标"]] as [AppTab, string][])
           .map(([k, l]) => (
             <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => pick(k)}>{l}</button>
           ))}
       </div>
 
+      {tab === "objective" && (
+        <ObjectivePanel app={app} ev={objEv} reload={objLoad.reload} onChanged={onChanged} />
+      )}
+
+
       {tab === "views" && (
         <>
-          {!views.length && <Empty title="还没有视图" hint="视图就是「把某类对象摆成表格或卡片给人看」。" />}
+          {!views.length && <Empty title="还没有视图" hint="视图就是「把某类对象摆成表格、卡片、图表或地图给人看」。" />}
           {!!views.length && (
             <TableWrap auto>
               <table>
@@ -306,10 +409,27 @@ function AppDetail({ app, caps, stage, setStage, onChanged, onOpenObject }: {
                     <tr key={v.alias}>
                       <td className="nowrap"><b>{v.title || v.alias}</b></td>
                       <td className="nowrap"><Tag kind="plain">{labelOf(KIND_LABEL, v.kind)}</Tag></td>
-                      <td className="wrap">{v.query_alias ? `查询 ${v.query_alias}` : (v.object_type || "–")}</td>
+                      <td className="wrap">
+                        {v.query_alias ? `查询 ${v.query_alias}` : (v.object_type || "–")}
+                        {(v.kind === "chart" || v.kind === "map") && (
+                          <span className="muted small">
+                            {" · "}
+                            {v.kind === "chart"
+                              ? `x=${v.config?.x || "未配"} / y=${v.config?.y || "未配"}`
+                              : `lat=${v.config?.lat || "未配"} / lng=${v.config?.lng || "未配"}`}
+                          </span>
+                        )}
+                      </td>
                       <td className="nowrap">
                         <div className="pill-row">
                           <OpenView app={app} view={v} onResult={setStage} />
+                          {!published && (
+                            <Btn size="sm" variant="subtle"
+                                 aria-label={`编辑视图 ${v.alias}`}
+                                 onClick={() => setViewEditor({ mode: "edit", view: v })}>
+                              <PencilSimple size={12} /> 编辑
+                            </Btn>
+                          )}
                           <Btn size="sm" variant="subtle" disabled={removingPart}
                                aria-label={`移除视图 ${v.alias}`}
                                onClick={() => askRemovePart(
@@ -325,7 +445,14 @@ function AppDetail({ app, caps, stage, setStage, onChanged, onOpenObject }: {
               </table>
             </TableWrap>
           )}
-          <AddView app={app} queries={queries} onDone={onChanged} />
+          {!published && (
+            <div className="inline-create">
+              <Btn size="sm" variant="subtle" onClick={() => setViewEditor({ mode: "create" })}>
+                <Plus size={13} /> 新建视图（表格 / 卡片 / 图表 / 地图）
+              </Btn>
+              <span className="muted small">新建与编辑共用同一个表单；图表 / 地图要选渲染配置。</span>
+            </div>
+          )}
         </>
       )}
 
@@ -350,6 +477,13 @@ function AppDetail({ app, caps, stage, setStage, onChanged, onOpenObject }: {
                       <td className="nowrap">
                         <div className="pill-row">
                           <RunQuery app={app} alias={q.alias} onResult={setStage} />
+                          {!published && (
+                            <Btn size="sm" variant="subtle"
+                                 aria-label={`编辑查询 ${q.alias}`}
+                                 onClick={() => setQueryEditor(q)}>
+                              <PencilSimple size={12} /> 编辑
+                            </Btn>
+                          )}
                           <Btn size="sm" variant="subtle" disabled={removingPart}
                                aria-label={`移除查询 ${q.alias}`}
                                onClick={() => askRemovePart(
@@ -365,7 +499,7 @@ function AppDetail({ app, caps, stage, setStage, onChanged, onOpenObject }: {
               </table>
             </TableWrap>
           )}
-          <AddQuery app={app} onDone={onChanged} />
+          {!published && <AddQuery app={app} onDone={onChanged} />}
         </>
       )}
 
@@ -423,6 +557,23 @@ function AppDetail({ app, caps, stage, setStage, onChanged, onOpenObject }: {
       )}
 
       <Stage area={stage} onOpenObject={onOpenObject} onClear={() => setStage({ kind: "none" })} />
+
+      {infoOpen && (
+        <AppInfoDrawer app={app} onClose={() => setInfoOpen(false)}
+                       onSaved={() => { setInfoOpen(false); onChanged(); }} />
+      )}
+      {viewEditor && (
+        <ViewDrawer app={app} queries={queries}
+                    mode={viewEditor.mode}
+                    view={viewEditor.mode === "edit" ? viewEditor.view : null}
+                    onClose={() => setViewEditor(null)}
+                    onSaved={() => { setViewEditor(null); onChanged(); }} />
+      )}
+      {queryEditor && (
+        <QueryDrawer app={app} query={queryEditor}
+                     onClose={() => setQueryEditor(null)}
+                     onSaved={() => { setQueryEditor(null); onChanged(); }} />
+      )}
     </Card>
   );
 }
@@ -434,18 +585,14 @@ const OBJECTIVE_METRICS: [string, string][] = [
 ];
 const TREND_LABEL: Record<string, string> = { up: "上升", down: "下降", flat: "持平" };
 
-function ObjectivePanel({ app, onChanged }: { app: Application; onChanged: () => void }) {
+function ObjectivePanel({ app, ev, reload, onChanged }: {
+  app: Application; ev: ObjectiveEvaluation | null; reload: () => void; onChanged: () => void;
+}) {
   const { wid, toast } = usePlatform();
   const [metric, setMetric] = useState(app.objective?.metric || "success_rate");
   const [target, setTarget] = useState(String(app.objective?.target ?? 0.99));
   const [band, setBand] = useState(String(app.objective?.band ?? 0.02));
   const [win, setWin] = useState(String(app.objective?.window ?? 3600));
-
-  const load = useLoad(async () => {
-    if (!wid || !app.objective) return null;
-    return api.objective(wid, app.id).catch(() => null);
-  }, [wid, app.id, app.objective]);
-  const ev = load.data;
 
   const { run, running } = useAction(async () => {
     if (!wid) return;
@@ -457,9 +604,9 @@ function ObjectivePanel({ app, onChanged }: { app: Application; onChanged: () =>
       window: Number(win) || 3600,
     });
     toast("业务目标已保存；评估需要单独触发", "ok");
-    load.reload();
+    reload();
     onChanged();
-  }, [wid, app.id, metric, target, band, win]);
+  }, [wid, app.id, metric, target, band, win, reload, onChanged]);
 
   const evaluate = useAction(async () => {
     if (!wid) return;
@@ -470,21 +617,21 @@ function ObjectivePanel({ app, onChanged }: { app: Application; onChanged: () =>
         : res.ok ? "评估完成：当前在目标带内" : "评估完成：当前越界，已生成待办",
       noData ? "warn" : res.ok ? "ok" : "warn",
     );
-    load.reload();
+    reload();
     onChanged();
-  }, [wid, app.id]);
+  }, [wid, app.id, reload, onChanged]);
 
   const { run: resolveTodo, running: resolving } = useAction(async () => {
     if (!wid || !ev?.todo) return;
     await api.resolveTodo(wid, ev.todo.id);
     toast("待办已关闭；这只记录处理动作，不代表指标已经恢复", "warn");
-    load.reload();
-  }, [wid, ev?.todo?.id]);
+    reload();
+  }, [wid, ev?.todo?.id, reload]);
 
   const objective = ev?.objective || app.objective;
   const sampleCount = ev?.samples?.length ?? 0;
   const available = !!ev && ev.available !== false && sampleCount > 0;
-  const objStatus = !ev ? "no_data" : !available ? "insufficient" : ev.ok ? "ok" : "breach";
+  const state = objectiveState(app, ev);
   const scopeLabel = ev?.scope === "workspace" ? "工作空间"
     : ev?.scope === "application" ? "当前应用" : "接口未返回";
   const spark = useMemo(() => (ev?.samples || []).map(s => s.value), [ev]);
@@ -493,7 +640,9 @@ function ObjectivePanel({ app, onChanged }: { app: Application; onChanged: () =>
     <section className="objective-panel">
       <div className="result-head">
         <h3>业务目标</h3>
-        <StatusBadge status={objStatus} />
+        {state === "unset"
+          ? <Tag kind="plain">未设置</Tag>
+          : <StatusBadge status={state} hint={`目标状态：${OBJECTIVE_STATE_LABEL[state]}`} />}
         {ev?.generated_at && <span className="muted small">评估于 {formatLocal(ev.generated_at)}</span>}
         <span className="grow" />
         {!!spark.length && <Sparkline points={spark} />}
@@ -595,20 +744,31 @@ function Stage({ area, onOpenObject, onClear }: { area: Stage; onOpenObject: (r:
         <>
           {area.view.kind === "card"
             ? <CardGrid objects={area.objects} view={area.view} />
-            : <ObjectTable objects={area.objects} onOpen={onOpenObject} />}
+            : area.view.kind === "chart"
+              ? <ChartView objects={area.objects} view={area.view} />
+              : area.view.kind === "map"
+                ? <MapView objects={area.objects} view={area.view} />
+                : <ObjectTable objects={area.objects} onOpen={onOpenObject} />}
           {(area.view.kind === "chart" || area.view.kind === "map") && (
-            <div className="banner info">
-              当前版本先把{labelOf(KIND_LABEL, area.view.kind)}视图用表格呈现数据，图形渲染在后续版本。
-            </div>
+            <Collapsible label={`明细数据（${area.objects.length} 个对象）`} defaultOpen={false}>
+              <ObjectTable objects={area.objects} onOpen={onOpenObject} />
+            </Collapsible>
           )}
         </>
       )}
 
       {area.kind === "agent" && (
         <>
+          {area.goal && (
+            <div className="result-head">
+              <span className="muted small">本次目标：{area.goal}</span>
+              <span className="grow" />
+              <StatusBadge status={executionStatus({ status: area.status, ok: area.ok })} />
+            </div>
+          )}
           <div className="result-head">
             <span className="muted small">{area.steps} 步 · {area.trace_id ? `轨迹 ${area.trace_id}` : "后端未返回轨迹编号"}</span>
-            <StatusBadge status={executionStatus({ status: area.status, ok: area.ok })} />
+            {!area.goal && <StatusBadge status={executionStatus({ status: area.status, ok: area.ok })} />}
             {area.run_id && <span className="muted mono small">运行 {area.run_id}</span>}
           </div>
           <div className="answer final">{area.answer || "（没有返回结论）"}</div>
@@ -694,10 +854,11 @@ function RunAgent({ app, alias, onResult }: { app: Application; alias: string; o
         ...(llm.mode === "demo" ? { llm: toChoice(llm, objectTypes[0]) } : {}),
       });
       const st = executionStatus(r);
+      const effectiveGoal = goal.trim() || (app.agents || []).find(g => g.alias === alias)?.goal || "";
       onResult({
         kind: "agent", alias, answer: r.answer, steps: (r.steps || []).length, ok: r.ok,
         status: r.status, verification: r.verification, trace_id: r.trace_id,
-        run_id: r.run_id, failed_predicates: r.failed_predicates,
+        run_id: r.run_id, failed_predicates: r.failed_predicates, goal: effectiveGoal,
       });
       setOpen(false);
       if (st === "succeeded") toast("智能体已完成，并通过完成校验", "ok");
@@ -731,61 +892,270 @@ function RunAgent({ app, alias, onResult }: { app: Application; alias: string; o
   );
 }
 
-function AddView({ app, queries, onDone }: {
-  app: Application; queries: { alias: string }[]; onDone: () => void;
+/* ---------- 应用信息 / 视图 / 查询的抽屉表单 ---------- */
+
+/** 编辑应用信息：名称 + 说明。已发布应用保存会被后端拒绝（提示先克隆）。 */
+function AppInfoDrawer({ app, onClose, onSaved }: {
+  app: Application; onClose: () => void; onSaved: () => void;
+}) {
+  const { wid, toast } = usePlatform();
+  const [name, setName] = useState(app.name);
+  const [description, setDescription] = useState(app.description || "");
+  const [error, setError] = useState<string | null>(null);
+  const published = app.lifecycle === "published";
+  const { run, running } = useAction(async () => {
+    if (!wid) return;
+    setError(null);
+    if (!name.trim()) { setError("应用名称不能为空"); return; }
+    try {
+      await api.updateApplication(wid, app.id, { name: name.trim(), description: description.trim() });
+      toast(`应用信息已更新：${name.trim()}`, "ok");
+      onSaved();
+    } catch (e) {
+      setError((e as Error).message);
+      throw e;
+    }
+  }, [wid, app.id, name, description]);
+
+  return (
+    <Drawer title={`编辑信息 · ${app.name}`} sub="只改应用名称与说明；视图、查询、智能体与已发布版本不变。"
+            onClose={onClose}
+            footer={<div className="btn-row flat">
+              <Btn busy={running} onClick={() => void run()}>保存信息</Btn>
+              <Btn variant="subtle" disabled={running} onClick={onClose}>取消</Btn>
+            </div>}>
+      {published && (
+        <div className="banner warn">
+          已发布应用不可就地改，先克隆为草稿：保存会被后端拒绝（发布版本已锁定）。先克隆成新草稿再改。
+        </div>
+      )}
+      {error && <ErrorNote text={`保存没成功：${error}`} />}
+      <Field label="应用名称"><TextInput value={name} disabled={running} onChange={e => setName(e.target.value)} /></Field>
+      <Field label="说明" top hint="业务人员打开应用时看到的一句话。">
+        <TextInput value={description} disabled={running} onChange={e => setDescription(e.target.value)} />
+      </Field>
+      {app.created_at && <p className="muted small">创建于 {formatLocal(app.created_at)}{app.updated_at ? ` · 最近更新 ${formatLocal(app.updated_at)}` : ""}</p>}
+    </Drawer>
+  );
+}
+
+const VIEW_KINDS: [string, string][] = [
+  ["table", "表格"], ["card", "卡片"], ["chart", "图表"], ["map", "地图"],
+];
+
+/** 新建 / 编辑视图共用：形态、数据来源、属性与 chart/map 的渲染配置。
+ *  属性列表在打开时用 api.ontology(wid) 现取，不依赖全局 store。 */
+function ViewDrawer({ app, queries, mode, view, onClose, onSaved }: {
+  app: Application; queries: AppQuery[]; mode: "create" | "edit"; view: AppView | null;
+  onClose: () => void; onSaved: () => void;
 }) {
   const { wid, toast, objectTypes } = usePlatform();
-  const [alias, setAlias] = useState("");
-  const [title, setTitle] = useState("");
-  const [kind, setKind] = useState("table");
-  const [source, setSource] = useState<"object" | "query">("object");
-  const [objectType, setObjectType] = useState("");
-  const [queryAlias, setQueryAlias] = useState(queries[0]?.alias || "");
-  const [props, setProps] = useState("");
+  const [alias, setAlias] = useState(view?.alias || "");
+  const [title, setTitle] = useState(view?.title || "");
+  const [kind, setKind] = useState(view?.kind || "table");
+  const [source, setSource] = useState<"object" | "query">(view?.query_alias ? "query" : "object");
+  const [objectType, setObjectType] = useState(view?.object_type || "");
+  const [queryAlias, setQueryAlias] = useState(view?.query_alias || queries[0]?.alias || "");
+  const [props, setProps] = useState((view?.properties || []).join("、"));
+  const [xField, setXField] = useState(view?.config?.x || "");
+  const [yField, setYField] = useState(view?.config?.y || "");
+  const [latField, setLatField] = useState(view?.config?.lat || "");
+  const [lngField, setLngField] = useState(view?.config?.lng || "");
+  const [error, setError] = useState<string | null>(null);
+
+  // 打开抽屉时才取本体：只读当前对象的属性名，不新增全局依赖。
+  const onto = useLoad(async () => (wid ? api.ontology(wid).catch(() => null) : null), [wid]);
+  const queryType = source === "query" ? (queries.find(q => q.alias === queryAlias)?.object_type || "") : "";
+  const typeName = source === "object" ? objectType : queryType;
+  const schema = (typeName && onto.data?.objects?.[typeName]?.properties) || {};
+  const allProps = Object.keys(schema);
+  const numProps = allProps.filter(p => {
+    const t = String(schema[p]?.type || "").toLowerCase();
+    return t === "number" || t === "integer";
+  });
+  const needsConfig = kind === "chart" || kind === "map";
 
   const { run, running } = useAction(async () => {
     if (!wid) return;
-    if (!alias.trim()) { toast("请填写视图标识", "err"); return; }
-    if (source === "object" && !objectType) { toast("请选择对象类型", "err"); return; }
-    await api.addView(wid, app.id, {
-      alias: alias.trim(), title: title.trim(), kind,
+    setError(null);
+    if (mode === "create" && !alias.trim()) { setError("视图标识要填，例如 vehicles"); return; }
+    if (source === "object" && !objectType) { setError("请选择对象类型"); return; }
+    if (source === "query" && !queryAlias) { setError("请选择要绑定的查询"); return; }
+    let config: Record<string, string> = {};
+    if (kind === "chart") {
+      if (!xField || !yField) { setError("图表要选两个属性：x 做标签、y 做数值"); return; }
+      if (!numProps.includes(yField)) { setError(`图表的 y 只能选数值属性（number / integer）；「${yField}」不是`); return; }
+      config = { x: xField, y: yField };
+    } else if (kind === "map") {
+      if (!latField || !lngField) { setError("地图要选两个数值属性：lat 纬度、lng 经度"); return; }
+      if (!numProps.includes(latField)) { setError(`地图的纬度只能选数值属性；「${latField}」不是`); return; }
+      if (!numProps.includes(lngField)) { setError(`地图的经度只能选数值属性；「${lngField}」不是`); return; }
+      config = { lat: latField, lng: lngField };
+    }
+    const body = {
+      title: title.trim(), kind,
       object_type: source === "object" ? objectType : "",
       query_alias: source === "query" ? queryAlias : "",
-      properties: props.split(/[，,、]/).map(s => s.trim()).filter(Boolean),
-    });
-    toast("视图已添加", "ok");
-    setAlias(""); setTitle(""); setProps("");
-    onDone();
-  }, [wid, app.id, alias, title, kind, source, objectType, queryAlias, props]);
+      properties: props.split(/[，,、\s]+/).map(s => s.trim()).filter(Boolean),
+      config,
+    };
+    try {
+      if (mode === "create") {
+        await api.addView(wid, app.id, { alias: alias.trim(), ...body });
+        toast(`视图「${title.trim() || alias.trim()}」已添加`, "ok");
+      } else {
+        await api.updateView(wid, app.id, view?.alias || alias, body);
+        toast(`视图「${title.trim() || alias}」已更新`, "ok");
+      }
+      onSaved();
+    } catch (e) {
+      setError((e as Error).message);
+      throw e;
+    }
+  }, [wid, app.id, mode, alias, title, kind, source, objectType, queryAlias, props,
+      xField, yField, latField, lngField, view?.alias, numProps.join("|")]);
+
+  const propSelect = (label: string, value: string, setter: (v: string) => void, options: string[], hint: string) => (
+    <Field label={label} hint={hint}>
+      <Select value={value} disabled={running} onChange={e => setter(e.target.value)}>
+        <option value="">选择属性</option>
+        {value && !options.includes(value) && <option value={value}>{value}（当前值）</option>}
+        {options.map(p => <option key={p} value={p}>{p}</option>)}
+      </Select>
+    </Field>
+  );
 
   return (
-    <form className="add-block" onSubmit={e => { e.preventDefault(); void run(); }}>
-      <div className="add-block-head"><span className="section-title">添加视图</span><span className="muted small">表格 / 卡片 / 图表 / 地图</span></div>
-      <div className="inline-create wrap">
-        <TextInput value={alias} placeholder="视图标识 vehicles" aria-label="视图标识" onChange={e => setAlias(e.target.value)} />
-        <TextInput value={title} placeholder="显示名 车辆列表" aria-label="显示名" onChange={e => setTitle(e.target.value)} />
-        <Select value={kind} aria-label="形式" onChange={e => setKind(e.target.value)}>
-          <option value="table">表格</option><option value="card">卡片</option>
-          <option value="chart">图表</option><option value="map">地图</option>
+    <Drawer title={mode === "create" ? "新建视图" : `编辑视图 · ${view?.title || view?.alias || ""}`}
+            sub="决定视图用哪种形式呈现、取哪些数据；图表 / 地图还要选渲染配置。"
+            onClose={onClose} wide
+            footer={<div className="btn-row flat">
+              <Btn busy={running} onClick={() => void run()}>{mode === "create" ? "添加视图" : "保存视图"}</Btn>
+              <Btn variant="subtle" disabled={running} onClick={onClose}>取消</Btn>
+            </div>}>
+      {error && <ErrorNote text={`保存没成功：${error}`} />}
+      <Field label="视图标识" hint="应用里的唯一英文短词；建好后不改。">
+        <TextInput value={alias} disabled={mode === "edit" || running} onChange={e => setAlias(e.target.value)} />
+      </Field>
+      <Field label="显示名"><TextInput value={title} disabled={running} onChange={e => setTitle(e.target.value)} /></Field>
+      <Field label="形式">
+        <Select value={kind} disabled={running} onChange={e => setKind(e.target.value)}>
+          {VIEW_KINDS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
         </Select>
-        <Select value={source} aria-label="数据来源" onChange={e => setSource(e.target.value as "object" | "query")}>
+      </Field>
+      <Field label="数据来源">
+        <Select value={source} disabled={running} onChange={e => setSource(e.target.value as "object" | "query")}>
           <option value="object">按对象类型</option>
           <option value="query" disabled={!queries.length}>按已存查询</option>
         </Select>
-        {source === "object" ? (
-          <Select value={objectType} aria-label="对象类型" onChange={e => setObjectType(e.target.value)}>
+      </Field>
+      {source === "object" ? (
+        <Field label="对象类型">
+          <Select value={objectType} disabled={running} onChange={e => setObjectType(e.target.value)}>
             <option value="">选择对象类型</option>
-            {(objectTypes || []).map(t => <option key={t} value={t}>{t}</option>)}
+            {objectType && !objectTypes.includes(objectType) && <option value={objectType}>{objectType}（当前值）</option>}
+            {objectTypes.map(t => <option key={t} value={t}>{t}</option>)}
           </Select>
-        ) : (
-          <Select value={queryAlias} aria-label="绑定的查询" onChange={e => setQueryAlias(e.target.value)}>
-            {queries.map(q => <option key={q.alias} value={q.alias}>{q.alias}</option>)}
+        </Field>
+      ) : (
+        <Field label="绑定的查询">
+          <Select value={queryAlias} disabled={running} onChange={e => setQueryAlias(e.target.value)}>
+            {queries.map(q => <option key={q.alias} value={q.alias}>{q.title || q.alias}</option>)}
           </Select>
-        )}
-        <TextInput value={props} placeholder="只显示这些属性（可选）" aria-label="属性列表" onChange={e => setProps(e.target.value)} />
-        <Btn type="submit" size="sm" busy={running}><Plus size={13} /> 添加视图</Btn>
-      </div>
-    </form>
+        </Field>
+      )}
+      <Field label="只显示这些属性（可选）" hint="用逗号或顿号分隔；留空显示全部列。">
+        <TextInput value={props} disabled={running} placeholder="例如 plate、status" onChange={e => setProps(e.target.value)} />
+      </Field>
+      {needsConfig && (
+        <section className="view-config">
+          <div className="add-block-head">
+            <span className="section-title">视图配置</span>
+            <span className="muted small">
+              {kind === "chart" ? "x 做标签、y 做数值（y 只列数值属性）" : "纬度 lat 与经度 lng（只列数值属性）"}
+            </span>
+          </div>
+          {kind === "chart" ? (
+            <>
+              {propSelect("x（标签）", xField, setXField, allProps, "按哪个属性分组做横轴。")}
+              {propSelect("y（数值）", yField, setYField, numProps, "只列 number / integer 属性。")}
+            </>
+          ) : (
+            <>
+              {propSelect("纬度 lat", latField, setLatField, numProps, "只列 number / integer 属性。")}
+              {propSelect("经度 lng", lngField, setLngField, numProps, "只列 number / integer 属性。")}
+            </>
+          )}
+          {!typeName && <p className="muted small">先选对象类型（或绑定查询），才能列出可用属性。</p>}
+          {!!typeName && !allProps.length && (
+            <p className="muted small">没读到对象类型「{typeName}」的属性：确认本体里有这个类型、且已发布或保存草稿。</p>
+          )}
+        </section>
+      )}
+    </Drawer>
+  );
+}
+
+/** 编辑查询：过滤条件用 JSON，展开用「关系 + 方向」行。 */
+function QueryDrawer({ app, query, onClose, onSaved }: {
+  app: Application; query: AppQuery; onClose: () => void; onSaved: () => void;
+}) {
+  const { wid, toast, objectTypes } = usePlatform();
+  const [title, setTitle] = useState(query.title || "");
+  const [objectType, setObjectType] = useState(query.object_type || "");
+  const [filters, setFilters] = useState(() => JSON.stringify(query.filters || {}, null, 2));
+  const [expands, setExpands] = useState<Row[]>(
+    (query.expand || []).map(e => ({ a: e.relation, b: e.direction || "out" })));
+  const [error, setError] = useState<string | null>(null);
+
+  const { run, running } = useAction(async () => {
+    if (!wid) return;
+    setError(null);
+    if (!objectType) { setError("请选择对象类型"); return; }
+    let filterObj: Record<string, unknown>;
+    try { filterObj = filters.trim() ? JSON.parse(filters) : {}; }
+    catch (e) { setError(`过滤条件不是合法 JSON：${(e as Error).message}`); return; }
+    if (!filterObj || typeof filterObj !== "object" || Array.isArray(filterObj)) {
+      setError('过滤条件要是一个 JSON 对象，例如 {"status__eq": "active"}');
+      return;
+    }
+    const expand = expands.filter(r => r.a.trim())
+      .map(r => ({ relation: r.a.trim(), direction: r.b || "out" }));
+    try {
+      await api.updateQuery(wid, app.id, query.alias, {
+        title: title.trim(), object_type: objectType, filters: filterObj, expand,
+      });
+      toast(`查询「${title.trim() || query.alias}」已更新`, "ok");
+      onSaved();
+    } catch (e) {
+      setError((e as Error).message);
+      throw e;
+    }
+  }, [wid, app.id, query.alias, title, objectType, filters, expands]);
+
+  return (
+    <Drawer title={`编辑查询 · ${query.title || query.alias}`} sub="查询 = 对象类型 + 过滤条件 + 顺带展开的关系；只改定义，不删除已有结果。"
+            onClose={onClose} wide
+            footer={<div className="btn-row flat">
+              <Btn busy={running} onClick={() => void run()}>保存查询</Btn>
+              <Btn variant="subtle" disabled={running} onClick={onClose}>取消</Btn>
+            </div>}>
+      {error && <ErrorNote text={`保存没成功：${error}`} />}
+      <Field label="显示名"><TextInput value={title} disabled={running} onChange={e => setTitle(e.target.value)} /></Field>
+      <Field label="对象类型">
+        <Select value={objectType} disabled={running} onChange={e => setObjectType(e.target.value)}>
+          <option value="">选择对象类型</option>
+          {objectType && !objectTypes.includes(objectType) && <option value={objectType}>{objectType}（当前值）</option>}
+          {objectTypes.map(t => <option key={t} value={t}>{t}</option>)}
+        </Select>
+      </Field>
+      <JsonField label="过滤条件" value={filters} onChange={setFilters} rows={6}
+                 hint='JSON 对象，键是「属性 + 比较」，例如 {"status__eq": "active"}；空对象表示全部。' />
+      <Field label="顺带展开" top hint="关系名 + 方向（out 出边 / in 入边）；留空表示不展开。">
+        <RowEditor rows={expands} onChange={setExpands} phA="关系名，如 owns" phB="方向"
+                   bKind="select" bOptions={["out", "in"]} />
+      </Field>
+    </Drawer>
   );
 }
 

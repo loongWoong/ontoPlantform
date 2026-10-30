@@ -24,6 +24,10 @@ class View:
     object_type: str = ""
     properties: list[str] = field(default_factory=list)
     query_alias: str = ""      # optional: drive the view from a named query
+    # chart/map rendering mapping (property names on the object type):
+    #   chart -> {"x": label property, "y": numeric value property}
+    #   map   -> {"lat": numeric latitude, "lng": numeric longitude}
+    config: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return {
@@ -33,6 +37,7 @@ class View:
             "object_type": self.object_type,
             "properties": list(self.properties),
             "query_alias": self.query_alias,
+            "config": dict(self.config),
         }
 
     @classmethod
@@ -44,6 +49,7 @@ class View:
             object_type=data.get("object_type", ""),
             properties=list(data.get("properties", [])),
             query_alias=data.get("query_alias", ""),
+            config=dict(data.get("config") or {}),
         )
 
 

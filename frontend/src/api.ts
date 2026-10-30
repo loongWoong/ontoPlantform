@@ -166,7 +166,13 @@ export interface SmartUiMeta {
     engineVersion: string;
   };
 }
-export interface AppView { alias: string; title: string; kind: string; object_type: string; properties: string[]; query_alias: string }
+/** 视图的渲染配置：chart 用 {x,y}，map 用 {lat,lng}；值是对象属性名。 */
+export type ViewConfig = Record<string, string>;
+export interface AppView {
+  alias: string; title: string; kind: string; object_type: string;
+  properties: string[]; query_alias: string;
+  config?: ViewConfig;
+}
 export interface AppQuery { alias: string; title: string; object_type: string; filters: Record<string, unknown>; expand: { relation: string; direction: string }[] }
 export interface AppAgent { alias: string; goal: string; description?: string }
 export interface ObjectiveSpec {
@@ -205,6 +211,7 @@ export interface Application {
   views: Record<string, AppView>; queries: Record<string, AppQuery>;
   agents: AppAgent[]; capabilities: string[];
   objective?: ObjectiveSpec;
+  created_at?: string; updated_at?: string;
 }
 export interface Obj { type: string; id: string; properties: Record<string, unknown> }
 export interface ChangeEvent { seq: number; ts: string; source: string; function?: string; changes: Record<string, unknown>[] }
@@ -533,6 +540,56 @@ export function friendly(msg: string): string {
   }
   if (m.includes("cannot publish application") || m.includes("application cannot be published"))
     return `应用不能被发布：${m}`;
+  // ---- 应用编辑：已发布不可就地改，只能克隆成草稿 ----
+  if (/published applications? (are|is) immutable/i.test(m))
+    return "已发布应用不可就地改：先「克隆为草稿」（应用头部），改新草稿、发布后替换旧的；替换前旧应用保持原样。";
+  if (/application name must not be empty/i.test(m))
+    return "应用名称不能为空：给应用起一个业务上认得出的名字。";
+  if (/^(view|query) not found/i.test(m))
+    return "应用里找不到这个视图或查询：可能已被别人删掉或改名了，刷新页面再试。";
+  if (/nothing to update/i.test(m))
+    return "这次没有要保存的改动：至少改一个字段再保存。";
+  // 逐条编辑（PATCH）返回的是单条校验错误，说法与发布时的 problems 不同，单独翻译
+  if (/(chart|map) views? needs? an object_type/i.test(m))
+    return "图表 / 地图视图要先绑定对象类型：有了对象类型才知道有哪些属性可以用来画。到视图「编辑」里选上再保存。";
+  if (/unknown view kind/i.test(m))
+    return `视图形式不合法：${m}。只能选表格 / 卡片 / 图表 / 地图。`;
+  const badProp = /^view property '([^']*)' is not defined on object type '([^']*)'/i.exec(m);
+  if (badProp)
+    return `视图里引用的属性「${badProp[1]}」在对象类型「${badProp[2]}」上不存在：换一个属性，或先到本体里加上它。`;
+  if (/expand relation .{0,60}is not defined in the ontology/i.test(m))
+    return "查询要展开的关系在本体里不存在：先到「本体」页加上这个关系，或去掉这条展开。";
+  if (/object_type is required/i.test(m))
+    return "要先选对象类型：视图 / 查询都靠它决定读哪类对象。";
+  if (m.includes("object type") && m.includes("is not defined in the ontology") && !m.includes("target object type")) {
+    const hit = /object type '([^']*)' is not defined in the ontology/.exec(m);
+    return hit
+      ? `对象类型「${hit[1]}」在本体里不存在：先到「本体」页加上它，或改选一个已存在的对象类型。`
+      : `对象类型不在本体里。${m}`;
+  }
+  if (/only a draft application can be edited/i.test(m) || /application .{0,60}is not a draft/i.test(m))
+    return "这个应用不是草稿：已发布的应用不能直接编辑。用应用头部的「克隆为草稿」复制出新草稿再改。";
+  // ---- 视图配置：chart 要 x/y，map 要 lat/lng ----
+  if (/chart (view )?needs (a )?config(\.x|\.y)?/i.test(m) || /config\.x.{0,40}config\.y/i.test(m))
+    return "图表视图缺配置：需要选两个属性，x 做标签、y 做数值（y 必须是数值属性）。到视图「编辑」里补上配置再保存。";
+  if (/map (view )?needs (a )?config(\.lat|\.lng)?/i.test(m) || /config\.lat.{0,40}config\.lng/i.test(m))
+    return "地图视图缺配置：需要选两个属性，lat 是纬度、lng 是经度（都必须是数值属性）。到视图「编辑」里补上配置再保存。";
+  if (/config\.(x|y|lat|lng).{0,90}(unknown|not (a |an )?(property|attribute)|no such|does not exist)/i.test(m))
+    return `视图配置里的属性不在作用对象上：${m}。到视图「编辑」里换一个当前对象类型里存在的属性。`;
+  if (/config\.(y|lat|lng).{0,90}(must be|needs to be|is not) (a )?(number|numeric|integer)/i.test(m)
+      || /(numeric|number|integer) (property|attribute).{0,40}config\.(y|lat|lng)/i.test(m))
+    return "视图配置里的数值字段选错了：图表的 y、地图的 lat/lng 只能选 number 或 integer 属性。";
+  // ---- 视图/查询的单个校验错误：与发布时的说法同一套翻译 ----
+  if (/^(view|query) '/i.test(m)) {
+    const translated = translateApplicationProblem(m);
+    if (translated !== m.trim()) return `应用检查没通过：${translated}`;
+  }
+  if (/query_alias/i.test(m))
+    return "视图绑定的 query_alias 对不上：先建这个查询，或把视图改成按对象类型取数。";
+  if (/expand direction/i.test(m))
+    return "查询展开方向只能是 out（出边）或 in（入边）。";
+  if (/(unknown|not found|does not exist) (view|query) '/i.test(m))
+    return "应用里找不到这个视图或查询：可能已被删除或改名，刷新后再试。";
   // ---- 能力：只有草稿能改；函数名冲突要说清是「改」还是「克隆」 ----
   if (/only a draft capability can be edited/i.test(m))
     return "只有草稿能力能改：已发布（或已校验）的能力不能直接编辑。用行末「克隆为草稿」复制出新草稿，改好再发布，旧版本继续可用。";
@@ -541,7 +598,7 @@ export function friendly(msg: string): string {
   if (m.includes("clone key must not be empty"))
     return "新标识不能为空：填一个英文短词，例如原标识后加 _v2。";
   if (m.includes("clone name must not be empty"))
-    return "新名称不能为空：给克隆出来的能力起一个业务名字。";
+    return "新名称不能为空：给克隆出来的副本起一个业务名字。";
   if (m.includes("already exists (capability")) {
     // 后端两种说法：改能力是「choose a different key or target_type」，克隆是「choose a different key」
     const hit = /capability function ([^;]+) already exists \(capability '([^']*)'\)/.exec(m);
@@ -680,6 +737,14 @@ function translateApplicationProblem(raw: string): string {
     return `视图「${hit[1]}」在对象类型「${hit[3]}」上引用了不存在的属性「${hit[2]}」。`;
   if ((hit = /^view '([^']*)': query_alias '([^']*)' does not name a query/.exec(s)))
     return `视图「${hit[1]}」绑定的查询「${hit[2]}」不在这个应用里：先加这个查询，或把视图改成按对象类型取数。`;
+  if ((hit = /^view '([^']*)': (chart|map) needs config\.(x|y|lat|lng)/.exec(s))) {
+    const need = hit[2] === "chart" ? "x 做标签、y 做数值" : "lat 是纬度、lng 是经度";
+    return `${hit[2] === "chart" ? "图表" : "地图"}视图「${hit[1]}」缺渲染配置 ${hit[3]}：需要 ${need}，到视图「编辑」里补上再发布。`;
+  }
+  if ((hit = /^view '([^']*)': config\.(x|y|lat|lng) '([^']*)' (?:is not|isn't|must be) an? (?:numeric|number) property/.exec(s)))
+    return `视图「${hit[1]}」的配置 ${hit[2]} = 「${hit[3]}」不是数值属性：图表的 y、地图的 lat/lng 只能选 number/integer 属性。`;
+  if ((hit = /^view '([^']*)': config\.(x|y|lat|lng) '([^']*)' (?:is not|isn't) an? property/.exec(s)))
+    return `视图「${hit[1]}」的配置 ${hit[2]} = 「${hit[3]}」不在作用对象上：换一个当前对象类型里存在的属性。`;
   if ((hit = /^query '([^']*)': object_type is required/.exec(s)))
     return `查询「${hit[1]}」没选对象类型。`;
   if ((hit = /^query '([^']*)': unknown object type '([^']*)'/.exec(s)))
@@ -930,9 +995,17 @@ export interface Api {
   applications(wid: string): Promise<Application[]>;
   application(wid: string, aid: string): Promise<Application>;
   createApplication(wid: string, name: string, description: string): Promise<Application>;
+  /** 改应用名/说明；已发布应用会被后端拒绝（先克隆为草稿）。 */
+  updateApplication(wid: string, aid: string, body: { name?: string; description?: string }): Promise<Application>;
+  /** 复制成新草稿：不发布、不碰运行时，旧应用原样保留。name 省略时后端用 `源名称 副本`。 */
+  cloneApplication(wid: string, aid: string, body?: { name?: string }): Promise<Application>;
   publishApplication(wid: string, aid: string): Promise<Application>;
   addView(wid: string, aid: string, body: Record<string, unknown>): Promise<Application>;
+  /** 改视图定义；alias 不可改。chart/map 的 config 见 ViewConfig。 */
+  updateView(wid: string, aid: string, alias: string, body: Record<string, unknown>): Promise<Application>;
   addQuery(wid: string, aid: string, body: Record<string, unknown>): Promise<Application>;
+  /** 改查询定义；alias 不可改。 */
+  updateQuery(wid: string, aid: string, alias: string, body: Record<string, unknown>): Promise<Application>;
   addAgent(wid: string, aid: string, body: Record<string, unknown>): Promise<Application>;
   attachCapability(wid: string, aid: string, capability_id: string): Promise<Application>;
   deleteApplication(wid: string, aid: string): Promise<DeleteResult>;
@@ -1066,9 +1139,17 @@ export const api: Api = {
   applications: wid => call(ws(wid, "/applications")),
   application: (wid, aid) => call(ws(wid, `/applications/${encodeURIComponent(aid)}`)),
   createApplication: (wid, name, description) => post(ws(wid, "/applications"), { name, description }),
+  updateApplication: (wid, aid, b) =>
+    patch(ws(wid, `/applications/${encodeURIComponent(aid)}`), b),
+  cloneApplication: (wid, aid, b) =>
+    post(ws(wid, `/applications/${encodeURIComponent(aid)}/clone`), b || {}),
   publishApplication: (wid, aid) => post(ws(wid, `/applications/${encodeURIComponent(aid)}/publish`), {}),
   addView: (wid, aid, b) => post(ws(wid, `/applications/${encodeURIComponent(aid)}/views`), b),
+  updateView: (wid, aid, alias, b) =>
+    patch(ws(wid, `/applications/${encodeURIComponent(aid)}/views/${encodeURIComponent(alias)}`), b),
   addQuery: (wid, aid, b) => post(ws(wid, `/applications/${encodeURIComponent(aid)}/queries`), b),
+  updateQuery: (wid, aid, alias, b) =>
+    patch(ws(wid, `/applications/${encodeURIComponent(aid)}/queries/${encodeURIComponent(alias)}`), b),
   addAgent: (wid, aid, b) => post(ws(wid, `/applications/${encodeURIComponent(aid)}/agents`), b),
   attachCapability: (wid, aid, capability_id) => post(ws(wid, `/applications/${encodeURIComponent(aid)}/capabilities`), { capability_id }),
   deleteApplication: (wid, aid) =>

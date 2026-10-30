@@ -41,14 +41,102 @@ class _AppMixin:
 
     def _check_object_type(self, ctx: ApplicationContext, workspace_id: str,
                            object_type: str) -> None:
+        self._object_type_spec(ctx, workspace_id, object_type)
+
+    def _object_type_spec(self, ctx: ApplicationContext, workspace_id: str,
+                          object_type: str) -> dict:
         # validate against the revision the editor is working on (a draft wins
         # over the deprecated parent), never against whatever row happens to
         # come first out of storage
         ontology = active_ontology_row(ctx, workspace_id)
-        if ontology is None or object_type not in ontology.get("objects", {}):
+        if ontology is None or object_type not in (ontology.get("objects") or {}):
             raise ValidationError(
                 f"object type {object_type!r} is not defined in the ontology"
             )
+        return (ontology.get("objects") or {})[object_type]
+
+    def _assert_editable(self, app: Application) -> None:
+        """A published application is the serving contract: clone it to evolve.
+
+        Editing in place would silently change a product that users already
+        run, so the only safe path is "clone into a new draft, publish again".
+        """
+        if app.lifecycle == "published":
+            raise ValidationError(
+                "published applications are immutable; clone it into a draft "
+                "to edit")
+
+    def _validate_view_config(self, view: View, properties: dict,
+                              object_type: str | None = None) -> None:
+        target = object_type or view.object_type
+        required = {"chart": ("x", "y"), "map": ("lat", "lng")}.get(view.kind)
+        if required is None:
+            return
+        numeric = ("y", "lat", "lng")
+        for key in required:
+            raw = view.config.get(key)
+            if not isinstance(raw, str) or not raw.strip():
+                raise ValidationError(
+                    f"{view.kind} view needs config.{key} naming a property of "
+                    f"{target!r}")
+            prop = raw.strip()
+            spec = properties.get(prop)
+            if spec is None:
+                raise ValidationError(
+                    f"view config.{key} {prop!r} is not a property of "
+                    f"{target!r}")
+            if key in numeric and spec.get("type") not in ("number", "integer"):
+                raise ValidationError(
+                    f"view config.{key} {prop!r} must be a numeric property, "
+                    f"got {spec.get('type')!r}")
+
+    def _validate_view(self, ctx: ApplicationContext, workspace_id: str,
+                       app: Application, view: View,
+                       check_query_alias: bool = True) -> None:
+        if view.kind not in VIEW_KINDS:
+            raise ValidationError(
+                f"unknown view kind {view.kind!r}; expected {list(VIEW_KINDS)}")
+        # a query-driven view inherits the query's object type; chart/map still
+        # need it to resolve the rendering properties
+        effective_type = view.object_type
+        if not effective_type and view.query_alias:
+            bound = app.queries.get(view.query_alias)
+            effective_type = bound.object_type if bound else ""
+        if effective_type:
+            spec = self._object_type_spec(ctx, workspace_id, effective_type)
+            properties = spec.get("properties") or {}
+            for prop in view.properties:
+                if prop not in properties:
+                    raise ValidationError(
+                        f"view property {prop!r} is not defined on object type "
+                        f"{effective_type!r}")
+            self._validate_view_config(view, properties, effective_type)
+        elif view.kind in ("chart", "map"):
+            raise ValidationError(
+                f"{view.kind} views need an object_type to map their data")
+        if check_query_alias and view.query_alias \
+                and view.query_alias not in app.queries:
+            raise ValidationError(
+                f"view query_alias {view.query_alias!r} does not name a query of "
+                "this application")
+
+    def _validate_query(self, ctx: ApplicationContext, workspace_id: str,
+                        query: QuerySpec) -> None:
+        if not query.object_type:
+            raise ValidationError("query object_type is required")
+        self._check_object_type(ctx, workspace_id, query.object_type)
+        ontology = active_ontology_row(ctx, workspace_id) or {}
+        relations = ontology.get("relations") or {}
+        for entry in query.expand:
+            relation = str(entry.get("relation") or "")
+            direction = str(entry.get("direction") or "out")
+            if relation not in relations:
+                raise ValidationError(
+                    f"query expand relation {relation!r} is not defined in the "
+                    "ontology")
+            if direction not in ("out", "in"):
+                raise ValidationError(
+                    f"query expand direction {direction!r} must be 'out' or 'in'")
 
 
 class AddView(_AppMixin):
@@ -57,18 +145,20 @@ class AddView(_AppMixin):
 
     def __call__(self, workspace_id: str, app_id: str, actor: str, alias: str,
                  title: str = "", kind: str = "table", object_type: str = "",
-                 properties: list[str] | None = None, query_alias: str = "") -> dict:
+                 properties: list[str] | None = None, query_alias: str = "",
+                 config: dict | None = None) -> dict:
         self._ctx.require(actor, workspace_id, "editor")
         app = self._load(self._ctx, workspace_id, app_id)
-        if kind not in VIEW_KINDS:
-            raise ValidationError(f"unknown view kind {kind!r}; expected {list(VIEW_KINDS)}")
-        if object_type:
-            self._check_object_type(self._ctx, workspace_id, object_type)
-        app.views[alias] = View(
+        view = View(
             alias=alias, title=title or alias, kind=kind,
             object_type=object_type, properties=properties or [],
-            query_alias=query_alias,
+            query_alias=query_alias, config=dict(config or {}),
         )
+        # additions may reference a query that is created later; publish is
+        # where every dangling reference is enforced
+        self._validate_view(self._ctx, workspace_id, app, view,
+                            check_query_alias=False)
+        app.views[alias] = view
         app.updated_at = self._ctx.clock()
         self._ctx.save("application", app.to_dict())
         return app.to_dict()
@@ -83,15 +173,168 @@ class AddQuery(_AppMixin):
                  expand: list[dict] | None = None, title: str = "") -> dict:
         self._ctx.require(actor, workspace_id, "editor")
         app = self._load(self._ctx, workspace_id, app_id)
-        self._check_object_type(self._ctx, workspace_id, object_type)
-        app.queries[alias] = QuerySpec(
+        query = QuerySpec(
             alias=alias, title=title or alias, object_type=object_type,
             filters=dict(filters or {}),
             expand=QuerySpec.coerce_expand(expand),
         )
+        self._validate_query(self._ctx, workspace_id, query)
+        app.queries[alias] = query
         app.updated_at = self._ctx.clock()
         self._ctx.save("application", app.to_dict())
         return app.to_dict()
+
+
+class UpdateApplication(_AppMixin):
+    """Edit application metadata; a published app must be cloned instead."""
+
+    def __init__(self, ctx: ApplicationContext) -> None:
+        self._ctx = ctx
+
+    def __call__(self, workspace_id: str, app_id: str, actor: str,
+                 name: str | None = None,
+                 description: str | None = None) -> dict:
+        self._ctx.require(actor, workspace_id, "editor")
+        if name is None and description is None:
+            raise ValidationError(
+                "nothing to update: pass name and/or description")
+        app = self._load(self._ctx, workspace_id, app_id)
+        self._assert_editable(app)
+        changed: dict = {}
+        if name is not None:
+            name = str(name).strip()
+            if not name:
+                raise ValidationError("application name must not be empty")
+            app.name = name
+            changed["name"] = name
+        if description is not None:
+            app.description = str(description)
+            changed["description"] = app.description
+        app.updated_at = self._ctx.clock()
+        self._ctx.save("application", app.to_dict())
+        self._ctx.audit_event(actor, workspace_id, "application.update", app_id,
+                              changed)
+        return app.to_dict()
+
+
+class UpdateView(_AppMixin):
+    """Edit one view in place (draft/validated applications only)."""
+
+    def __init__(self, ctx: ApplicationContext) -> None:
+        self._ctx = ctx
+
+    def __call__(self, workspace_id: str, app_id: str, actor: str, alias: str,
+                 title: str | None = None, kind: str | None = None,
+                 object_type: str | None = None,
+                 properties: list[str] | None = None,
+                 query_alias: str | None = None,
+                 config: dict | None = None) -> dict:
+        self._ctx.require(actor, workspace_id, "editor")
+        if all(value is None for value in
+               (title, kind, object_type, properties, query_alias, config)):
+            raise ValidationError("nothing to update: pass at least one view field")
+        app = self._load(self._ctx, workspace_id, app_id)
+        self._assert_editable(app)
+        current = app.views.get(alias)
+        if current is None:
+            raise NotFoundError(f"view not found: {alias!r}")
+        view = View(
+            alias=alias,
+            title=(str(title) if title is not None else current.title) or alias,
+            kind=(str(kind) if kind is not None else current.kind),
+            object_type=(str(object_type) if object_type is not None
+                         else current.object_type),
+            properties=(list(properties) if properties is not None
+                        else list(current.properties)),
+            query_alias=(str(query_alias) if query_alias is not None
+                         else current.query_alias),
+            config=(dict(config) if config is not None else dict(current.config)),
+        )
+        self._validate_view(self._ctx, workspace_id, app, view)
+        app.views[alias] = view
+        app.updated_at = self._ctx.clock()
+        self._ctx.save("application", app.to_dict())
+        self._ctx.audit_event(actor, workspace_id, "application.update_view",
+                              app_id, {"alias": alias,
+                                       "kind": view.kind,
+                                       "object_type": view.object_type})
+        return app.to_dict()
+
+
+class UpdateQuery(_AppMixin):
+    """Edit one named query in place (draft/validated applications only)."""
+
+    def __init__(self, ctx: ApplicationContext) -> None:
+        self._ctx = ctx
+
+    def __call__(self, workspace_id: str, app_id: str, actor: str, alias: str,
+                 title: str | None = None, object_type: str | None = None,
+                 filters: dict | None = None,
+                 expand: list[dict] | None = None) -> dict:
+        self._ctx.require(actor, workspace_id, "editor")
+        if all(value is None for value in (title, object_type, filters, expand)):
+            raise ValidationError(
+                "nothing to update: pass at least one query field")
+        app = self._load(self._ctx, workspace_id, app_id)
+        self._assert_editable(app)
+        current = app.queries.get(alias)
+        if current is None:
+            raise NotFoundError(f"query not found: {alias!r}")
+        query = QuerySpec(
+            alias=alias,
+            title=(str(title) if title is not None else current.title) or alias,
+            object_type=(str(object_type) if object_type is not None
+                         else current.object_type),
+            filters=(dict(filters) if filters is not None
+                     else dict(current.filters)),
+            expand=(QuerySpec.coerce_expand(expand) if expand is not None
+                    else [dict(entry) for entry in current.expand]),
+        )
+        self._validate_query(self._ctx, workspace_id, query)
+        app.queries[alias] = query
+        app.updated_at = self._ctx.clock()
+        self._ctx.save("application", app.to_dict())
+        self._ctx.audit_event(actor, workspace_id, "application.update_query",
+                              app_id, {"alias": alias,
+                                       "object_type": query.object_type,
+                                       "expand": [dict(e) for e in query.expand]})
+        return app.to_dict()
+
+
+class CloneApplication(_AppMixin):
+    """Copy an application (usually a published one) into a fresh draft."""
+
+    def __init__(self, ctx: ApplicationContext) -> None:
+        self._ctx = ctx
+
+    def __call__(self, workspace_id: str, app_id: str, actor: str,
+                 name: str | None = None) -> dict:
+        self._ctx.require(actor, workspace_id, "editor")
+        source = self._load(self._ctx, workspace_id, app_id)
+        new_name = str(name or "").strip() or f"{source.name} 副本"
+        now = self._ctx.clock()
+        clone = Application(
+            id=self._ctx.id_factory(),
+            workspace_id=workspace_id,
+            name=new_name,
+            description=source.description,
+            views={key: View.from_dict(view.to_dict())
+                   for key, view in source.views.items()},
+            queries={key: QuerySpec.from_dict(query.to_dict())
+                     for key, query in source.queries.items()},
+            capabilities=list(source.capabilities),
+            agents=[dict(agent) for agent in source.agents],
+            objective=dict(source.objective),
+            lifecycle="draft",
+            created_at=now,
+            updated_at=now,
+        )
+        self._ctx.save("application", clone.to_dict())
+        self._ctx.audit_event(
+            actor, workspace_id, "application.clone", clone.id,
+            {"source_id": source.id, "source_name": source.name,
+             "name": new_name})
+        return clone.to_dict()
 
 
 class AttachCapability(_AppMixin):
@@ -192,18 +435,43 @@ class PublishApplication(_AppMixin):
             if view.kind not in VIEW_KINDS:
                 problems.append(
                     f"{where}: unknown kind {view.kind!r}; expected {list(VIEW_KINDS)}")
-            if not view.object_type:
+            effective_type = view.object_type
+            if not effective_type and view.query_alias:
+                bound = app.queries.get(view.query_alias)
+                effective_type = bound.object_type if bound else ""
+            if not effective_type:
                 problems.append(f"{where}: object_type is required")
-            elif view.object_type not in objects:
+            elif effective_type not in objects:
                 problems.append(
-                    f"{where}: unknown object type {view.object_type!r}")
+                    f"{where}: unknown object type {effective_type!r}")
             else:
-                properties = (objects[view.object_type].get("properties") or {})
+                properties = (objects[effective_type].get("properties") or {})
                 for prop in view.properties:
                     if prop not in properties:
                         problems.append(
                             f"{where}: unknown property {prop!r} on "
-                            f"{view.object_type!r}")
+                            f"{effective_type!r}")
+                if view.kind in ("chart", "map"):
+                    required = {"chart": ("x", "y"),
+                                "map": ("lat", "lng")}[view.kind]
+                    numeric = ("y", "lat", "lng")
+                    for key in required:
+                        value = view.config.get(key)
+                        if not isinstance(value, str) or not value.strip():
+                            problems.append(
+                                f"{where}: {view.kind} needs config.{key}")
+                            continue
+                        prop = value.strip()
+                        spec = properties.get(prop)
+                        if spec is None:
+                            problems.append(
+                                f"{where}: config.{key} {prop!r} is not a "
+                                f"property of {effective_type!r}")
+                        elif key in numeric and spec.get("type") not in (
+                                "number", "integer"):
+                            problems.append(
+                                f"{where}: config.{key} {prop!r} must be a "
+                                f"numeric property")
             if view.query_alias and view.query_alias not in query_aliases:
                 problems.append(
                     f"{where}: query_alias {view.query_alias!r} does not name a "
