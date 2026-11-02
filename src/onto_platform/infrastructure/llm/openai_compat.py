@@ -7,8 +7,12 @@ api_key and model change (design.txt §27: Domain 不依赖具体模型).
 from __future__ import annotations
 
 import json
+import socket
+import urllib.error
 import urllib.request
 from urllib.parse import urlsplit, urlunsplit
+
+from ...ports.llm import LLMTransportError
 
 DEFAULT_BASE_URL = "https://api.openai.com/v1"
 
@@ -72,7 +76,46 @@ class OpenAICompatProvider:
         if self._api_key:
             headers["Authorization"] = f"Bearer {self._api_key}"
         request = urllib.request.Request(self._url, data=body, headers=headers)
-        with urllib.request.urlopen(request, timeout=self._timeout) as response:
-            payload = json.loads(response.read().decode("utf-8"))
-        content = payload["choices"][0]["message"]["content"]
-        return LLMResponse(content=content)
+        try:
+            with urllib.request.urlopen(request, timeout=self._timeout) as response:
+                raw = response.read().decode("utf-8", errors="replace")
+        except urllib.error.HTTPError as exc:
+            # The console must distinguish "wrong key" from "wrong URL" from
+            # "rate limited"; keeping only the exception type made every model
+            # failure look identical in the Studio fallback message.
+            detail = ""
+            try:
+                detail = exc.read().decode("utf-8", errors="replace")[:600]
+            except Exception:
+                detail = ""
+            kind = {
+                401: "auth", 403: "auth", 404: "not_found", 429: "rate_limit",
+            }.get(int(exc.code), "http")
+            raise LLMTransportError(
+                f"模型接口 HTTP {exc.code}: {detail or exc.reason}",
+                kind=kind, status=int(exc.code), body=detail,
+            ) from exc
+        except (TimeoutError, socket.timeout) as exc:
+            raise LLMTransportError(
+                f"模型接口超时（{self._timeout:g}s）", kind="timeout") from exc
+        except urllib.error.URLError as exc:
+            reason = getattr(exc, "reason", exc)
+            raise LLMTransportError(
+                f"模型接口不可达：{reason}", kind="unreachable") from exc
+        except OSError as exc:
+            raise LLMTransportError(
+                f"模型接口不可达：{exc}", kind="unreachable") from exc
+
+        try:
+            payload = json.loads(raw)
+            content = payload["choices"][0]["message"]["content"]
+        except (json.JSONDecodeError, KeyError, IndexError, TypeError) as exc:
+            raise LLMTransportError(
+                f"模型响应不是 OpenAI 兼容格式：{raw[:300]}",
+                kind="bad_response", body=raw[:600],
+            ) from exc
+        usage = payload.get("usage")
+        return LLMResponse(
+            content=str(content or ""),
+            usage=dict(usage) if isinstance(usage, dict) else None,
+        )

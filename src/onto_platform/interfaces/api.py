@@ -102,18 +102,24 @@ from .smart_ui import (
     compile_smart_ui,
     invoke_smart_action,
     smart_ui_engine_available,
+    smart_ui_focus_options,
     smart_ui_meta,
 )
 from .smart_ui_studio import (
     accept_generation,
+    application_ui_view,
+    cancel_generation,
+    delete_draft,
     generation_view,
     get_generation,
     list_drafts,
     list_generations,
+    delete_generation,
     publish_generation,
     refine_generation,
     start_generation,
     studio_enabled,
+    update_draft,
 )
 
 import hmac
@@ -401,6 +407,15 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
             if len(rest) == 2 and rest[0] == "applications":
                 return self._send(200, platform.applications.delete(
                     wid, rest[1], user))
+            if len(rest) == 3 and rest[:2] == ["smart-ui", "generations"]:
+                if not studio_enabled():
+                    raise NotFoundError("smart-UI Studio is disabled")
+                return self._send(200, delete_generation(
+                    platform, wid, user, rest[2]))
+            if len(rest) == 3 and rest[:2] == ["smart-ui", "drafts"]:
+                if not studio_enabled():
+                    raise NotFoundError("smart-UI Studio is disabled")
+                return self._send(200, delete_draft(platform, wid, user, rest[2]))
             if len(rest) == 4 and rest[0] == "applications" \
                     and rest[2] == "views":
                 return self._send(200, platform.applications.remove_view(
@@ -578,13 +593,25 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
             if rest == ["smart-ui", "meta"]:
                 meta = smart_ui_meta(platform, wid, user)
                 meta["studio"] = {"enabled": studio_enabled()}
+                meta["model"] = platform.llm_config.status(wid, user)
                 return self._send(200, meta)
+            if rest == ["smart-ui", "entities"]:
+                return self._send(200, smart_ui_focus_options(
+                    platform, wid, user,
+                    object_type=str(query.get("object") or ""),
+                    query=str(query.get("q") or ""),
+                    limit=self._query_int(query, "limit", 20)))
             if rest == ["smart-ui", "generations"]:
                 if not studio_enabled():
                     raise NotFoundError("smart-UI Studio is disabled")
                 return self._send(200, list_generations(
                     platform, wid, user,
-                    limit=self._query_int(query, "limit", 30)))
+                    limit=self._query_int(query, "limit", 30),
+                    offset=self._query_int(query, "offset", 0),
+                    query=str(query.get("q") or ""),
+                    status=str(query.get("status") or ""),
+                    object_type=str(query.get("object") or ""),
+                    mode=str(query.get("mode") or "")))
             if len(rest) == 3 and rest[0] == "smart-ui" and rest[1] == "generations":
                 if not studio_enabled():
                     raise NotFoundError("smart-UI Studio is disabled")
@@ -670,6 +697,10 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
                 })
             if rest == ["controller", "propose"]:
                 return self._send(200, platform.controller.propose(wid, user))
+            if len(rest) == 4 and rest[0] == "applications" \
+                    and rest[2] == "ui-artifact" and rest[3] == "view":
+                return self._send(200, application_ui_view(
+                    platform, wid, user, rest[1]))
             if rest and rest[0] == "applications" and len(rest) == 3 \
                     and rest[2] == "objective":
                 # GET is a read: evaluation is POST .../objective/evaluate
@@ -824,6 +855,8 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
                     actor=user))
             if rest == ["llm-config"]:
                 return self._send(200, platform.llm_config.put(wid, user, body))
+            if rest == ["llm-config", "check"]:
+                return self._send(200, platform.llm_config.check(wid, user))
             if rest == ["ontology"]:
                 return self._send(200, platform.ontologies.create(
                     wid, body.get("name", ""), actor=user,
@@ -945,15 +978,23 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
                     platform, wid, user,
                     question=str(body.get("question") or ""),
                     roles=[str(role) for role in (body.get("roles") or [])],
-                    mode=str(body.get("mode") or "auto"))
+                    mode=str(body.get("mode") or "auto"),
+                    focus=body.get("focus") if isinstance(body.get("focus"), dict)
+                    else None)
                 return self._send(202, generation)
+            if (len(rest) == 4 and rest[0] == "smart-ui"
+                    and rest[1] == "generations" and rest[3] == "cancel"):
+                return self._send(200, cancel_generation(
+                    platform, wid, user, rest[2]))
             if (len(rest) == 4 and rest[0] == "smart-ui"
                     and rest[1] == "generations" and rest[3] == "refine"):
                 if not studio_enabled():
                     raise NotFoundError("smart-UI Studio is disabled")
                 return self._send(202, refine_generation(
                     platform, wid, user, rest[2],
-                    str(body.get("instruction") or "")))
+                    str(body.get("instruction") or ""),
+                    focus=body.get("focus") if isinstance(body.get("focus"), dict)
+                    else None))
             if (len(rest) == 4 and rest[0] == "smart-ui"
                     and rest[1] == "generations" and rest[3] == "accept"):
                 return self._send(200, accept_generation(
@@ -969,7 +1010,9 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
                 return self._send(200, compile_smart_ui(
                     platform, wid, user,
                     question=str(body.get("question") or ""),
-                    roles=[str(role) for role in (body.get("roles") or [])]))
+                    roles=[str(role) for role in (body.get("roles") or [])],
+                    focus=body.get("focus") if isinstance(body.get("focus"), dict)
+                    else None))
             if len(rest) == 3 and rest[0] == "smart-ui" and rest[1] == "actions":
                 return self._send(200, invoke_smart_action(
                     platform, wid, user, rest[2], body))
@@ -1060,6 +1103,13 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
                 if rest == ["llm-config"]:
                     user = self._actor(body=body, query=query)
                     return self._send(200, platform.llm_config.put(wid, user, body))
+                if len(rest) == 3 and rest[:2] == ["smart-ui", "drafts"]:
+                    if not studio_enabled():
+                        raise NotFoundError("smart-UI Studio is disabled")
+                    user = self._actor(body=body, query=query)
+                    return self._send(200, update_draft(
+                        platform, wid, user, rest[2],
+                        str(body.get("name") or "")))
                 raise ValidationError(
                     f"PUT is only supported for /api/workspaces/{{wid}}/llm-config; "
                     f"no route for {self.path}")

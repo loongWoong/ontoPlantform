@@ -27,7 +27,7 @@ import json
 import os
 import re
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, TYPE_CHECKING
 
@@ -644,7 +644,8 @@ def _focus_score(spec: dict, records: list[dict], relations: list[dict]) -> floa
     return score
 
 
-def _select_focus(platform: "Platform", workspace_id: str, ontology: dict) -> dict[str, Any]:
+def _select_focus(platform: "Platform", workspace_id: str, ontology: dict,
+                  focus: dict[str, Any] | None = None) -> dict[str, Any]:
     """Choose a focus object for *any* published ontology.
 
     Selection is deterministic: a fact/record-like object with real instances
@@ -653,6 +654,7 @@ def _select_focus(platform: "Platform", workspace_id: str, ontology: dict) -> di
     """
     specs = _object_specs(ontology)
     relations = _relation_specs(ontology)
+    requested_focus = focus
     records_by_type: dict[str, list[dict]] = {}
     counts: dict[str, int] = {}
     candidates: list[tuple[float, int, str, dict, list[dict]]] = []
@@ -687,6 +689,33 @@ def _select_focus(platform: "Platform", workspace_id: str, ontology: dict) -> di
                     if _record_group_value(record, keys) == focus_value]
     if not value_groups:
         value_groups = [focus_record]
+
+    # An explicit user/blueprint focus must actually scope the bundle.  Before
+    # this, ``context.focus`` only reached the audit intent and the rendered
+    # view stayed on the platform's default focus (U7).
+    if isinstance(requested_focus, dict) and requested_focus.get("key") \
+            and requested_focus.get("value"):
+        target_name = str(requested_focus.get("object") or focus_name)
+        target_records = records_by_type.get(target_name) or []
+        target_spec = next(
+            (item for item in specs if str(item.get("name") or "") == target_name),
+            None,
+        )
+        target_key = str(requested_focus.get("key") or "")
+        target_value = str(requested_focus.get("value"))
+        if target_spec is not None and target_records:
+            matched = [
+                record for record in target_records
+                if str(_record_value(record, target_key)) == target_value
+            ]
+            if matched:
+                focus = target_spec
+                focus_name = target_name
+                records = target_records
+                keys = _semantic_keys(target_spec, target_records)
+                focus_record = matched[0]
+                focus_value = target_value
+                value_groups = matched
 
     def related_with(predicate) -> dict | None:
         for spec in specs:
@@ -1305,9 +1334,209 @@ def _location_payload(platform: "Platform", workspace_id: str,
     }
 
 
+def _table_request(blueprint: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(blueprint, dict):
+        return None
+    for view in blueprint.get("views") or []:
+        if not isinstance(view, dict):
+            continue
+        options = view.get("options") or {}
+        if options.get("chartType") == "table" or options.get("display") == "table":
+            return options
+    return None
+
+
+def _relative_cutoff(target: str) -> datetime | None:
+    match = re.fullmatch(r"^-(\d+)\s*([dhwm])$", str(target or "").strip(),
+                         re.IGNORECASE)
+    if not match:
+        return None
+    amount = int(match.group(1))
+    unit = match.group(2).lower()
+    seconds = {"h": 3600, "d": 86400, "w": 7 * 86400, "m": 30 * 86400}[unit]
+    return datetime.now(timezone.utc) - timedelta(seconds=amount * seconds)
+
+
+def _as_datetime(value: Any) -> datetime | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed
+
+
+def _table_match(value: Any, op: str, target: Any) -> bool:
+    text = "" if value is None else str(value)
+    if op in {"gt", "gte", "lt", "lte"}:
+        cutoff = _relative_cutoff(str(target)) if isinstance(target, str) else None
+        current = _as_datetime(value)
+        if cutoff is not None and current is not None:
+            left, right = current, cutoff
+        else:
+            try:
+                left = float(text)
+                right = float(target)
+            except (TypeError, ValueError):
+                left, right = text, str(target)
+        return {
+            "gt": left > right, "gte": left >= right,
+            "lt": left < right, "lte": left <= right,
+        }[op]
+    if isinstance(target, bool) or isinstance(value, bool):
+        flag = text.strip().lower() in {"true", "1", "yes", "是"}
+        return (flag == target) if op == "eq" else (flag != target)
+    if op in {"eq", "ne"}:
+        try:
+            left: Any = float(text)
+            right = float(target)
+        except (TypeError, ValueError):
+            left, right = text.strip().lower(), str(target).strip().lower()
+        return (left == right) if op == "eq" else (left != right)
+    if op == "contains":
+        return str(target).lower() in text.lower()
+    if op == "in":
+        candidates = target if isinstance(target, (list, tuple, set)) else [target]
+        return text.lower() in {str(item).strip().lower() for item in candidates}
+    return False
+
+
+def _table_payload(context: dict[str, Any],
+                   options: dict[str, Any]) -> dict[str, Any]:
+    """Rows for a Blueprint v1.1 DataTable, derived from real workspace records.
+
+    Filters/sort/limit are applied to the same record set the bundle already
+    uses; unknown fields were pruned by the Studio adjudicator and the engine.
+    """
+    records = list(context.get("records") or [])
+    spec = context.get("focus") or {}
+    raw_props = spec.get("properties") if isinstance(spec, dict) else None
+    if isinstance(raw_props, dict):
+        props = [str(name) for name in raw_props]
+    else:
+        props = [
+            str(prop.get("name") if isinstance(prop, dict)
+                else getattr(prop, "name", ""))
+            for prop in (raw_props or [])
+        ]
+    props = [name for name in props if name]
+    filters = options.get("filters") or []
+    if filters:
+        records = [
+            record for record in records
+            if all(_table_match(_record_value(record, str(item.get("field"))),
+                                str(item.get("op")), item.get("value"))
+                   for item in filters)
+        ]
+    sort = options.get("sort") or {}
+    group_by = str(options.get("groupBy") or "")
+    try:
+        limit = int(options.get("limit") or 50)
+    except (TypeError, ValueError):
+        limit = 50
+    limit = max(1, min(200, limit))
+
+    if group_by:
+        metric = options.get("metric") or {}
+        metric_field = str(metric.get("field") or "")
+        agg = str(metric.get("agg") or "count")
+        buckets: dict[str, list[dict]] = {}
+        for record in records:
+            key = _value_text(_record_value(record, group_by)) or "未分组"
+            buckets.setdefault(key, []).append(record)
+
+        def aggregate(bucket: list[dict]) -> float:
+            if agg == "count" or not metric_field:
+                return float(len(bucket))
+            values = [
+                _as_float(_record_value(record, metric_field), default=float("nan"))
+                for record in bucket
+            ]
+            values = [value for value in values if value == value]
+            if not values:
+                return 0.0
+            if agg == "sum":
+                return sum(values)
+            if agg == "avg":
+                return sum(values) / len(values)
+            if agg == "min":
+                return min(values)
+            return max(values)
+
+        grouped = [
+            (key, aggregate(bucket)) for key, bucket in buckets.items()
+        ]
+        field = str(sort.get("field") or "")
+        if field == group_by:
+            grouped.sort(key=lambda item: item[0],
+                         reverse=sort.get("direction") != "asc")
+        elif field:
+            grouped.sort(key=lambda item: item[1],
+                         reverse=sort.get("direction") != "asc")
+        total = len(grouped)
+        grouped = grouped[:limit]
+        columns = [group_by, "__value"]
+        labels = {group_by: _prop_label(group_by)}
+        if agg == "count" or not metric_field:
+            labels["__value"] = "记录数"
+            rows = [
+                {group_by: key, "__value": f"{value:.0f}"}
+                for key, value in grouped
+            ]
+        else:
+            agg_label = {"sum": "合计", "avg": "均值", "min": "最小",
+                         "max": "最大"}.get(agg, agg)
+            labels["__value"] = f"{_prop_label(metric_field)}{agg_label}"
+            rows = [
+                {group_by: key, "__value": f"{value:.2f}"}
+                for key, value in grouped
+            ]
+        return {
+            "columns": columns,
+            "columnLabels": labels,
+            "rows": rows,
+            "total": total,
+        }
+
+    if isinstance(sort, dict) and sort.get("field"):
+        field = str(sort["field"])
+
+        def sort_key(record: dict) -> tuple[bool, Any]:
+            value = _record_value(record, field)
+            if value is None:
+                return True, ""
+            try:
+                return False, float(value)
+            except (TypeError, ValueError):
+                return False, str(value)
+
+        records.sort(key=sort_key, reverse=sort.get("direction") != "asc")
+    requested_columns = [str(item) for item in options.get("columns") or []
+                         if str(item) in props]
+    columns = requested_columns or props[:12]
+    total = len(records)
+    records = records[:limit]
+    rows = [
+        {column: _value_text(_record_value(record, column)) or ""
+         for column in columns}
+        for record in records
+    ]
+    return {
+        "columns": columns,
+        "columnLabels": {column: _prop_label(column) for column in columns},
+        "rows": rows,
+        "total": total,
+    }
+
+
 def build_bundle(platform: "Platform", workspace_id: str, actor: str,
                  ontology_data: dict, bridge: dict, question: str,
-                 context: dict[str, Any] | None = None) -> dict[str, Any]:
+                 context: dict[str, Any] | None = None,
+                 blueprint: dict[str, Any] | None = None) -> dict[str, Any]:
     context = context or _select_focus(platform, workspace_id, ontology_data)
     if not context.get("ready"):
         raise ValidationError(
@@ -1571,6 +1800,9 @@ def build_bundle(platform: "Platform", workspace_id: str, actor: str,
             f"关联 {len(related)} 个对象。"
         ),
     }
+    table_options = _table_request(blueprint)
+    if table_options is not None:
+        statistics["table"] = _table_payload(context, table_options)
 
     # -- state --------------------------------------------------------------
     bad_status = _status_is_bad(status_value)
@@ -1745,6 +1977,60 @@ def _require_roles_at_most(actor_role: str, roles: list[str]) -> None:
             )
 
 
+def smart_ui_focus_options(platform: "Platform", workspace_id: str, actor: str,
+                           object_type: str = "", query: str = "",
+                           limit: int = 20) -> dict[str, Any]:
+    """Searchable instance choices for an explicit focus selector.
+
+    The Studio used to send only a free-text question; users could not say
+    "this vehicle" without hoping the model guessed the plate.  This endpoint
+    lists real instances (value + display label) so the console can send a
+    structured focus that the compiler now applies to the bundle.
+    """
+    platform.ctx.require(actor, workspace_id, "viewer")
+    ontology_data = _ontology_of(platform, workspace_id, actor)
+    specs = _object_specs(ontology_data)
+    wanted = (object_type or "").strip()
+    needle = (query or "").strip().lower()
+    items: list[dict[str, Any]] = []
+    seen: set[tuple[str, str, str]] = set()
+    for spec in specs:
+        name = str(spec.get("name") or "")
+        if not name or (wanted and name != wanted):
+            continue
+        records = _find(platform, workspace_id, name)
+        if not records:
+            continue
+        keys = _semantic_keys(spec, records)
+        key = str(keys.get("idKey") or keys.get("groupKey") or "id")
+        for record in records:
+            value = _record_value(record, key)
+            if value in (None, ""):
+                value = _obj_id(record)
+            text = str(value or "").strip()
+            if not text:
+                continue
+            label = _display_of(record, keys) or text
+            if needle and needle not in text.lower() and needle not in label.lower():
+                continue
+            dedupe = (name, key, text)
+            if dedupe in seen:
+                continue
+            seen.add(dedupe)
+            items.append({
+                "objectType": name,
+                "key": key,
+                "value": text,
+                "label": label,
+            })
+    items.sort(key=lambda item: (item["objectType"], item["value"]))
+    return {
+        "items": items[:max(1, min(100, limit))],
+        "total": len(items),
+        "objectTypes": sorted({item["objectType"] for item in items}),
+    }
+
+
 def smart_ui_meta(platform: "Platform", workspace_id: str, actor: str) -> dict[str, Any]:
     ontology = _ontology_of(platform, workspace_id, actor)
     specs = _object_specs(ontology)
@@ -1851,7 +2137,8 @@ def smart_ui_meta(platform: "Platform", workspace_id: str, actor: str) -> dict[s
 
 
 def compile_smart_ui(platform: "Platform", workspace_id: str, actor: str,
-                     question: str, roles: list[str]) -> dict[str, Any]:
+                     question: str, roles: list[str],
+                     focus: dict[str, Any] | None = None) -> dict[str, Any]:
     modules = _engine()
     planner = modules["planner"]
     compiler = modules["compiler"]
@@ -1869,7 +2156,7 @@ def compile_smart_ui(platform: "Platform", workspace_id: str, actor: str,
     # bundle cannot disagree if a concurrent writer changes the workspace
     # between the two builders.
     ontology_data = _ontology_of(platform, workspace_id, actor)
-    context = _select_focus(platform, workspace_id, ontology_data)
+    context = _select_focus(platform, workspace_id, ontology_data, focus=focus)
     ontology, bridge = build_engine_ontology(
         platform, workspace_id, actor,
         ontology_data=ontology_data, context=context,
@@ -1959,15 +2246,18 @@ def compile_smart_ui(platform: "Platform", workspace_id: str, actor: str,
 
 
 def smart_ui_snapshot(platform: "Platform", workspace_id: str,
-                      actor: str) -> dict[str, Any]:
+                      actor: str, focus: dict[str, Any] | None = None) -> dict[str, Any]:
     """One consistent view of ontology + focus for a generation.
 
     Studio builds the LLM context pack and the compiler input from the same
     snapshot so the proposal cannot be judged against a different ontology
-    revision than the one used to compile it.
+    revision than the one used to compile it.  ``focus`` is an optional
+    user-selected ``{object,key,value}`` override; it is validated by
+    ``_select_focus`` against real instances and silently falls back to the
+    deterministic choice when it cannot be resolved.
     """
     ontology_data = _ontology_of(platform, workspace_id, actor)
-    context = _select_focus(platform, workspace_id, ontology_data)
+    context = _select_focus(platform, workspace_id, ontology_data, focus=focus)
     ontology, bridge = build_engine_ontology(
         platform, workspace_id, actor,
         ontology_data=ontology_data, context=context,
@@ -2013,7 +2303,19 @@ def compile_smart_ui_blueprint(
 
     if not isinstance(blueprint, dict):
         raise ValidationError("blueprint must be an object")
+    context_spec = blueprint.get("context") or {}
+    focus_spec = context_spec.get("focus") or {}
     snapshot = snapshot or smart_ui_snapshot(platform, workspace_id, actor)
+    if isinstance(focus_spec, dict) and focus_spec.get("key") \
+            and focus_spec.get("value"):
+        # The blueprint's focus is the contract the user asked for; apply it to
+        # the bundle instead of compiling against the platform default focus.
+        snapshot = smart_ui_snapshot(
+            platform, workspace_id, actor,
+            focus={"object": str(context_spec.get("object") or ""),
+                   "key": str(focus_spec.get("key")),
+                   "value": str(focus_spec.get("value"))},
+        )
     ontology = snapshot["ontology"]
     bridge = snapshot["bridge"]
     context = snapshot["context"]
@@ -2084,6 +2386,7 @@ def compile_smart_ui_blueprint(
     bundle = build_bundle(
         platform, workspace_id, actor, ontology_data, bridge, question,
         context=context,
+        blueprint=blueprint,
     )
     payload["bridge"] = {
         **bridge,

@@ -15,7 +15,7 @@ from onto_platform.infrastructure.llm.openai_compat import (
     OpenAICompatProvider,
     chat_completions_url,
 )
-from onto_platform.ports.llm import LLMResponse
+from onto_platform.ports.llm import LLMResponse, LLMTransportError
 from tests.conftest import make_platform, seed_workspace
 
 
@@ -148,3 +148,52 @@ def test_workspace_endpoint_is_used_by_the_agent_loop():
     ])
     run = platform.intelligence.agent(wid, "admin", "检查配置")
     assert run["answer"] == "配置已生效"
+
+
+def test_model_status_reports_the_workspace_endpoint_not_global_health():
+    platform = make_platform()
+    wid = seed_workspace(platform)
+    platform.ctx.llm = RecordingProvider("平台默认")
+    status = platform.llm_config.status(wid, "admin")
+    assert status["source"] == "platform"
+    assert status["configured"] is True
+    assert status["model"] == "workspace-model"
+
+    platform.llm_config.put(wid, "admin", {
+        "provider": "openai",
+        "base_url": "http://127.0.0.1:8000/v1",
+        "model": "deepseek-v4-flash",
+    })
+    status = platform.llm_config.status(wid, "admin")
+    assert status["source"] == "workspace"
+    assert status["model"] == "deepseek-v4-flash"
+    assert status["base_url_host"] == "127.0.0.1:8000"
+    assert status["has_key"] is False       # keyless local gateways are valid
+    assert status["will_use_model"] is True
+    # The full URL/key never leaks into the status view.
+    assert "api_key" not in status
+
+
+def test_model_check_calls_the_provider_and_classifies_auth_failure():
+    platform = make_platform()
+    wid = seed_workspace(platform)
+    platform.ctx.llm = RecordingProvider("OK")
+    checked = platform.llm_config.check(wid, "admin")
+    assert checked["ok"] is True
+    assert checked["errorType"] is None
+    assert checked["latencyMs"] >= 0
+    assert checked["responsePreview"] == "OK"
+
+    class Unauthorized:
+        model = "bad-key-model"
+
+        def complete(self, messages):
+            raise LLMTransportError(
+                "模型接口 HTTP 401", kind="auth", status=401)
+
+    platform.ctx.llm = Unauthorized()
+    checked = platform.llm_config.check(wid, "admin")
+    assert checked["ok"] is False
+    assert checked["errorType"] == "auth"
+    assert checked["status"] == 401
+    assert "401" in checked["message"]

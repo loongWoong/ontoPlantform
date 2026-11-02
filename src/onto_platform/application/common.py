@@ -94,11 +94,13 @@ class ApplicationContext:
 
     # ---- governance helpers ----
 
-    def llm_for(self, workspace_id: str):
+    def llm_for(self, workspace_id: str, *, timeout: float | None = None):
         """The workspace's own model provider, else the platform default.
 
         ``llm_config`` is per workspace so one tenant's credential/model
-        choice cannot silently drive another tenant's agent.
+        choice cannot silently drive another tenant's agent.  ``timeout`` is
+        used by the settings preflight so a broken endpoint fails in seconds
+        instead of the full generation budget.
         """
         row = self.repo.get("llm_config", workspace_id, "llm")
         if row and row.get("provider") == "openai":
@@ -113,10 +115,14 @@ class ApplicationContext:
             # than ignored, so the failure is a visible 401 instead of another
             # tenant's model being used.
             key = unprotect(row.get("api_key") or "") if row.get("api_key") else ""
+            kwargs = {}
+            if timeout is not None:
+                kwargs["timeout"] = timeout
             return OpenAICompatProvider(
                 base_url=row.get("base_url") or "https://api.openai.com/v1",
                 model=row.get("model") or "gpt-4o-mini",
                 api_key=key,
+                **kwargs,
             )
         return self.llm
 

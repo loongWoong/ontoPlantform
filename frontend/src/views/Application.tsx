@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  CaretRight, Copy, Lightning, PencilSimple, Play, Plus, Trash,
+  ArrowsClockwise, CaretRight, Copy, Lightning, PencilSimple, Play, Plus,
+  Sparkle, Trash,
 } from "@phosphor-icons/react";
 import {
   api, type Application, type AppQuery, type AppView, type Capability, type Obj,
@@ -20,6 +21,7 @@ import { executionStatus } from "../lib/status";
 import { formatLocal, formatWindow } from "../lib/time";
 import { valuePreview } from "../lib/value";
 import { ChartView, MapView } from "./AppCharts";
+import { smartUiFrameSrc, useSmartUiBridge } from "../smartui-bridge";
 
 type Stage =
   | { kind: "none" }
@@ -279,8 +281,8 @@ function CreateApp({ onDone }: { onDone: () => void }) {
   );
 }
 
-type AppTab = "views" | "queries" | "agents" | "caps" | "objective";
-const APP_TABS: readonly AppTab[] = ["views", "queries", "agents", "caps", "objective"];
+type AppTab = "views" | "queries" | "agents" | "caps" | "objective" | "ai";
+const APP_TABS: readonly AppTab[] = ["views", "queries", "agents", "caps", "objective", "ai"];
 
 function AppDetail({ app, caps, stage, setStage, onChanged, onOpenObject, onObjective, onCloned }: {
   app: Application; caps: Capability[]; stage: Stage;
@@ -304,6 +306,12 @@ function AppDetail({ app, caps, stage, setStage, onChanged, onOpenObject, onObje
   const [infoOpen, setInfoOpen] = useState(false);
   const [viewEditor, setViewEditor] = useState<{ mode: "create" } | { mode: "edit"; view: AppView } | null>(null);
   const [queryEditor, setQueryEditor] = useState<AppQuery | null>(null);
+  // AI视图：应用发布时附加的生成快照。iframe 按 generation id 取数；
+  // 版本 / program hash / 发布时间直接取应用里的 ui_artifact。
+  const artifact = app.ui_artifact;
+  const [aiReloadKey, setAiReloadKey] = useState(0);
+  const aiFrameRef = useRef<HTMLIFrameElement>(null);
+  const postAiAuthToken = useSmartUiBridge(aiFrameRef, wid, aiReloadKey);
 
   // 目标评估：应用详情本来就要显示它，列表行复用同一份结果，不额外发请求。
   const objLoad = useLoad(async () => {
@@ -386,7 +394,7 @@ function AppDetail({ app, caps, stage, setStage, onChanged, onOpenObject, onObje
       <div className="subtabs" role="tablist" tabIndex={0} aria-label="应用组成">
         {([["views", `视图 ${views.length}`], ["queries", `查询 ${queries.length}`],
            ["agents", `智能体 ${agents.length}`], ["caps", `挂载能力 ${attached.length}`],
-           ["objective", "目标"]] as [AppTab, string][])
+           ["objective", "目标"], ["ai", "AI视图"]] as [AppTab, string][])
           .map(([k, l]) => (
             <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => pick(k)}>{l}</button>
           ))}
@@ -554,6 +562,54 @@ function AppDetail({ app, caps, stage, setStage, onChanged, onOpenObject, onObje
           </div>
           <AttachCapability app={app} caps={caps} onDone={onChanged} />
         </>
+      )}
+
+      {tab === "ai" && (
+        artifact && wid ? (
+          <>
+            <div className="app-ai-meta">
+              <span><b>版本</b><span className="mono">v{artifact.version}</span></span>
+              <span>
+                <b>Program</b>
+                <span className="mono" title={artifact.program_hash || ""}>
+                  {(artifact.program_hash || "—").replace("sha256:", "").slice(0, 12)}
+                </span>
+              </span>
+              <span><b>发布时间</b><span>{artifact.published_at ? formatLocal(artifact.published_at) : "—"}</span></span>
+              <span><b>发布人</b><span>{artifact.published_by || "—"}</span></span>
+              <div className="btn-row">
+                <Btn size="sm" variant="subtle" onClick={() => setAiReloadKey(k => k + 1)}>
+                  <ArrowsClockwise size={13} /> 刷新
+                </Btn>
+                <Btn size="sm" variant="subtle"
+                     onClick={() => go("aiview", { generation: artifact.generation_id })}>
+                  <Sparkle size={13} /> 打开生成台
+                </Btn>
+              </div>
+            </div>
+            <iframe
+              key={`${artifact.generation_id}-${aiReloadKey}`}
+              ref={aiFrameRef}
+              className="smartui-frame"
+              title={`AI视图 ${app.name}`}
+              src={`${smartUiFrameSrc(wid, artifact.generation_id)}&r=${aiReloadKey}`}
+              onLoad={postAiAuthToken}
+              sandbox="allow-scripts allow-forms allow-popups"
+            />
+          </>
+        ) : (
+          <>
+            <Empty
+              title="还没有 AI 生成视图"
+              hint="这个应用还没有附加 AI 生成快照。到「AI视图」用业务语言生成并发布时选择这个应用（只有草稿应用可作为目标），发布后这里会挂载隔离 iframe，并显示版本、program hash 与发布时间。"
+            />
+            <div className="btn-row">
+              <Btn size="sm" onClick={() => go("aiview", {})}>
+                <Sparkle size={13} /> 去 AI视图 生成并发布
+              </Btn>
+            </div>
+          </>
+        )
       )}
 
       <Stage area={stage} onOpenObject={onOpenObject} onClear={() => setStage({ kind: "none" })} />

@@ -368,30 +368,32 @@ views:
 
 | 里程碑 | 已交付 | 未交付 / 降级 |
 |---|---|---|
-| M1 生成主链路 | 异步 generation 任务、上下文包、LLM 提议、平台裁决、L4 编译、预览、确定性回退、Studio 页面、生成历史 | SSE 推送改为 700ms 轮询；取消接口未做 |
-| M2 迭代与表达力 | refine 多轮（父版本 + version+1）、草稿保存、版本链展示 | Blueprint v1.1 的 `filters/groupBy/sort/limit` 与 `FilterBar/DataTable` 未做，预览仍是 M1 语义视角 |
-| M3 资产化与评测 | 发布为应用 `ui_artifact`、生成历史、prompt/program 指纹、审计事件、草稿列表 | golden prompts / 成本面板 / 回滚未做 |
+| M1 生成主链路 | 异步 generation 任务、上下文包、LLM 提议、平台裁决、L4 编译、预览、确定性回退、Studio 页面、生成历史；取消/并发上限/重启恢复 | SSE 推送改为 700ms 轮询 |
+| M2 迭代与表达力 | refine 多轮（父版本 + version+1，继承父 focus）、草稿重命名/删除、版本链与 blueprint diff；Blueprint v1.1 `options`（`chartType/display/groupBy/metric/sort/limit/columns/filters`）；引擎侧 `DataTable` + 服务端分组/筛选/排序/limit 行数据（含 `-7d` 相对时间、布尔/`contains`/`in` 过滤）；Studio 实体焦点选择器与 HTTP `/smart-ui/entities`；历史检索/分页/删除（`q/status/object/offset/limit`） | 交互式 FilterBar 以 DataTable 内置关键字过滤/列头排序替代（字段/操作符仍来自本体白名单，服务端执行）；图表 `chartType` 目前只区分 table / 非 table，bar/line/pie 共用 StatisticChart |
+| M3 资产化与评测 | 发布为应用 `ui_artifact`（含 blueprint/program/question/roles/版本指纹）、应用「AI视图」页签、生成历史、prompt/program 指纹、审计事件、草稿列表；生成记录含 usage，可选费率生成 cost；可选保留策略；提示词契约测试 | golden prompt 评测集、采纳率/发布打开率、月度预算闸门、历史导出未做 |
 
 ### 15.2 后端实现（代码索引）
 
 | 能力 | 位置 |
 |---|---|
-| 任务/草稿仓储与状态机 | `src/onto_platform/interfaces/smart_ui_studio.py:74` `studio_enabled`、`:473` `start_generation`、`:592` `_run_generation`、`:743` `get_generation`、`:749` `list_generations`、`:758` `generation_view` |
-| 上下文包与提示词 | `:162` `_context_pack`、`:223` `_prompt`；实例明细不进提示词，只含对象/属性/能力/焦点值 |
-| 平台裁决 | `:296` `_normalize_proposal`：对象存在性 → 维度对象查询根解析 → 视角白名单/去重 → 动作权限交叠 → 焦点属性校验；每项剪除写原因 |
-| 确定性回退 | `:542` `_fallback`，复用 `compile_smart_ui`，标记 `mode="fallback"` |
-| 多轮迭代 | `:781` `refine_generation`：保留父版本，`version = parent.version + 1` |
-| 草稿与发布 | `:798` `accept_generation`、`:853` `publish_generation`：发布前自动 accept，创建或克隆应用，挂 `ui_artifact`，同一草稿不可重复发布；published 应用拒绝写入 |
-| L4 编译复用 | `src/onto_platform/interfaces/smart_ui.py` `compile_smart_ui_blueprint`，返回 `compiled + bundle`，失败转 `ValidationError("L4 compile failed: …")` |
+| 任务/草稿仓储与状态机 | `src/onto_platform/interfaces/smart_ui_studio.py` `studio_enabled`、`start_generation`（`focus/parent_id/instruction/mode`）、`_run_generation`、`get_generation`（`diff/lineage`）、`update_draft`/`delete_draft`、`cancel_generation` |
+| 上下文包与提示词 | `_context_pack`、`_prompt`；实例明细不进提示词，只含对象/属性/能力/焦点值；`views[].options` 白名单与约束在提示词中声明 |
+| 平台裁决 | `_normalize_proposal`：对象存在性 → 维度对象查询根解析 → 视角白名单/去重 → `options` 字段与聚合白名单 → 动作权限交叠 → 焦点属性校验；每项剪除写原因 |
+| 确定性回退 | `_fallback`，复用 `compile_smart_ui`，标记 `mode="fallback"` |
+| 多轮迭代 | `refine_generation`：保留父版本，`version = parent.version + 1`，继承父 `focus`（也可显式传入） |
+| 草稿与发布 | `accept_generation`、`publish_generation`：发布前自动 accept，创建或克隆应用，挂 `ui_artifact`，同一草稿不可重复发布；published 应用拒绝写入；published 草稿可重命名、拒绝删除 |
+| 历史与成本 | `list_generations`（`q/status/object/mode/limit/offset` → `{items,total,offset,limit,all}`）、`delete_generation`（未发布才可删，清理未发布草稿）、`_prune_generations`（`ONTO_SMARTUI_HISTORY_RETENTION_DAYS`，默认关闭、不删已发布/运行中）、`_usage_cost`（`ONTO_SMARTUI_INPUT_COST_PER_1K`/`OUTPUT_COST_PER_1K`/`COST_CURRENCY`） |
+| L4 编译复用 | `src/onto_platform/interfaces/smart_ui.py` `compile_smart_ui_blueprint`，返回 `compiled + bundle`；`build_bundle(..., blueprint=...)` 按 `options` 生成 `view_statistics.rows[0].table = {columns,columnLabels,rows,total}`；`_table_payload` 支持 filters/groupBy/metric/sort/limit/columns，`_table_match` 支持数值、布尔、`contains`、`in`、`-7d` 相对时间 |
 | 应用扩展 | `domain/application/model.py` 增 `ui_artifact`；`application/application_usecases.py` 增 `AttachUiArtifact`；`bootstrap.py` 注册 |
-| HTTP 路由 | `src/onto_platform/interfaces/api.py:582` 起 GET list/detail/view/drafts；`:941` 起 POST create/refine/accept/publish；`:580` meta 增 `studio.enabled`；`/api/health` features 增 `smart-ui.studio` |
+| HTTP 路由 | `src/onto_platform/interfaces/api.py`：GET list（`q/status/object/mode/limit/offset`）/detail/view/drafts/entities、POST create/refine/accept/publish/cancel、PUT/DELETE drafts、DELETE generation、GET application ui-artifact/view、POST llm-config/check；`/api/health` features 增 `smart-ui.studio` |
 
 实际接口与 §6 的差异：
 
-- `POST .../generations` body 为 `{question, roles?, mode?}`，`mode ∈ auto|llm|deterministic`；返回 `202` 任务摘要。
-- 状态枚举：`queued | running | succeeded | failed`，模式 `llm | fallback | deterministic`；步骤 `context → propose → adjudicate → compile → ready`。
-- `GET .../generations/{gid}/view` 按当前真实数据重编译并返回 `{generation, compiled, bundle}`，供只读 iframe 使用。
-- 未实现 `DELETE`（取消）与 `/events` SSE；鉴权错误遵循现有 403，Studio 关闭时返回 404。
+- `POST .../generations` body 为 `{question, roles?, mode?, focus?}`，`mode ∈ auto|llm|deterministic`；`focus = {object?, key, value}`；返回 `202` 任务摘要。
+- 状态枚举：`queued | running | succeeded | failed | cancelled | interrupted`；模式 `llm | fallback | deterministic`；步骤 `context → propose → adjudicate → compile → ready`。
+- `GET .../generations/{gid}/view` 按当前真实数据重编译并返回 `{generation, compiled, bundle}`；`GET .../generations/{gid}` 额外返回 `lineage` 与 `diff`。
+- `POST .../generations/{gid}/cancel` 协作式取消；`GET /smart-ui/entities?object=&q=&limit=` 提供实体候选；`PUT/DELETE /smart-ui/drafts/{did}` 管理草稿；`GET /smart-ui/generations?q=&status=&object=&mode=&limit=&offset=` 服务端检索分页；`DELETE /smart-ui/generations/{gid}` 删除未发布记录并清理其未发布草稿。
+- 未实现 `/events` SSE；鉴权错误遵循现有 403，Studio 关闭时返回 404。
 
 ### 15.3 前端与控制台
 
@@ -404,20 +406,25 @@ views:
 
 ### 15.4 测试与实机验证
 
-- `pytest tests/test_smart_ui.py tests/test_smart_ui_studio.py -q`：**28 passed**（Studio 10 项：确定性链路、LLM 裁决剪除、维度对象→查询根、不可达模型回退、非法 proposal 失败、refine 版本、accept/publish 不可变与重复发布拒绝、HTTP 202/400、viewer 403）。
-- 全量 pytest：**439 passed**（37.6s），无既有回归。
-- 实机（工作空间 `7c33935df1d1`）：
-  - 确定性模式生成成功（`mode=fallback`，3 视角）；
-  - `accept → publish` 成功，应用 `ui_artifact` 记录 generation/draft/program_hash；
-  - 模型端点不可达时自动回退，轨迹显示「模型不可用（URLError）」；
-  - 用本地 OpenAI 兼容 stub（仅验证用，已停止）跑通 `mode=llm`：模型提议 `TollStation`，平台解析为查询根 `TollTransaction`，剪除 `telepathy` 视角与越权动作，5 视角编译成功，`programHash=sha256:a474a…`；
-  - 浏览器（Edge headless）：Studio/历史/运行三页 0 console error，iframe 真实渲染生成视图，1600px 无横向溢出，无 <9px 文本。
+- `pytest tests/test_smart_ui.py tests/test_smart_ui_studio.py -q`：**45 passed**（Studio 27 项：确定性链路、LLM 裁决剪除、维度对象→查询根、不可达模型回退、非法 proposal 失败、refine 版本、accept/publish 不可变与重复发布拒绝、HTTP 202/400、viewer 403、v1.1 table/options 剪除、相对时间/布尔过滤、历史检索分页/删除/保留、usage/cost/耗时、原始响应诊断、提示词契约）。
+- 全量 pytest：**471 passed**（38.8s），无既有回归。
+- 引擎 pytest（`engine` + `PYTHONPATH=src`）：**29 passed**，含 `test_e2e_24_table_options_switch_component` 与未知 options 拒绝。
+- 前端 `npm run build`：通过；产物写入 `src/onto_platform/interfaces/web/dist`（当前 `index-B23SWgp3.js` / `index-HlkOmfmo.css`）。
+- 实机（工作空间 `7c33935df1d1`，临时把该工作空间模型指向本机可用 id，验证后已恢复 `provider=none`）：
+  - `mode=llm` 生成成功：提示词“按出口站分组统计通行交易数量，用表格展示，按数量降序” → 模型给出 `chartType/display=table`、`groupBy=exit_station`、`metric=count`、`sort`、`columns`；
+  - 编译产物含 `DataTable(`，服务端 `table.rows` 返回 6 个出口站分组及计数（ST005=10、ST001=8、ST006=7、ST003=7、ST002=5、ST004=3）；
+  - generation 记录 usage（prompt 2070 / completion 7788 / total 9858），`cost` 由模型端点 usage 自带字段返回；平台费率未配置时 `cost=null`；
+  - `GET .../generations?mode=llm` 服务端过滤命中该记录；`DELETE .../generations/{gid}` 删除成功且不影响其他记录；
+  - 早前一次带“最近 7 天”提示词的生成也正确得到 `filters:[ts gte -7d]`，因示例数据时间较早返回空表，属于真实筛选结果而非链路失败。
 
 ### 15.5 已知限制
 
-1. 本地 `127.0.0.1:8000` 模型端点当前不可达；真实模型效果需在端点可用后复测，UI 会如实显示回退原因。
+1. 本地 `127.0.0.1:8000` 的模型 id 可能带部署后缀（如 `deepseek/deepseek-v4-flash-…`）；工作空间/平台里保存的裸 `deepseek-v4-flash` 会 404。平台已把 404 归类为 `not_found` 并回退，部署侧应提供稳定别名或同步配置。
 2. 示例工作空间的本体把 `TollStation/Lane/Vehicle` 标为 `dimension`，只有 `TollTransaction` 是查询根；Studio 已做根解析并在裁决面板展示「维度对象 → 查询根」，不是静默替换。
-3. 预览仍是语义视角的受控渲染，不含 M2 的筛选器/数据表；发布写入的是应用 `ui_artifact` 草案快照，未改变应用声明式 `views`。
+3. 预览已支持 M2 的受控筛选/分组/排序/DataTable；`options.filters` 由服务端执行（支持数值、布尔、`contains`、`in`、`-7d` 相对时间），`DataTable` 内提供客户端关键字过滤/列头排序，但没有交互式 FilterBar。图表 `chartType` 除 `table` 外仍共用 StatisticChart，尚未按 bar/line/pie 切换图形。
+4. 发布写入的是应用 `ui_artifact` 快照，应用「AI视图」页签从 artifact 重编译，不改变应用声明式 `views`。
+5. 成本为可选能力：`ONTO_SMARTUI_INPUT_COST_PER_1K` / `ONTO_SMARTUI_OUTPUT_COST_PER_1K` 未配置时 `cost=null`；模型端点 usage 自带的 `cost` 会原样保留在 `usage`，平台不混算。
+6. 历史保留策略默认关闭；开启后只清理超过阈值的未发布、非运行中记录，已发布 artifact 与运行中任务永不清理。
 
 ---
 

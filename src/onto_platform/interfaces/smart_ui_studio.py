@@ -24,12 +24,13 @@ Safety rules (see ``docs/smart-ui-llm-generation.md``):
 
 from __future__ import annotations
 
+import concurrent.futures
 import json
 import os
 import re
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import uuid4
 
@@ -58,9 +59,111 @@ MAX_QUESTION = 500
 MAX_PROMPT_BYTES = 16000
 MAX_VIEWS = 8
 SCHEMA_VERSION = "1.0"
+# A generation can outlive a server restart.  Anything older than this without
+# a terminal status is an orphan, not a live job (the provider timeout is 120 s).
+STALE_GENERATION_SECONDS = 15 * 60
+MAX_CONCURRENT_PER_WORKSPACE = 2
+MAX_GENERATION_WORKERS = 4
 
 GENERATION_KIND = "ui_generation"
 DRAFT_KIND = "ui_draft"
+
+
+def _blueprint_diff(parent: dict, child: dict) -> dict[str, Any]:
+    """Human-readable change set between two adjudicated blueprints.
+
+    The Studio could show a new version but not *what changed*; users had to
+    diff two previews by eye.  This is deliberately presentation-oriented (a
+    stable list of kind/key/before/after), never used for adjudication.
+    """
+    changes: list[dict[str, Any]] = []
+
+    def scalar(kind: str, key: str, before: Any, after: Any) -> None:
+        if before != after:
+            changes.append({"kind": kind, "key": key,
+                            "before": before, "after": after})
+
+    p_context = parent.get("context") or {}
+    c_context = child.get("context") or {}
+    scalar("object", "context.object", p_context.get("object"),
+           c_context.get("object"))
+    scalar("goal", "context.goal", p_context.get("goal"),
+           c_context.get("goal"))
+    scalar("focus", "context.focus", p_context.get("focus"),
+           c_context.get("focus"))
+
+    def view_map(blueprint: dict) -> dict[str, dict]:
+        result: dict[str, dict] = {}
+        for view in blueprint.get("views") or []:
+            if isinstance(view, dict) and view.get("perspective"):
+                result[str(view["perspective"])] = view
+        return result
+
+    p_views, c_views = view_map(parent), view_map(child)
+    for key in sorted(set(p_views) | set(c_views)):
+        before = p_views.get(key)
+        after = c_views.get(key)
+        if before is None:
+            changes.append({"kind": "view", "key": key,
+                            "before": None, "after": after})
+        elif after is None:
+            changes.append({"kind": "view", "key": key,
+                            "before": before, "after": None})
+        else:
+            scalar("view", f"{key}.title", before.get("title"),
+                   after.get("title"))
+            if before.get("options") != after.get("options"):
+                changes.append({
+                    "kind": "option", "key": f"{key}.options",
+                    "before": before.get("options") or None,
+                    "after": after.get("options") or None,
+                })
+
+    p_actions = set(parent.get("actions") or [])
+    c_actions = set(child.get("actions") or [])
+    for key in sorted(c_actions - p_actions):
+        changes.append({"kind": "action", "key": key,
+                        "before": None, "after": True})
+    for key in sorted(p_actions - c_actions):
+        changes.append({"kind": "action", "key": key,
+                        "before": True, "after": None})
+    scalar("displayName", "displayName", parent.get("displayName"),
+           child.get("displayName"))
+    return {
+        "from": parent.get("name"),
+        "to": child.get("name"),
+        "changed": bool(changes),
+        "changes": changes,
+    }
+
+
+def _focus_request(raw: Any) -> dict[str, str] | None:
+    """Normalize a user-supplied focus selection (object/key/value)."""
+    if not isinstance(raw, dict):
+        return None
+    key = str(raw.get("key") or raw.get("identityKey") or "").strip()
+    value = str(raw.get("value") or raw.get("focusValue") or "").strip()
+    if not key or not value:
+        return None
+    return {
+        "object": str(raw.get("object") or raw.get("objectType") or "")[:64],
+        "key": key[:64],
+        "value": value[:72],
+    }
+
+# Bounded task execution: daemon threads let a single user start unbounded
+# model calls and made cancellation/recovery impossible.  The executor queues
+# work while a per-workspace semaphore keeps one tenant from starving others.
+_EXECUTOR = concurrent.futures.ThreadPoolExecutor(
+    max_workers=MAX_GENERATION_WORKERS,
+    thread_name_prefix="smart-ui",
+)
+_SLOTS_LOCK = threading.Lock()
+_WORKSPACE_SLOTS: dict[str, threading.BoundedSemaphore] = {}
+
+
+class _GenerationCancelled(Exception):
+    """Raised internally when the user cancelled a queued/running job."""
 
 _STEPS = (
     ("context", "组装上下文包"),
@@ -94,6 +197,51 @@ def _ms(started: float) -> int:
     return int((time.perf_counter() - started) * 1000)
 
 
+def _usage_cost(usage: dict | None) -> dict[str, Any] | None:
+    """Optional token cost estimate; disabled unless rates are configured.
+
+    Pricing is deployment-specific, so the platform never hard-codes a provider
+    price. Set ``ONTO_SMARTUI_INPUT_COST_PER_1K`` /
+    ``ONTO_SMARTUI_OUTPUT_COST_PER_1K`` (and optionally
+    ``ONTO_SMARTUI_COST_CURRENCY``) to enable the estimate.
+    """
+    if not isinstance(usage, dict):
+        return None
+    try:
+        input_rate = float(os.environ.get(
+            "ONTO_SMARTUI_INPUT_COST_PER_1K", "") or 0)
+        output_rate = float(os.environ.get(
+            "ONTO_SMARTUI_OUTPUT_COST_PER_1K", "") or 0)
+    except ValueError:
+        return None
+    if input_rate <= 0 and output_rate <= 0:
+        return None
+    prompt = int(usage.get("prompt_tokens") or usage.get("input_tokens") or 0)
+    completion = int(usage.get("completion_tokens")
+                     or usage.get("output_tokens") or 0)
+    amount = (prompt * input_rate + completion * output_rate) / 1000
+    return {
+        "amount": round(amount, 6),
+        "currency": os.environ.get("ONTO_SMARTUI_COST_CURRENCY", "CNY"),
+        "inputRatePer1k": input_rate,
+        "outputRatePer1k": output_rate,
+    }
+
+
+def _duration_ms(row: dict) -> int | None:
+    try:
+        started = datetime.fromisoformat(str(row.get("created_at")))
+        finished = datetime.fromisoformat(
+            str(row.get("finished_at") or row.get("updated_at")))
+    except ValueError:
+        return None
+    if started.tzinfo is None:
+        started = started.replace(tzinfo=timezone.utc)
+    if finished.tzinfo is None:
+        finished = finished.replace(tzinfo=timezone.utc)
+    return max(0, int((finished - started).total_seconds() * 1000))
+
+
 def _summary(row: dict) -> dict[str, Any]:
     trace = row.get("trace") or {}
     blueprint = row.get("blueprint") or {}
@@ -105,6 +253,10 @@ def _summary(row: dict) -> dict[str, Any]:
         "instruction": row.get("instruction", ""),
         "status": row.get("status", "queued"),
         "mode": row.get("mode", "llm"),
+        "requested_mode": row.get("requested_mode"),
+        "usage": trace.get("usage"),
+        "cost": (row.get("metrics") or {}).get("cost"),
+        "durationMs": _duration_ms(row),
         "parent_id": row.get("parent_id"),
         "version": int(row.get("version") or 1),
         "created_at": row.get("created_at"),
@@ -112,6 +264,7 @@ def _summary(row: dict) -> dict[str, Any]:
         "finished_at": row.get("finished_at"),
         "actor": row.get("actor"),
         "roles": list(row.get("roles") or []),
+        "focus": row.get("focus"),
         "object": context.get("object") or None,
         "goal": context.get("goal") or None,
         "view_count": int(row.get("view_count") or 0),
@@ -148,6 +301,77 @@ def _get(platform, workspace_id: str, generation_id: str) -> dict:
     if row is None:
         raise NotFoundError(f"generation not found: {generation_id!r}")
     return row
+
+
+def _workspace_slot(workspace_id: str) -> threading.BoundedSemaphore:
+    with _SLOTS_LOCK:
+        return _WORKSPACE_SLOTS.setdefault(
+            workspace_id, threading.BoundedSemaphore(MAX_CONCURRENT_PER_WORKSPACE))
+
+
+def _cancelled(platform, workspace_id: str, generation_id: str) -> bool:
+    row = platform.ctx.repo.get(GENERATION_KIND, workspace_id, generation_id)
+    return bool(row and row.get("status") == "cancelled")
+
+
+def _ensure_live(platform, workspace_id: str, generation_id: str) -> None:
+    if _cancelled(platform, workspace_id, generation_id):
+        raise _GenerationCancelled()
+
+
+def _recover_stale(platform, workspace_id: str) -> None:
+    """Turn jobs orphaned by a process restart into an actionable status.
+
+    Without this the console polls a ``running`` row forever: the worker that
+    owned it died with the previous process.  This is lazy on read so it works
+    for both a long-lived server and tests without a background sweeper.
+    """
+    import datetime as _dt
+
+    rows = platform.ctx.repo.list(GENERATION_KIND, workspace_id)
+    changed = False
+    for row in rows:
+        if row.get("status") not in {"queued", "running"}:
+            continue
+        updated = str(row.get("updated_at") or row.get("created_at") or "")
+        try:
+            ts = _dt.datetime.fromisoformat(updated)
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=_dt.timezone.utc)
+        except ValueError:
+            continue
+        age = (_dt.datetime.now(_dt.timezone.utc) - ts).total_seconds()
+        if age <= STALE_GENERATION_SECONDS:
+            continue
+        row["status"] = "interrupted"
+        row["error"] = "生成任务因服务重启而中断；可以直接重试"
+        row["finished_at"] = _now()
+        row["updated_at"] = _now()
+        for step in row.get("steps") or []:
+            if step.get("status") in {"pending", "running"}:
+                step["status"] = "warn"
+                step["detail"] = "服务重启，任务中断"
+        platform.ctx.repo.put(
+            GENERATION_KIND, workspace_id, str(row.get("id")), row)
+        changed = True
+    if changed:
+        platform.ctx.audit_event(
+            "system", workspace_id, "smart_ui.recover", "ui_generation",
+            {"recovered": True})
+
+
+def _submit_generation(platform, workspace_id: str, generation_id: str,
+                       actor: str, roles: list[str], question: str,
+                       instruction: str, parent: dict | None, mode: str) -> None:
+    def run() -> None:
+        with _workspace_slot(workspace_id):
+            if _cancelled(platform, workspace_id, generation_id):
+                return
+            _run_generation(
+                platform, workspace_id, generation_id, actor, roles, question,
+                instruction, parent, mode)
+
+    _EXECUTOR.submit(run)
 
 
 def _role_ok(platform, workspace_id: str, actor: str, roles: list[str]) -> list[str]:
@@ -238,7 +462,19 @@ def _prompt(pack: dict[str, Any], question: str,
         },
         "views": [
             {"perspective": "枚举: " + " | ".join(PERSPECTIVES),
-             "title": "可选中文标题"}
+             "title": "可选中文标题",
+             "options": {
+                 "chartType": "可选 bar|line|pie|table；table 仅用于 statistics",
+                 "display": "可选 panel|table",
+                 "groupBy": "可选对象属性名",
+                 "metric": {"field": "对象属性名", "agg": "sum|avg|count|min|max"},
+                 "sort": {"field": "对象属性名", "direction": "asc|desc"},
+                 "limit": "可选 1-200 的整数",
+                 "columns": "可选对象属性名数组（table 列）",
+                 "filters": [{"field": "对象属性名",
+                              "op": "eq|ne|gt|gte|lt|lte|contains|in",
+                              "value": "字面量或 -7d 这类相对值"}],
+             }},
         ],
         "actions": ["只能取自 actions[].key"],
         "confidence": "0-1 的数字",
@@ -253,6 +489,10 @@ def _prompt(pack: dict[str, Any], question: str,
             "actions 只能选当前角色可执行的已发布能力",
             "context.object 优先取 queryRoots；若选择 dimension，平台会解析到 resolvedQueryRoot",
             "没有合适焦点时省略 focus",
+            "需要列表/筛选/排序/取前 N 条时，在对应 view 的 options 中表达，不要编造新视角",
+            "options 的 groupBy/sort.field/columns/filters[].field 必须是该对象属性；limit ≤ 200",
+            "table 形态只用于 statistics 视角；不得输出坐标、颜色、CSS、脚本或 expressions",
+            "若 context_pack.focus 存在且用户未明确要求别的实例，focus 应沿用该对象与值",
         ],
         **({"previous_blueprint": base_blueprint} if base_blueprint else {}),
     }, ensure_ascii=False)
@@ -293,11 +533,99 @@ def _pascal_name(proposal: dict[str, Any], object_name: str) -> str:
     return raw[:64]
 
 
+def _normalize_view_options(raw: Any, obj: Any, perspective: str,
+                            pruned: list[dict[str, Any]]) -> dict[str, Any]:
+    """Adjudicate v1.1 render options; only whitelisted, ontology-backed fields."""
+    if not isinstance(raw, dict):
+        return {}
+    props = {prop.name for prop in obj.properties}
+    options: dict[str, Any] = {}
+
+    def drop(key: str, reason: str) -> None:
+        pruned.append({"kind": "option", "key": key, "reason": reason})
+
+    chart_type = raw.get("chartType")
+    if chart_type in {"bar", "line", "pie", "table"}:
+        if chart_type == "table" and perspective != "statistics":
+            drop("chartType", "table 仅支持 statistics 视角")
+        else:
+            options["chartType"] = chart_type
+    elif chart_type:
+        drop("chartType", "不在白名单 bar|line|pie|table")
+    display = raw.get("display")
+    if display in {"panel", "table"}:
+        if display == "table" and perspective != "statistics":
+            drop("display", "table 仅支持 statistics 视角")
+        else:
+            options["display"] = display
+    group_by = str(raw.get("groupBy") or "")
+    if group_by:
+        if group_by in props:
+            options["groupBy"] = group_by
+        else:
+            drop("groupBy", f"{group_by!r} 不是对象属性")
+    metric = raw.get("metric")
+    if isinstance(metric, dict) and metric.get("field"):
+        field = str(metric["field"])
+        agg = str(metric.get("agg") or "")
+        if field in props and agg in {"sum", "avg", "count", "min", "max"}:
+            options["metric"] = {"field": field, "agg": agg}
+        else:
+            drop("metric", f"{field!r}/{agg!r} 不是合法属性或聚合")
+    sort = raw.get("sort")
+    if isinstance(sort, dict) and sort.get("field"):
+        field = str(sort["field"])
+        if field in props or (group_by and field in {"value", "count"}):
+            options["sort"] = {
+                "field": field,
+                "direction": "asc" if sort.get("direction") == "asc" else "desc",
+            }
+        else:
+            drop("sort", f"{field!r} 不是对象属性")
+    try:
+        limit = int(raw.get("limit"))
+    except (TypeError, ValueError):
+        limit = None
+    if limit is not None:
+        if 1 <= limit <= 200:
+            options["limit"] = limit
+        else:
+            drop("limit", "limit 必须在 1-200 之间")
+    columns = raw.get("columns")
+    if isinstance(columns, list):
+        kept = [str(item) for item in columns if str(item) in props][:24]
+        if kept:
+            options["columns"] = kept
+        elif columns:
+            drop("columns", "列名都不属于该对象")
+    filters = raw.get("filters")
+    if isinstance(filters, list):
+        kept_filters: list[dict[str, Any]] = []
+        for item in filters[:12]:
+            if not isinstance(item, dict):
+                continue
+            field = str(item.get("field") or "")
+            op = str(item.get("op") or "")
+            if field not in props or op not in {
+                    "eq", "ne", "gt", "gte", "lt", "lte", "contains", "in"}:
+                drop("filters", f"过滤条件 {field!r}/{op!r} 不合法")
+                continue
+            kept_filters.append({
+                "field": field, "op": op,
+                "value": item.get("value"),
+            })
+        if kept_filters:
+            options["filters"] = kept_filters
+    return options
+
+
 def _normalize_proposal(proposal: dict[str, Any],
                         pack: dict[str, Any],
                         question: str,
                         ontology: Any,
-                        ontology_version: str) -> tuple[dict[str, Any], list[dict], list[dict]]:
+                        ontology_version: str,
+                        requested_focus: dict[str, Any] | None = None,
+                        ) -> tuple[dict[str, Any], list[dict], list[dict]]:
     """Turn a loose model proposal into a schema-shaped blueprint.
 
     Returns ``(blueprint, checks, pruned)``.  Everything the model asks for
@@ -372,6 +700,8 @@ def _normalize_proposal(proposal: dict[str, Any],
         title = str(raw_view.get("title") or "").strip()
         if title:
             view["title"] = title[:64]
+        view["options"] = _normalize_view_options(
+            raw_view.get("options"), obj, perspective, pruned)
         views.append(view)
         if len(views) >= MAX_VIEWS:
             break
@@ -402,6 +732,16 @@ def _normalize_proposal(proposal: dict[str, Any],
         else:
             pruned.append({"kind": "focus", "key": key,
                            "reason": "不是查询根对象的属性名，已忽略焦点"})
+    if requested_focus:
+        # An explicit selector is authoritative: the model may not have echoed
+        # it, but the user asked to scope this generation to that instance.
+        key = str(requested_focus.get("key") or "")
+        value = str(requested_focus.get("value") or "")
+        if key and value and key in {prop.name for prop in obj.properties}:
+            focus = {"key": key, "value": value[:72]}
+        elif key:
+            pruned.append({"kind": "focus", "key": key,
+                           "reason": "用户选择的焦点属性不属于查询根对象"})
 
     confidence = proposal.get("confidence")
     try:
@@ -474,7 +814,8 @@ def start_generation(platform, workspace_id: str, actor: str,
                      question: str, roles: list[str],
                      *, parent_id: str | None = None,
                      instruction: str = "",
-                     mode: str = "auto") -> dict[str, Any]:
+                     mode: str = "auto",
+                     focus: dict[str, Any] | None = None) -> dict[str, Any]:
     if not studio_enabled():
         raise ValidationError("smart-UI Studio is disabled (ONTO_SMART_UI_STUDIO=off)")
     platform.ctx.require(actor, workspace_id, "editor")
@@ -486,6 +827,7 @@ def start_generation(platform, workspace_id: str, actor: str,
     roles = _role_ok(platform, workspace_id, actor, roles)
     if mode not in {"auto", "llm", "deterministic"}:
         mode = "auto"
+    requested_focus = _focus_request(focus)
 
     parent = None
     version = 1
@@ -503,6 +845,7 @@ def start_generation(platform, workspace_id: str, actor: str,
         "question": question,
         "instruction": (instruction or "").strip()[:MAX_QUESTION],
         "roles": roles,
+        "focus": requested_focus,
         "mode": "llm",
         "requested_mode": mode,
         "status": "queued",
@@ -514,6 +857,8 @@ def start_generation(platform, workspace_id: str, actor: str,
         "steps": [_step(key, label) for key, label in _STEPS],
         "proposal": None,
         "blueprint": None,
+        "program": None,
+        "artifacts": None,
         "validation": {"ok": False, "checks": [], "pruned": []},
         "trace": {},
         "metrics": {},
@@ -528,14 +873,9 @@ def start_generation(platform, workspace_id: str, actor: str,
         "question": question, "roles": roles, "version": version,
         "parent_id": parent_id, "mode": mode,
     })
-    thread = threading.Thread(
-        target=_run_generation,
-        args=(platform, workspace_id, generation_id, actor, roles, question,
-              instruction, parent, mode),
-        name=f"smart-ui-{generation_id}",
-        daemon=True,
-    )
-    thread.start()
+    _submit_generation(
+        platform, workspace_id, generation_id, actor, roles, question,
+        instruction, parent, mode)
     return _full(row)
 
 
@@ -543,15 +883,19 @@ def _fallback(platform, workspace_id: str, actor: str, row: dict,
               roles: list[str], question: str, reason: str,
               started: float) -> None:
     """Deterministic plan is the safety net: never show a blank page."""
+    _ensure_live(platform, row["workspace_id"], row["id"])
     _mark(row, "propose", "warn", f"模型未接续，改用确定性规划：{reason}", started)
-    result = compile_smart_ui(platform, workspace_id, actor, question, roles)
+    result = compile_smart_ui(
+        platform, workspace_id, actor, question, roles, focus=row.get("focus"))
     compiled = result["compiled"]
     blueprint = compiled.get("blueprint")
     if not blueprint:
         raise ValidationError("deterministic fallback produced no blueprint")
-    row["mode"] = "fallback"
+    row["mode"] = "deterministic" if row.get("requested_mode") == "deterministic" else "fallback"
     row["status"] = "succeeded"
     row["blueprint"] = blueprint
+    row["program"] = compiled.get("program")
+    row["artifacts"] = compiled.get("artifacts")
     row["view_count"] = len(blueprint.get("views") or [])
     row["validation"] = {
         "ok": True,
@@ -586,6 +930,7 @@ def _fallback(platform, workspace_id: str, actor: str, row: dict,
         "fallback": True,
     }
     row["finished_at"] = _now()
+    _ensure_live(platform, row["workspace_id"], row["id"])
     _save(platform, row)
 
 
@@ -595,11 +940,15 @@ def _run_generation(platform, workspace_id: str, generation_id: str,
     started = time.perf_counter()
     row = _get(platform, workspace_id, generation_id)
     try:
+        if row.get("status") == "cancelled":
+            return
         row["status"] = "running"
         _mark(row, "context", "running")
         _save(platform, row)
 
-        snapshot = smart_ui_snapshot(platform, workspace_id, actor)
+        snapshot = smart_ui_snapshot(
+            platform, workspace_id, actor, focus=row.get("focus"))
+        _ensure_live(platform, workspace_id, generation_id)
         pack = _context_pack(platform, workspace_id, actor, snapshot=snapshot)
         meta = smart_ui_meta(platform, workspace_id, actor)
         if meta.get("ready") is False:
@@ -622,12 +971,14 @@ def _run_generation(platform, workspace_id: str, generation_id: str,
 
         base_blueprint = (parent or {}).get("blueprint")
         if mode == "deterministic":
+            _ensure_live(platform, workspace_id, generation_id)
             _fallback(platform, workspace_id, actor, row, roles, question,
                       "请求指定确定性模式", started)
             return
 
         provider = platform.ctx.llm_for(workspace_id)
         if provider is None:
+            _ensure_live(platform, workspace_id, generation_id)
             _fallback(platform, workspace_id, actor, row, roles, question,
                       "当前工作空间未配置模型", started)
             return
@@ -646,6 +997,13 @@ def _run_generation(platform, workspace_id: str, generation_id: str,
             "promptHash": _sha(prompt_text),
             "promptBytes": len(prompt_text.encode("utf-8")),
         })
+        if row["trace"]["promptBytes"] > MAX_PROMPT_BYTES:
+            _ensure_live(platform, workspace_id, generation_id)
+            _fallback(
+                platform, workspace_id, actor, row, roles, question,
+                f"上下文过大（{row['trace']['promptBytes']} > {MAX_PROMPT_BYTES} 字节）",
+                started)
+            return
         row["budget"]["promptBytes"] = row["trace"]["promptBytes"]
         _mark(row, "propose", "running")
         _save(platform, row)
@@ -660,18 +1018,30 @@ def _run_generation(platform, workspace_id: str, generation_id: str,
             try:
                 response = provider.complete(messages)
             except Exception as exc:  # transport failure -> deterministic fallback
+                _ensure_live(platform, workspace_id, generation_id)
+                reason = str(exc) or type(exc).__name__
+                if mode == "llm":
+                    raise ValidationError(
+                        f"模型调用失败，且当前为显式模型模式：{reason}") from exc
                 _fallback(platform, workspace_id, actor, row, roles, question,
-                          f"模型不可用（{type(exc).__name__}）", started)
+                          f"模型不可用（{reason}）", started)
                 return
             content = getattr(response, "content", "") or ""
+            usage = getattr(response, "usage", None)
+            if isinstance(usage, dict):
+                row["trace"]["usage"] = dict(usage)
             row["trace"]["responseBytes"] = len(content.encode("utf-8"))
             proposal = _extract_json(content)
             if proposal is not None:
                 break
             last_error = "模型输出不是合法 JSON"
+            if content:
+                row["trace"]["rawPreview"] = content[:2000]
         if proposal is None:
+            _save(platform, row)
             raise ValidationError(f"{last_error}（已重试 1 次）")
 
+        _ensure_live(platform, workspace_id, generation_id)
         row["proposal"] = proposal
         _mark(row, "propose", "ok", f"{model_name} · {row['trace'].get('responseBytes', 0)} 字节", started)
         _mark(row, "adjudicate", "running")
@@ -679,7 +1049,8 @@ def _run_generation(platform, workspace_id: str, generation_id: str,
 
         ontology = snapshot["ontology"]
         blueprint, checks, pruned = _normalize_proposal(
-            proposal, pack, question, ontology, ontology.ontology_version)
+            proposal, pack, question, ontology, ontology.ontology_version,
+            requested_focus=row.get("focus"))
         row["blueprint"] = blueprint
         row["view_count"] = len(blueprint["views"])
         row["validation"] = {"ok": True, "checks": checks, "pruned": pruned}
@@ -698,6 +1069,8 @@ def _run_generation(platform, workspace_id: str, generation_id: str,
                 "engineVersion", ENGINE_VERSION),
             "ontologyVersion": ontology.ontology_version,
         })
+        row["program"] = compiled.get("program")
+        row["artifacts"] = compiled.get("artifacts")
         row["mode"] = "llm"
         row["status"] = "succeeded"
         row["error"] = None
@@ -708,6 +1081,12 @@ def _run_generation(platform, workspace_id: str, generation_id: str,
         row["finished_at"] = _now()
         row["metrics"] = {"totalMs": _ms(started),
                           "compileMs": compiled.get("compileMs")}
+        if row["trace"].get("usage"):
+            row["metrics"]["usage"] = row["trace"]["usage"]
+            cost = _usage_cost(row["trace"]["usage"])
+            if cost is not None:
+                row["metrics"]["cost"] = cost
+        _ensure_live(platform, workspace_id, generation_id)
         _save(platform, row)
         platform.ctx.audit_event(actor, workspace_id, "smart_ui.generate", generation_id, {
             "status": "succeeded", "mode": "llm",
@@ -715,9 +1094,26 @@ def _run_generation(platform, workspace_id: str, generation_id: str,
             "promptHash": row["trace"].get("promptHash"),
             "views": row["view_count"],
         })
+    except _GenerationCancelled:
+        return
     except Exception as exc:  # keep the job row inspectable, never crash the thread
         try:
             current = _get(platform, workspace_id, generation_id)
+            if current.get("status") == "cancelled":
+                return
+            # Auto mode promises a usable result: a malformed/invalid proposal
+            # gets the same deterministic safety net as a transport failure.
+            if current.get("requested_mode") == "auto" and current.get("status") in {
+                    "queued", "running"}:
+                try:
+                    _fallback(
+                        platform, workspace_id, actor, current, roles, question,
+                        f"模型或编译失败（{str(exc)[:180]}）", started)
+                    return
+                except _GenerationCancelled:
+                    return
+                except Exception:
+                    pass
             current["status"] = "failed"
             current["error"] = str(exc)
             current["finished_at"] = _now()
@@ -736,6 +1132,8 @@ def _run_generation(platform, workspace_id: str, generation_id: str,
                 actor, workspace_id, "smart_ui.generate", generation_id,
                 {"status": "failed", "error": str(exc)},
             )
+        except _GenerationCancelled:
+            return
         except Exception:
             pass
 
@@ -743,16 +1141,172 @@ def _run_generation(platform, workspace_id: str, generation_id: str,
 def get_generation(platform, workspace_id: str, actor: str,
                    generation_id: str) -> dict[str, Any]:
     platform.ctx.require(actor, workspace_id, "viewer")
-    return _full(_get(platform, workspace_id, generation_id))
+    _recover_stale(platform, workspace_id)
+    row = _get(platform, workspace_id, generation_id)
+    result = _full(row)
+    result["lineage"] = _lineage(platform, workspace_id, row)
+    parent_id = row.get("parent_id")
+    if parent_id:
+        parent = platform.ctx.repo.get(GENERATION_KIND, workspace_id, parent_id)
+        if parent is not None and parent.get("blueprint") and row.get("blueprint"):
+            result["diff"] = _blueprint_diff(
+                parent["blueprint"], row["blueprint"])
+    return result
+
+
+def _lineage(platform, workspace_id: str, row: dict) -> list[dict[str, Any]]:
+    """Ancestor summaries, newest first, bounded against a broken/cyclic chain."""
+    chain: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    current = row
+    while current is not None and len(chain) < 20:
+        generation_id = str(current.get("id") or "")
+        if not generation_id or generation_id in seen:
+            break
+        seen.add(generation_id)
+        chain.append(_summary(current))
+        parent_id = current.get("parent_id")
+        current = (platform.ctx.repo.get(GENERATION_KIND, workspace_id, parent_id)
+                   if parent_id else None)
+    return chain
+
+
+def cancel_generation(platform, workspace_id: str, actor: str,
+                      generation_id: str) -> dict[str, Any]:
+    """Cancel a queued/running generation; terminal jobs are a no-op.
+
+    The worker may be blocked inside a model call, so this only records intent
+    and the terminal status.  The worker checks the marker between steps and
+    discards its result, never overwriting the cancelled row.
+    """
+    platform.ctx.require(actor, workspace_id, "editor")
+    row = _get(platform, workspace_id, generation_id)
+    if row.get("status") in {"succeeded", "failed", "cancelled", "interrupted"}:
+        return _full(row)
+    row["status"] = "cancelled"
+    row["cancel_requested"] = True
+    row["error"] = "已取消"
+    row["finished_at"] = _now()
+    for step in row.get("steps") or []:
+        if step.get("status") in {"pending", "running"}:
+            step["status"] = "warn"
+            step["detail"] = "用户取消"
+    _save(platform, row)
+    platform.ctx.audit_event(actor, workspace_id, "smart_ui.cancel", generation_id, {})
+    return _full(row)
+
+
+def _prune_generations(platform, workspace_id: str) -> int:
+    """Optional retention: drop old, unowned generation snapshots.
+
+    Disabled by default (``ONTO_SMARTUI_HISTORY_RETENTION_DAYS=0``). Published
+    drafts/applications and live jobs are never pruned.
+    """
+    try:
+        days = float(os.environ.get(
+            "ONTO_SMARTUI_HISTORY_RETENTION_DAYS", "0") or 0)
+    except ValueError:
+        return 0
+    if days <= 0:
+        return 0
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    drafts = _drafts(platform, workspace_id)
+    published = {draft.get("generation_id")
+                 for draft in drafts
+                 if draft.get("status") == "published"}
+    removed = 0
+    for row in platform.ctx.repo.list(GENERATION_KIND, workspace_id):
+        if removed >= 200:
+            break
+        if row.get("id") in published:
+            continue
+        if row.get("status") in {"queued", "running"}:
+            continue
+        try:
+            created = datetime.fromisoformat(str(row.get("created_at")))
+            if created.tzinfo is None:
+                created = created.replace(tzinfo=timezone.utc)
+        except ValueError:
+            continue
+        if created >= cutoff:
+            continue
+        platform.ctx.repo.delete(GENERATION_KIND, workspace_id,
+                                 str(row.get("id")))
+        for draft in drafts:
+            if (draft.get("generation_id") == row.get("id")
+                    and draft.get("status") != "published"):
+                platform.ctx.repo.delete(DRAFT_KIND, workspace_id,
+                                         str(draft.get("id")))
+        removed += 1
+    return removed
 
 
 def list_generations(platform, workspace_id: str, actor: str,
-                     limit: int = 30) -> dict[str, Any]:
+                     limit: int = 30, offset: int = 0,
+                     query: str = "", status: str = "",
+                     object_type: str = "", mode: str = "") -> dict[str, Any]:
     platform.ctx.require(actor, workspace_id, "viewer")
+    _recover_stale(platform, workspace_id)
+    _prune_generations(platform, workspace_id)
     rows = platform.ctx.repo.list(GENERATION_KIND, workspace_id)
     rows.sort(key=lambda row: str(row.get("created_at") or ""), reverse=True)
-    items = [_summary(row) for row in rows[:max(1, min(100, limit))]]
-    return {"items": items, "total": len(rows)}
+    needle = str(query or "").strip().lower()
+    wanted_status = str(status or "").strip()
+    wanted_object = str(object_type or "").strip()
+    wanted_mode = str(mode or "").strip()
+
+    def matches(row: dict) -> bool:
+        if wanted_status and row.get("status") != wanted_status:
+            return False
+        if wanted_mode and row.get("mode") != wanted_mode:
+            return False
+        if wanted_object:
+            row_object = str(
+                (row.get("blueprint") or {}).get("context", {}).get("object") or "")
+            if row_object != wanted_object:
+                return False
+        if needle:
+            haystack = " ".join(str(row.get(key) or "") for key in (
+                "question", "instruction", "display_name", "name", "id"))
+            if needle not in haystack.lower():
+                return False
+        return True
+
+    filtered = [row for row in rows if matches(row)]
+    start = max(0, int(offset or 0))
+    size = max(1, min(100, int(limit or 30)))
+    items = [_summary(row) for row in filtered[start:start + size]]
+    return {
+        "items": items,
+        "total": len(filtered),
+        "offset": start,
+        "limit": size,
+        "all": len(rows),
+    }
+
+
+def delete_generation(platform, workspace_id: str, actor: str,
+                      generation_id: str) -> dict[str, Any]:
+    """Delete an unpublished generation and its (unpublished) draft snapshot.
+
+    A published draft / application artifact owns the generation id, so deleting
+    it would break the application AI view; that case is refused.
+    """
+    platform.ctx.require(actor, workspace_id, "editor")
+    row = _get(platform, workspace_id, generation_id)
+    if row.get("status") in {"queued", "running"}:
+        raise ValidationError("generation is still running; cancel it first")
+    drafts = [draft for draft in _drafts(platform, workspace_id)
+              if draft.get("generation_id") == generation_id]
+    if any(draft.get("status") == "published" for draft in drafts):
+        raise ValidationError(
+            "generation is referenced by a published draft; archive the application first")
+    for draft in drafts:
+        platform.ctx.repo.delete(DRAFT_KIND, workspace_id, str(draft.get("id")))
+    platform.ctx.repo.delete(GENERATION_KIND, workspace_id, generation_id)
+    platform.ctx.audit_event(actor, workspace_id, "smart_ui.delete", generation_id,
+                             {"drafts": len(drafts)})
+    return {"deleted": generation_id, "drafts": len(drafts)}
 
 
 def generation_view(platform, workspace_id: str, actor: str,
@@ -763,6 +1317,7 @@ def generation_view(platform, workspace_id: str, actor: str,
     exactly the accepted version (no re-planning on refresh).
     """
     platform.ctx.require(actor, workspace_id, "viewer")
+    _recover_stale(platform, workspace_id)
     row = _get(platform, workspace_id, generation_id)
     if row.get("status") != "succeeded" or not row.get("blueprint"):
         raise ValidationError("generation is not ready yet")
@@ -779,7 +1334,8 @@ def generation_view(platform, workspace_id: str, actor: str,
 
 
 def refine_generation(platform, workspace_id: str, actor: str,
-                      generation_id: str, prompt: str) -> dict[str, Any]:
+                      generation_id: str, prompt: str,
+                      focus: dict[str, Any] | None = None) -> dict[str, Any]:
     parent = _get(platform, workspace_id, generation_id)
     return start_generation(
         platform, workspace_id, actor,
@@ -788,6 +1344,7 @@ def refine_generation(platform, workspace_id: str, actor: str,
         parent_id=generation_id,
         instruction=prompt,
         mode="auto",
+        focus=focus if isinstance(focus, dict) else parent.get("focus"),
     )
 
 
@@ -816,6 +1373,10 @@ def accept_generation(platform, workspace_id: str, actor: str,
             "version": version,
             "program_hash": trace.get("programHash"),
             "blueprint": row["blueprint"],
+            "program": row.get("program"),
+            "question": row.get("question"),
+            "roles": list(row.get("roles") or []),
+            "ontology_version": trace.get("ontologyVersion"),
             "status": "draft",
             "created_at": _now(),
             "created_by": actor,
@@ -833,7 +1394,11 @@ def accept_generation(platform, workspace_id: str, actor: str,
         if name:
             draft["name"] = name.strip()[:64]
         draft["blueprint"] = row["blueprint"]
+        draft["program"] = row.get("program")
         draft["program_hash"] = trace.get("programHash")
+        draft["question"] = row.get("question")
+        draft["roles"] = list(row.get("roles") or [])
+        draft["ontology_version"] = trace.get("ontologyVersion")
         draft["updated_at"] = _now()
     platform.ctx.repo.put(DRAFT_KIND, workspace_id, draft["id"], draft)
     platform.ctx.audit_event(actor, workspace_id, "smart_ui.accept", draft["id"], {
@@ -848,6 +1413,45 @@ def list_drafts(platform, workspace_id: str, actor: str) -> dict[str, Any]:
     drafts = _drafts(platform, workspace_id)
     drafts.sort(key=lambda row: str(row.get("updated_at") or ""), reverse=True)
     return {"items": drafts, "total": len(drafts)}
+
+
+def _get_draft(platform, workspace_id: str, draft_id: str) -> dict:
+    draft = platform.ctx.repo.get(DRAFT_KIND, workspace_id, draft_id)
+    if draft is None:
+        raise NotFoundError(f"draft not found: {draft_id!r}")
+    return draft
+
+
+def update_draft(platform, workspace_id: str, actor: str, draft_id: str,
+                 name: str) -> dict[str, Any]:
+    platform.ctx.require(actor, workspace_id, "editor")
+    draft = _get_draft(platform, workspace_id, draft_id)
+    clean = (name or "").strip()[:64]
+    if not clean:
+        raise ValidationError("draft name must not be empty")
+    draft["name"] = clean
+    draft["updated_at"] = _now()
+    platform.ctx.repo.put(DRAFT_KIND, workspace_id, draft_id, draft)
+    platform.ctx.audit_event(actor, workspace_id, "smart_ui.draft.rename",
+                             draft_id, {"name": clean})
+    return draft
+
+
+def delete_draft(platform, workspace_id: str, actor: str,
+                 draft_id: str) -> dict[str, Any]:
+    platform.ctx.require(actor, workspace_id, "editor")
+    draft = _get_draft(platform, workspace_id, draft_id)
+    if draft.get("status") == "published":
+        raise ValidationError("published drafts are part of an application contract")
+    platform.ctx.repo.delete(DRAFT_KIND, workspace_id, draft_id)
+    generation = platform.ctx.repo.get(
+        GENERATION_KIND, workspace_id, str(draft.get("generation_id") or ""))
+    if generation is not None and generation.get("draft_id") == draft_id:
+        generation["draft_id"] = None
+        _save(platform, generation)
+    platform.ctx.audit_event(actor, workspace_id, "smart_ui.draft.delete",
+                             draft_id, {})
+    return {"id": draft_id, "deleted": True}
 
 
 def publish_generation(platform, workspace_id: str, actor: str,
@@ -872,6 +1476,8 @@ def publish_generation(platform, workspace_id: str, actor: str,
         )
         app_id = str(app["id"])
 
+    source_row = _get(platform, workspace_id, generation_id)
+    source_trace = source_row.get("trace") or {}
     artifact = {
         "generation_id": generation_id,
         "draft_id": draft["id"],
@@ -880,7 +1486,21 @@ def publish_generation(platform, workspace_id: str, actor: str,
         "published_at": _now(),
         "published_by": actor,
         "name": draft.get("name"),
+        # The artifact is the stable published contract.  Keeping the
+        # adjudicated blueprint (not just a generation id) lets the application
+        # render after the generation record is gone, and lets an engineer see
+        # exactly what was published.  The program is kept for reproducibility;
+        # the live view is still recompiled from the blueprint so data stays
+        # fresh and permissions are re-checked for the current viewer.
+        "blueprint": draft.get("blueprint"),
+        "program": draft.get("program"),
+        "question": draft.get("question"),
+        "roles": list(draft.get("roles") or []),
+        "ontology_version": source_trace.get("ontologyVersion"),
+        "engine_version": source_trace.get("engineVersion"),
     }
+    if not artifact["blueprint"]:
+        raise ValidationError("published draft has no blueprint")
     platform.applications.attach_ui_artifact(workspace_id, app_id, actor, artifact)
     draft["status"] = "published"
     draft["application_id"] = app_id
@@ -900,4 +1520,60 @@ def publish_generation(platform, workspace_id: str, actor: str,
         "draft": draft,
         "application": platform.applications.get(workspace_id, app_id, actor),
         "artifact": artifact,
+    }
+
+
+def application_ui_view(platform, workspace_id: str, actor: str,
+                        application_id: str) -> dict[str, Any]:
+    """Render a published AI artifact from the application, not the generation.
+
+    The application is the serving contract.  This endpoint intentionally reads
+    ``ui_artifact.blueprint`` first and only falls back to the old
+    generation-id-only artifact for already-published rows.  New publishes keep
+    enough information to survive generation cleanup.
+    """
+    platform.ctx.require(actor, workspace_id, "viewer")
+    app = platform.applications.get(workspace_id, application_id, actor)
+    artifact = app.get("ui_artifact") or {}
+    if not isinstance(artifact, dict) or not artifact:
+        raise NotFoundError("application has no AI-generated view")
+
+    blueprint = artifact.get("blueprint")
+    if not isinstance(blueprint, dict):
+        # Backward compatibility for artifacts published before the blueprint
+        # was stored.  They still render while the generation row exists.
+        generation_id = str(artifact.get("generation_id") or "")
+        if generation_id:
+            row = _get(platform, workspace_id, generation_id)
+            blueprint = row.get("blueprint")
+            if blueprint and not artifact.get("question"):
+                artifact = {**artifact, "question": row.get("question"),
+                            "roles": row.get("roles") or []}
+        if not isinstance(blueprint, dict):
+            raise ValidationError(
+                "this published AI artifact predates snapshots; republish it")
+
+    question = str(artifact.get("question") or (blueprint.get("meta") or {}).get(
+        "sourceQuestion") or "AI 生成视图")
+    roles = _role_ok(
+        platform, workspace_id, actor, list(artifact.get("roles") or ["owner"]))
+    result = compile_smart_ui_blueprint(
+        platform, workspace_id, actor, question, roles, blueprint,
+        pruned=(artifact.get("validation") or {}).get("pruned") or [],
+    )
+    return {
+        **result,
+        "artifact": {
+            "generation_id": artifact.get("generation_id"),
+            "draft_id": artifact.get("draft_id"),
+            "version": artifact.get("version"),
+            "program_hash": artifact.get("program_hash"),
+            "name": artifact.get("name"),
+            "published_at": artifact.get("published_at"),
+            "published_by": artifact.get("published_by"),
+        },
+        "application": {
+            "id": app.get("id"), "name": app.get("name"),
+            "workspace_id": app.get("workspace_id"),
+        },
     }

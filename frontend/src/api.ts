@@ -167,10 +167,74 @@ export interface SmartUiMeta {
   };
   /** ONTO_SMART_UI_STUDIO 开关；关闭时生成台接口返回 4xx。 */
   studio?: { enabled: boolean };
+  /** 这个工作空间实际会用的模型（服务端按 workspace > platform > none 解析）。
+   *  生成台以它为准判断“模型 / 确定性回退”，不看全局 llmReady。 */
+  model?: SmartUiModelStatus;
 }
 
-/** AI 生成台：一条生成记录（轮询到 succeeded/failed 为止）。 */
-export type UiGenerationStatus = "queued" | "running" | "succeeded" | "failed";
+export interface SmartUiModelStatus {
+  configured: boolean;
+  source: "workspace" | "platform" | "none";
+  provider: string;
+  /** 实际会调用的模型名；source=none 时为空。 */
+  model: string;
+  /** 只给主机（不含路径与密钥），用于界面展示端点来源。 */
+  base_url_host: string;
+  has_key: boolean;
+  /** true 表示这次生成会真的调用模型；false 时走确定性回退。 */
+  will_use_model: boolean;
+}
+
+/** 可选“数据范围”：让生成聚焦到某个具体对象实例，而不是平台默认焦点。 */
+export interface SmartUiFocusOption {
+  objectType: string;
+  /** 用来定位实例的对象属性名（例如车辆的车牌 plate）。 */
+  key: string;
+  /** 实例值（例如 鲁B67890）。 */
+  value: string;
+  /** 给用户看的显示名，可能比 value 更可读。 */
+  label: string;
+}
+
+/** GET /smart-ui/entities：可搜索的焦点实例选项。 */
+export interface SmartUiEntityResult {
+  items: SmartUiFocusOption[];
+  /** 过滤后的总数（items 只返回 limit 条）。 */
+  total: number;
+  objectTypes: string[];
+}
+
+/** 请求体里的焦点选择（与后端 _focus_request 对齐）。 */
+export interface SmartUiFocusRequest {
+  objectType: string;
+  key: string;
+  value: string;
+}
+
+/** 生成记录里保存的焦点（后端存储形状：object / key / value）。 */
+export interface UiGenerationFocus {
+  object: string;
+  key: string;
+  value: string;
+}
+
+/** POST /llm-config/check：真实调用模型端点的诊断结果（HTTP 仍为 200）。 */
+export interface LlmCheckResult {
+  ok: boolean;
+  /** 诊断分类：auth / not_found / timeout / rate_limit / transport / not_configured … */
+  errorType: string | null;
+  /** 模型端点返回的 HTTP 状态；未发出请求时为 null。 */
+  status: number | null;
+  latencyMs: number;
+  message: string;
+  model: string;
+  source: "workspace" | "platform" | "none" | string;
+  responsePreview?: string;
+}
+
+/** AI 生成台：一条生成记录（轮询到 succeeded/failed/cancelled/interrupted 为止）。 */
+export type UiGenerationStatus =
+  | "queued" | "running" | "succeeded" | "failed" | "cancelled" | "interrupted";
 export type UiGenerationMode = "llm" | "fallback" | "deterministic";
 
 export interface UiGenerationStep {
@@ -190,6 +254,23 @@ export interface UiGenerationCheck {
   detail: string;
 }
 
+/** 模型调用返回的 token 用量；不同 provider 的字段名不同，前端做兼容。 */
+export interface UiGenerationUsage {
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  total_tokens?: number;
+  input_tokens?: number;
+  output_tokens?: number;
+}
+
+/** 平台按部署配置的费率估算的成本；未配置费率时后端不返回 cost。 */
+export interface UiGenerationCost {
+  amount: number;
+  currency: string;
+  inputRatePer1k: number;
+  outputRatePer1k: number;
+}
+
 export interface UiGenerationSummary {
   id: string;
   workspace_id: string;
@@ -197,6 +278,14 @@ export interface UiGenerationSummary {
   instruction: string;
   status: UiGenerationStatus;
   mode: UiGenerationMode;
+  /** 用户请求的模式：auto / llm / deterministic；mode 是平台最终的裁决结果。 */
+  requested_mode?: string | null;
+  /** 真实模型调用的 token 用量；确定性回退时为 null。 */
+  usage?: UiGenerationUsage | null;
+  /** 按部署配置费率估算的成本；未配置费率时为 null（前端显示“未配置费率”）。 */
+  cost?: UiGenerationCost | null;
+  /** 本次生成指定的数据范围；未指定时为 null（平台默认焦点）。 */
+  focus?: UiGenerationFocus | null;
   parent_id: string | null;
   version: number;
   created_at: string;
@@ -224,8 +313,16 @@ export interface UiGeneration extends UiGenerationSummary {
     fallbackReason?: string;
     error?: string;
   };
+  /**
+   * 宽字段袋：模型/引擎版本/哈希，失败路径还会写 rawPreview（模型原始输出，≤2000 字符）。
+   */
   trace: Record<string, string | number | boolean | null | undefined>;
-  metrics: { totalMs?: number; compileMs?: number };
+  metrics: {
+    totalMs?: number;
+    compileMs?: number;
+    usage?: UiGenerationUsage | null;
+    cost?: UiGenerationCost | null;
+  };
   proposal: Record<string, unknown> | null;
   blueprint: {
     name?: string; displayName?: string; description?: string;
@@ -235,6 +332,58 @@ export interface UiGeneration extends UiGenerationSummary {
   } | null;
   context: Record<string, unknown>;
   budget: Record<string, number>;
+}
+
+/** GET /smart-ui/generations/{gid} 里的一条“相对上一版”变化。 */
+export interface UiGenerationDiffChange {
+  /** object / goal / focus / view / action / displayName，后端可能扩展。 */
+  kind: string;
+  key: string;
+  before: unknown;
+  after: unknown;
+}
+
+/** 相邻两版蓝图的结构 diff（只比结构，不比像素）。 */
+export interface UiGenerationDiff {
+  /** 父版本的蓝图名。 */
+  from: string | null;
+  /** 当前版本的蓝图名。 */
+  to: string | null;
+  changed: boolean;
+  changes: UiGenerationDiffChange[];
+}
+
+/** 生成详情：在 summary 之外带 steps/blueprint，以及版本链和相对上一版 diff。 */
+export interface UiGenerationDetail extends UiGeneration {
+  /** 祖先记录，最新在前（第 0 项就是当前记录）。 */
+  lineage?: UiGenerationSummary[];
+  /** 有父版本且两版都有蓝图时才有；首个版本没有。 */
+  diff?: UiGenerationDiff;
+}
+
+/** GET /smart-ui/generations 的过滤/分页参数（与后端 list_generations 对齐）。 */
+export interface SmartUiGenerationListQuery {
+  limit?: number;
+  offset?: number;
+  /** 匹配 question / instruction / display_name / name / id。 */
+  q?: string;
+  /** 精确匹配生成状态（queued/running/succeeded/failed/cancelled/interrupted）。 */
+  status?: string;
+  /** 精确匹配蓝图里的对象类型。 */
+  object?: string;
+  /** 精确匹配生成模式（llm/fallback/deterministic）。 */
+  mode?: UiGenerationMode;
+}
+
+/** GET /smart-ui/generations 的分页结果。 */
+export interface SmartUiGenerationListResult {
+  items: UiGenerationSummary[];
+  /** 过滤后的总条数。 */
+  total: number;
+  offset: number;
+  limit: number;
+  /** 未过滤的总条数。 */
+  all: number;
 }
 
 export interface UiDraft {
@@ -303,11 +452,19 @@ export interface Application {
   views: Record<string, AppView>; queries: Record<string, AppQuery>;
   agents: AppAgent[]; capabilities: string[];
   objective?: ObjectiveSpec;
-  /** Studio 发布时附带的生成快照；只描述呈现，不改 views/queries。 */
+  /** Studio 发布时附带的生成快照；只描述呈现，不改 views/queries。
+   *  现在会持久化蓝图与程序本身，生成记录清理后应用仍可渲染。 */
   ui_artifact?: {
     generation_id: string; draft_id: string; version: number;
     program_hash?: string | null; published_at?: string; published_by?: string;
     name?: string;
+    /** 发布时裁决通过的蓝图与编译产物快照。 */
+    blueprint?: Record<string, unknown> | null;
+    program?: Record<string, unknown> | null;
+    question?: string;
+    roles?: string[];
+    ontology_version?: string | null;
+    engine_version?: string | null;
   };
   created_at?: string; updated_at?: string;
 }
@@ -913,6 +1070,13 @@ const patch = <T,>(path: string, body: unknown) =>
     body: JSON.stringify(body ?? {}),
   });
 
+const put = <T,>(path: string, body: unknown) =>
+  call<T>(path, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body ?? {}),
+  });
+
 /* ---------------- 身份：令牌只放在 sessionStorage ---------------- */
 const TOKEN_KEY = "onto.api_token";
 
@@ -1078,20 +1242,37 @@ export interface Api {
 
   capabilities(wid: string): Promise<Capability[]>;
   smartUiMeta(wid: string): Promise<SmartUiMeta>;
-  /** 202 + 后台生成；用 smartUiGeneration 轮询。 */
+  /** 可搜索的焦点实例：object 缺省时返回所有对象类型里的实例。 */
+  smartUiEntities(wid: string, params?: {
+    object?: string; q?: string; limit?: number;
+  }): Promise<SmartUiEntityResult>;
+  /** 202 + 后台生成；用 smartUiGeneration 轮询。focus 指定“这次只看某个实例”。 */
   smartUiGenerate(wid: string, body: {
     question: string; roles: string[]; mode?: "auto" | "llm" | "deterministic";
+    focus?: SmartUiFocusRequest;
   }): Promise<UiGeneration>;
-  smartUiGenerations(wid: string, limit?: number): Promise<{ items: UiGenerationSummary[]; total: number }>;
-  smartUiGeneration(wid: string, gid: string): Promise<UiGeneration>;
+  /** 分页 + 过滤（q/status/object）的生成列表；返回 total/offset/limit/all。 */
+  smartUiGenerations(wid: string, params?: SmartUiGenerationListQuery): Promise<SmartUiGenerationListResult>;
+  /** 删除未发布的生成记录（连带未发布草稿）；运行中/已被发布草稿引用时后端 400。 */
+  smartUiDeleteGeneration(wid: string, gid: string): Promise<{ deleted: string; drafts: number }>;
+  /** 生成详情：比列表多 steps/blueprint/lineage/diff。 */
+  smartUiGeneration(wid: string, gid: string): Promise<UiGenerationDetail>;
+  /** 取消排队中/生成中的任务；已结束的记录原样返回。 */
+  smartUiCancel(wid: string, gid: string): Promise<UiGeneration>;
   /** 按已存蓝图重编译 + 当前数据快照；iframe 用这个地址取最新数据。 */
   smartUiGenerationView(wid: string, gid: string): Promise<UiGenerationViewResult>;
-  smartUiRefine(wid: string, gid: string, instruction: string): Promise<UiGeneration>;
+  /** 基于已成功版本继续修改；focus 省略时后端继承父记录的焦点。 */
+  smartUiRefine(wid: string, gid: string, instruction: string,
+                focus?: SmartUiFocusRequest): Promise<UiGenerationDetail>;
   smartUiAccept(wid: string, gid: string, name?: string): Promise<UiDraft>;
   smartUiPublish(wid: string, gid: string, body?: {
     name?: string; application_id?: string;
   }): Promise<{ draft: UiDraft; application: Application; artifact: Record<string, unknown> }>;
   smartUiDrafts(wid: string): Promise<{ items: UiDraft[]; total: number }>;
+  /** 重命名草稿（published 草稿也允许改名，但删除不允许）。 */
+  smartUiRenameDraft(wid: string, did: string, body: { name: string }): Promise<UiDraft>;
+  /** 删除草稿；published 草稿属于应用契约，后端会 400。 */
+  smartUiDeleteDraft(wid: string, did: string): Promise<DeleteResult>;
   createCapability(wid: string, body: Record<string, unknown>): Promise<Capability>;
   /** 改能力定义；后端只允许改草稿（已发布请用 cloneCapability 复制出新草稿）。 */
   updateCapability(wid: string, cid: string, body: CapabilityUpdate): Promise<Capability>;
@@ -1189,6 +1370,8 @@ export interface Api {
   }): Promise<{ ok: boolean; llm_provider: string }>;
   /** 工作空间级模型配置：密钥只写不读，读取只返回 key_last4。 */
   llmConfig(wid: string): Promise<LlmConfig>;
+  /** 真实调用一次模型端点做诊断（HTTP 200，ok=false 时看 errorType/message）。 */
+  llmCheck(wid: string): Promise<LlmCheckResult>;
   configureWorkspaceLlm(wid: string, body: LlmConfigUpdate): Promise<LlmConfig>;
 }
 
@@ -1239,20 +1422,48 @@ export const api: Api = {
 
   capabilities: wid => call(ws(wid, "/capabilities")),
   smartUiMeta: wid => call(ws(wid, "/smart-ui/meta")),
+  smartUiEntities: (wid, params = {}) => {
+    const search = new URLSearchParams();
+    if (params.object) search.set("object", params.object);
+    if (params.q) search.set("q", params.q);
+    if (params.limit) search.set("limit", String(params.limit));
+    const qs = search.toString();
+    return call(ws(wid, `/smart-ui/entities${qs ? `?${qs}` : ""}`));
+  },
   smartUiGenerate: (wid, b) => post(ws(wid, "/smart-ui/generations"), b),
-  smartUiGenerations: (wid, limit = 30) =>
-    call(ws(wid, `/smart-ui/generations?limit=${Math.max(1, Math.min(100, limit))}`)),
+  smartUiGenerations: (wid, params = {}) => {
+    const search = new URLSearchParams();
+    const limit = Math.max(1, Math.min(100, Number(params.limit) || 30));
+    search.set("limit", String(limit));
+    if (params.offset) search.set("offset", String(Math.max(0, params.offset)));
+    if (params.q) search.set("q", params.q);
+    if (params.status) search.set("status", params.status);
+    if (params.object) search.set("object", params.object);
+    if (params.mode) search.set("mode", params.mode);
+    return call(ws(wid, `/smart-ui/generations?${search.toString()}`));
+  },
+  smartUiDeleteGeneration: (wid, gid) =>
+    del(ws(wid, `/smart-ui/generations/${encodeURIComponent(gid)}`)),
   smartUiGeneration: (wid, gid) =>
     call(ws(wid, `/smart-ui/generations/${encodeURIComponent(gid)}`)),
+  smartUiCancel: (wid, gid) =>
+    post(ws(wid, `/smart-ui/generations/${encodeURIComponent(gid)}/cancel`), {}),
   smartUiGenerationView: (wid, gid) =>
     call(ws(wid, `/smart-ui/generations/${encodeURIComponent(gid)}/view`)),
-  smartUiRefine: (wid, gid, instruction) =>
-    post(ws(wid, `/smart-ui/generations/${encodeURIComponent(gid)}/refine`), { instruction }),
+  smartUiRefine: (wid, gid, instruction, focus) =>
+    post(ws(wid, `/smart-ui/generations/${encodeURIComponent(gid)}/refine`), {
+      instruction,
+      ...(focus ? { focus } : {}),
+    }),
   smartUiAccept: (wid, gid, name) =>
     post(ws(wid, `/smart-ui/generations/${encodeURIComponent(gid)}/accept`), { name: name ?? "" }),
   smartUiPublish: (wid, gid, body) =>
     post(ws(wid, `/smart-ui/generations/${encodeURIComponent(gid)}/publish`), body ?? {}),
   smartUiDrafts: wid => call(ws(wid, "/smart-ui/drafts")),
+  smartUiRenameDraft: (wid, did, body) =>
+    put(ws(wid, `/smart-ui/drafts/${encodeURIComponent(did)}`), body),
+  smartUiDeleteDraft: (wid, did) =>
+    del(ws(wid, `/smart-ui/drafts/${encodeURIComponent(did)}`)),
   createCapability: (wid, b) => post(ws(wid, "/capabilities"), b),
   updateCapability: (wid, cid, b) =>
     patch(ws(wid, `/capabilities/${encodeURIComponent(cid)}`), b),
@@ -1379,6 +1590,7 @@ export const api: Api = {
   agent: (wid, goal, maxSteps, llm) => post(ws(wid, "/agent"), { goal, max_steps: maxSteps, ...(llm ? { llm } : {}) }),
   configureLlm: body => post("/api/llm", body),
   llmConfig: wid => call(ws(wid, "/llm-config")),
+  llmCheck: wid => post(ws(wid, "/llm-config/check"), {}),
   configureWorkspaceLlm: (wid, body) => call(ws(wid, "/llm-config"), {
     method: "PUT",
     headers: { "Content-Type": "application/json" },

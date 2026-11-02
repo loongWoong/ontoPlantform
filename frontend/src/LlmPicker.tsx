@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, type LlmConfig, type LlmConfigUpdate } from "./api";
+import { api, type LlmCheckResult, type LlmConfig, type LlmConfigUpdate } from "./api";
 import { useAction, usePlatform, type LlmSetting } from "./store";
 import { Btn, Field, Loading, Select, Tag, TextInput, useLoad } from "./ui";
 import { formatLocal } from "./lib/time";
@@ -115,30 +115,48 @@ export function LlmPicker({ compact = false }: { compact?: boolean }) {
   );
 }
 
+const CHECK_ERROR_LABEL: Record<string, string> = {
+  auth: "密钥无效或没有权限（鉴权失败）",
+  not_found: "端点或模型不存在（检查服务地址与模型名）",
+  timeout: "调用超时（网络或代理太慢）",
+  rate_limit: "被限流（稍后重试，或换一个模型）",
+  not_configured: "没有可用模型：AI 生成会走确定性回退",
+  transport: "连接失败（检查服务地址与网络）",
+};
+
+/** POST /llm-config/check 的诊断结果：服务端真实调用一次端点，HTTP 200。 */
 export function LlmTest() {
   const { wid, llm, toast } = usePlatform();
+  const [result, setResult] = useState<LlmCheckResult | null>(null);
   const { run, running } = useAction(async () => {
     if (llm.mode === "demo") { toast("演示模式：不需要模型服务，用内置脚本走流程", "ok"); return; }
-    const h = await api.health();
-    const provider = h.llm_provider || "none";
-    let workspaceCfg: LlmConfig | null = null;
-    if (wid) {
-      try { workspaceCfg = await api.llmConfig(wid); } catch { workspaceCfg = null; }
-    }
-    if (workspaceCfg?.provider && workspaceCfg.provider !== "none" && (workspaceCfg.configured || workspaceCfg.has_key)) {
-      toast(`工作空间模型已配置：${workspaceCfg.provider}${workspaceCfg.model ? ` · ${workspaceCfg.model}` : ""}；实际调用是否成功以运行结果为准`, "ok");
-    } else if (workspaceCfg?.provider && workspaceCfg.provider !== "none") {
-      toast("工作空间模型已选择，但还没有保存密钥；请补密钥，或切回平台默认/演示模式", "warn");
-    } else if (!h.llm_configured || provider === "none") {
-      toast("服务端还没配模型，AI 功能会明确报错；可先切「演示模式」看流程，或保存工作空间模型", "warn");
+    if (!wid) { toast("先选择一个工作空间，再检查模型配置", "warn"); return; }
+    setResult(null);
+    const r = await api.llmCheck(wid);
+    setResult(r);
+    if (r.ok) {
+      toast(`模型调用成功${r.latencyMs ? ` · ${r.latencyMs} ms` : ""}（${r.model || r.source}）`, "ok");
     } else {
-      toast(`平台模型已配置：${provider}；工作空间没有单独配置时使用平台默认`, "ok");
+      const reason = CHECK_ERROR_LABEL[r.errorType || ""] || r.message || "未知错误";
+      toast(`模型检查未通过：${reason}`, "warn");
     }
   }, [wid, llm]);
   return (
-    <div className="btn-row">
-      <Btn size="sm" busy={running} onClick={() => void run()}>检查模型配置</Btn>
-      <Tag kind="plain">当前来源：{LLM_MODE_LABEL[llm.mode]}</Tag>
+    <div>
+      <div className="btn-row">
+        <Btn size="sm" busy={running} onClick={() => void run()}>检查模型配置</Btn>
+        <Tag kind="plain">当前来源：{LLM_MODE_LABEL[llm.mode]}</Tag>
+      </div>
+      {result ? (
+        <div className={`banner ${result.ok ? "info" : "warn"}`} style={{ marginTop: 10 }}>
+          <b>{result.ok ? "模型调用成功" : "模型检查未通过"}</b>
+          <p className="muted small" style={{ margin: "4px 0 0" }}>
+            {result.ok
+              ? `模型 ${result.model || "—"} · 来源 ${result.source} · ${result.latencyMs} ms${result.responsePreview ? ` · 回复示例：${result.responsePreview}` : ""}`
+              : `${CHECK_ERROR_LABEL[result.errorType || ""] || result.message || "未知错误"}${result.status != null ? `（HTTP ${result.status}）` : ""} · 来源 ${result.source}`}
+          </p>
+        </div>
+      ) : null}
     </div>
   );
 }

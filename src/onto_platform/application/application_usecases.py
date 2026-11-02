@@ -220,9 +220,10 @@ class UpdateApplication(_AppMixin):
 class AttachUiArtifact(_AppMixin):
     """Attach a generated smart-UI snapshot to a draft application.
 
-    Published applications are immutable (clone first), and only metadata is
-    written: the declarative views/queries are left untouched so a Studio
-    publish can never silently change an existing app's data contract.
+    Published applications are immutable (clone first).  The artifact is a
+    self-contained published snapshot (blueprint/program plus provenance); the
+    declarative views/queries are left untouched so a Studio publish can never
+    silently change an existing app's data contract.
     """
 
     def __init__(self, ctx: ApplicationContext) -> None:
@@ -449,8 +450,15 @@ class PublishApplication(_AppMixin):
 
     def _problems(self, workspace_id: str, app: Application) -> list[str]:
         problems: list[str] = []
-        if not app.views and not app.queries:
+        # A published AI artifact is a serving surface in its own right: the
+        # Studio's publish flow deliberately creates a new application with no
+        # hand-built views/queries, and rejecting that made "发布" a dead end.
+        if not app.views and not app.queries and not app.ui_artifact:
             problems.append("application needs at least one view or query")
+        if app.ui_artifact and not (app.ui_artifact.get("generation_id")
+                                    or app.ui_artifact.get("blueprint")):
+            problems.append(
+                "ui_artifact must reference a generation or contain a blueprint")
         ontology = published_ontology_row(self._ctx, workspace_id)
         if ontology is None:
             problems.append(

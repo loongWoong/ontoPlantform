@@ -19,6 +19,27 @@ class LLMMessage:
 @dataclass(frozen=True, slots=True)
 class LLMResponse:
     content: str
+    # Optional provider-reported usage (prompt/completion/total tokens).  It is
+    # deliberately optional so scripted/test providers stay source-compatible;
+    # real OpenAI-compatible endpoints do return it and cost/observability code
+    # must not have to re-parse the raw response.
+    usage: dict | None = None
+
+
+class LLMTransportError(Exception):
+    """A model call failed before a usable completion was produced.
+
+    Callers should keep the machine-readable ``kind``/``status`` and show a
+    human-readable message.  The raw provider body is truncated; credentials
+    are never included by the provider adapter.
+    """
+
+    def __init__(self, message: str, *, kind: str = "transport",
+                 status: int | None = None, body: str = "") -> None:
+        super().__init__(message)
+        self.kind = kind
+        self.status = status
+        self.body = body
 
 
 class LLMProvider(Protocol):
