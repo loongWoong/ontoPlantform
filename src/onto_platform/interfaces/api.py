@@ -104,6 +104,17 @@ from .smart_ui import (
     smart_ui_engine_available,
     smart_ui_meta,
 )
+from .smart_ui_studio import (
+    accept_generation,
+    generation_view,
+    get_generation,
+    list_drafts,
+    list_generations,
+    publish_generation,
+    refine_generation,
+    start_generation,
+    studio_enabled,
+)
 
 import hmac
 import os
@@ -206,7 +217,7 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
                 self.send_header("Access-Control-Allow-Origin", origin)
                 self.send_header("Vary", "Origin")
             self.send_header("Access-Control-Allow-Methods",
-                             "GET, POST, PATCH, DELETE, OPTIONS")
+                             "GET, POST, PUT, PATCH, DELETE, OPTIONS")
             self.send_header("Access-Control-Allow-Headers",
                              "Content-Type, Idempotency-Key, If-Match, Authorization")
 
@@ -243,7 +254,7 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
             raw_type = (self.headers.get("Content-Type") or "").split(";")[0]
             if raw_type.strip().lower() != "application/json":
                 raise ValidationError(
-                    "POST and PATCH require Content-Type: application/json")
+                    "POST, PUT and PATCH require Content-Type: application/json")
             length = int(self.headers.get("Content-Length", 0))
             raw = self.rfile.read(length) if length else b"{}"
             data = json.loads(raw or b"{}")
@@ -330,7 +341,7 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
                     f"cross-site request blocked: origin {origin!r} is not "
                     f"allowed"))
             # a preflight without Origin (local tooling) stays usable and
-            # advertises the mutating methods, PATCH included
+            # advertises the mutating methods, PUT/PATCH included
             self.send_response(204)
             self.send_header("Content-Length", "0")
             self._cors()
@@ -415,9 +426,14 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
             parts = [unquote(p) for p in parsed.path.split("/") if p]
             query = {k: _parse_scalar(v[-1]) for k, v in parse_qs(parsed.query).items()}
             try:
-                self._check_origin()
+                # Static console/runtime assets are public build output: they are
+                # served before the origin gate so the sandboxed smart-UI iframe
+                # (opaque origin -> ``Origin: null``) can load its module graph.
+                # API calls stay behind the origin allowlist below; the iframe
+                # reaches them through the console bridge, never directly.
                 if not parts or parts[0] != "api":
                     return self._serve_web(parts)
+                self._check_origin()
                 if parts == ["api", "health"]:
                     provider = platform.ctx.llm
                     engine_ready = smart_ui_engine_available()
@@ -429,6 +445,8 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
                         smart_ui_features.append("smart-ui.runtime")
                     if engine_ready and runtime_ready:
                         smart_ui_features.insert(0, "smart-ui")
+                    if engine_ready and studio_enabled():
+                        smart_ui_features.append("smart-ui.studio")
                     return self._send(200, {
                         "status": "ok",
                         "version": __version__,
@@ -515,13 +533,18 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
         def _send_file(self, path: Path) -> None:
             body = path.read_bytes()
             self.send_response(200)
-            self.send_header("Content-Type", _MIME.get(path.suffix.lower(), "application/octet-stream"))
+            self.send_header("Content-Type", _MIME.get(path.suffix.lower(),
+                                                       "application/octet-stream"))
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control",
                              "public, max-age=31536000, immutable"
                              if "assets" in path.parts and path.suffix != ".html"
                              else "no-cache")
-            self._cors()
+            # Public build output: the smart-UI iframe has an opaque origin
+            # (``Origin: null``) and module scripts are CORS requests, so the
+            # grant must be wildcard rather than the console echo above.  No
+            # credentials are involved and no API data goes through this path.
+            self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
             self.wfile.write(body)
 
@@ -553,7 +576,26 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
             if rest == ["capabilities"]:
                 return self._send(200, platform.capabilities.list(wid, actor=user))
             if rest == ["smart-ui", "meta"]:
-                return self._send(200, smart_ui_meta(platform, wid, user))
+                meta = smart_ui_meta(platform, wid, user)
+                meta["studio"] = {"enabled": studio_enabled()}
+                return self._send(200, meta)
+            if rest == ["smart-ui", "generations"]:
+                if not studio_enabled():
+                    raise NotFoundError("smart-UI Studio is disabled")
+                return self._send(200, list_generations(
+                    platform, wid, user,
+                    limit=self._query_int(query, "limit", 30)))
+            if len(rest) == 3 and rest[0] == "smart-ui" and rest[1] == "generations":
+                if not studio_enabled():
+                    raise NotFoundError("smart-UI Studio is disabled")
+                return self._send(200, get_generation(platform, wid, user, rest[2]))
+            if (len(rest) == 4 and rest[0] == "smart-ui"
+                    and rest[1] == "generations" and rest[3] == "view"):
+                return self._send(200, generation_view(platform, wid, user, rest[2]))
+            if rest == ["smart-ui", "drafts"]:
+                if not studio_enabled():
+                    raise NotFoundError("smart-UI Studio is disabled")
+                return self._send(200, list_drafts(platform, wid, user))
             if rest == ["applications"]:
                 return self._send(200, platform.applications.list(wid, actor=user))
             if rest == ["releases"]:
@@ -896,6 +938,33 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
                         if body.get("timeout") is not None else None))
                 status = 202 if result.get("status") == "unknown" else 200
                 return self._send(status, result)
+            if rest == ["smart-ui", "generations"]:
+                if not studio_enabled():
+                    raise NotFoundError("smart-UI Studio is disabled")
+                generation = start_generation(
+                    platform, wid, user,
+                    question=str(body.get("question") or ""),
+                    roles=[str(role) for role in (body.get("roles") or [])],
+                    mode=str(body.get("mode") or "auto"))
+                return self._send(202, generation)
+            if (len(rest) == 4 and rest[0] == "smart-ui"
+                    and rest[1] == "generations" and rest[3] == "refine"):
+                if not studio_enabled():
+                    raise NotFoundError("smart-UI Studio is disabled")
+                return self._send(202, refine_generation(
+                    platform, wid, user, rest[2],
+                    str(body.get("instruction") or "")))
+            if (len(rest) == 4 and rest[0] == "smart-ui"
+                    and rest[1] == "generations" and rest[3] == "accept"):
+                return self._send(200, accept_generation(
+                    platform, wid, user, rest[2],
+                    name=str(body.get("name") or "")))
+            if (len(rest) == 4 and rest[0] == "smart-ui"
+                    and rest[1] == "generations" and rest[3] == "publish"):
+                return self._send(200, publish_generation(
+                    platform, wid, user, rest[2],
+                    name=str(body.get("name") or ""),
+                    application_id=str(body.get("application_id") or "")))
             if rest == ["smart-ui", "compile"]:
                 return self._send(200, compile_smart_ui(
                     platform, wid, user,
@@ -974,6 +1043,32 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
                     wid, user, body.get("goal", ""), provider=provider,
                     max_steps=int(body.get("max_steps", 8))))
             raise ValidationError(f"no route for {self.path}")
+
+        # ------------------------------------------------------------ PUT
+
+        def do_PUT(self) -> None:
+            parsed = urlparse(self.path)
+            parts = [unquote(p) for p in parsed.path.split("/") if p]
+            query = {k: _parse_scalar(v[-1]) for k, v in parse_qs(parsed.query).items()}
+            try:
+                self._check_origin()
+                body = self._body()
+                if parts[:2] != ["api", "workspaces"] or len(parts) < 3:
+                    raise ValidationError(f"no route for {self.path}")
+                wid = parts[2]
+                rest = parts[3:]
+                if rest == ["llm-config"]:
+                    user = self._actor(body=body, query=query)
+                    return self._send(200, platform.llm_config.put(wid, user, body))
+                raise ValidationError(
+                    f"PUT is only supported for /api/workspaces/{{wid}}/llm-config; "
+                    f"no route for {self.path}")
+            except PlatformError as exc:
+                return self._error(exc)
+            except (KeyError, json.JSONDecodeError) as exc:
+                return self._error(ValidationError(f"invalid request body: {exc}"))
+            except Exception as exc:  # pragma: no cover
+                return self._error(exc)
 
         # ------------------------------------------------------------ PATCH
 

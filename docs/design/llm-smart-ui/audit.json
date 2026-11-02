@@ -1,0 +1,18 @@
+{
+  "01-studio.svg": {
+    "texts": 209,
+    "errors": []
+  },
+  "02-iterate.svg": {
+    "texts": 188,
+    "errors": []
+  },
+  "03-library.svg": {
+    "texts": 149,
+    "errors": []
+  },
+  "04-architecture.svg": {
+    "texts": 62,
+    "errors": []
+  }
+}

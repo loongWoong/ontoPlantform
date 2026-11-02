@@ -120,6 +120,10 @@ class Application:
     agents: list[dict] = field(default_factory=list)
     # business objective (plan-v2 2.1): {metric,target,band,window,direction,samples}
     objective: dict = field(default_factory=dict)
+    # generated smart-UI snapshot (Studio publish): {generation_id, draft_id,
+    # version, program_hash, published_at, published_by}.  The presentation
+    # lives in the artifact; declarative views/queries stay untouched.
+    ui_artifact: dict = field(default_factory=dict)
     lifecycle: str = "draft"
     created_at: str = ""
     updated_at: str = ""
@@ -135,6 +139,7 @@ class Application:
             "capabilities": list(self.capabilities),
             "agents": [dict(a) for a in self.agents],
             "objective": dict(self.objective),
+            "ui_artifact": dict(self.ui_artifact),
             "lifecycle": self.lifecycle,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
@@ -152,6 +157,7 @@ class Application:
             capabilities=list(data.get("capabilities", [])),
             agents=[dict(a) for a in data.get("agents", [])],
             objective=dict(data.get("objective") or {}),
+            ui_artifact=dict(data.get("ui_artifact") or {}),
             lifecycle=data.get("lifecycle", "draft"),
             created_at=data.get("created_at", ""),
             updated_at=data.get("updated_at", ""),

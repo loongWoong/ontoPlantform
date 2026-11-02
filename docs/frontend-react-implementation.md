@@ -216,10 +216,12 @@ POST /api/workspaces/{wid}/smart-ui/actions/{actionId}
 ```
 
 iframe 不再授予 `allow-same-origin`：浏览器给它不透明源（`self.origin === "null"`），
-父页面与 iframe 互相读不到 DOM/storage。控制台在 iframe `load` 和子页面的
-`onto.smartui.ready` 消息上，用 `postMessage` 把 bearer token 交给运行时内存；运行时
-带上该 token 跨源调用 API（CORS 已允许 `Content-Type / Idempotency-Key /
-Authorization`）。令牌不写进 iframe URL，也不依赖 `sessionStorage` 同源可见。
+父页面与 iframe 互相读不到 DOM/storage。静态构建产物（`/smart-ui/assets/*`、控制台
+`/assets/*`）在 Origin 白名单之前直接返回，并带 `Access-Control-Allow-Origin: *`，
+让不透明源能加载模块脚本和样式；API 直连仍然拒绝 `Origin: null`。运行时把
+meta / compile / 动作请求通过 `postMessage` 交给控制台，由同源页面补上令牌并调用平台
+接口；令牌不写进 iframe URL，也不依赖 `sessionStorage` 同源可见，同时不引入
+`Origin: null` 的 API CORS 缺口。
 
 后端 `interfaces/smart_ui.py` 是唯一适配层：
 
@@ -253,21 +255,51 @@ Authorization`）。令牌不写进 iframe URL，也不依赖 `sessionStorage` �
 - 实时数据：`鲁C56789`、84 个实例、3 个可执行动作（含参数化「状态处置」）；
 - 点击「站点日报」：确认弹窗无参数，确认后 `daily_report` POST 200；
 - 点击「状态处置」：弹窗渲染 `status` 输入；空值被前端拦截为「请填写…」；
-  填 `busy` 后 POST `set_status` 200，请求带 `Authorization: Bearer <token>`
-  （令牌由父页面 postMessage 传入），随后 compile 刷新；
+  填 `busy` 后 POST `set_status` 200，请求由控制台同源代理发出并带
+  `Authorization: Bearer <token>`，随后 compile 刷新；
 - 0 个 iframe console error，父页面 0 security 告警；
 - 角色从 `owner` 切到 `editor` 会重新编译，`congestion_scan` 仍可用；
   `viewer` 只能请求 `viewer` 视角且在编译期被裁掉写动作（L3/权限）；实际平台鉴权
   仍以登录 actor 为准，运行时 `role` 不能提升后端权限。
 
-### 7.3 已修复项与剩余边界
+### 7.3 AI视图（LLM Studio，独立菜单）
+
+新增一级菜单「AI视图」（业务世界分组，`frontend/src/nav.tsx`），与「智能视图」
+并列且互不影响：`智能视图` 仍是纯确定性编译/运行页，`AI视图` 才包含模型生成链路。
+AI视图页面位于 `frontend/src/views/AIView.tsx`，页内分段 `AI 生成台 | 生成记录`；
+Studio 组件位于 `frontend/src/views/SmartUIStudio.tsx`：左栏描述/示例/角色，中栏
+真实 iframe 预览与「继续修改」，右栏步骤轨迹、裁决、指标、草稿与发布；历史页
+保留提问、版本、模式、对象/视角、program hash，并可回到 Studio。
+
+深链：`#/w/<wid>/aiview?tab=studio|history&generation=<gid>`；旧
+`smartui?mode=studio|history` 链接会自动跳转到 AI视图，避免旧收藏失效。
+
+```
+POST /api/workspaces/{wid}/smart-ui/generations          # 202，异步任务
+GET  /api/workspaces/{wid}/smart-ui/generations          # 历史
+GET  /api/workspaces/{wid}/smart-ui/generations/{gid}    # 轮询状态/步骤/裁决
+GET  /api/workspaces/{wid}/smart-ui/generations/{gid}/view  # 按当前数据重编译
+POST /api/workspaces/{wid}/smart-ui/generations/{gid}/refine
+POST /api/workspaces/{wid}/smart-ui/generations/{gid}/accept
+POST /api/workspaces/{wid}/smart-ui/generations/{gid}/publish
+GET  /api/workspaces/{wid}/smart-ui/drafts
+```
+
+运行时新增 `?generation=<gid>` 只读快照模式：`runtime-web/src/platform.ts` 的
+`loadGenerationView` 拉取重编译结果，`App.tsx` 隐藏提问/重新编译入口并标注
+「AI 生成快照 · 只读」。父页面与 iframe 仍复用 §7.2 的 postMessage 同源代理，
+不引入新的 `Origin: null` API 缺口。浏览器实测：Studio/历史/运行三页 0 console
+error，1600px 无横向溢出，iframe 内为真实数据视图。
+
+### 7.4 已修复项与剩余边界
 
 | 项 | 说明 |
 |----|------|
 | 非 toll 本体的通用性 | 已由通用语义层覆盖：焦点对象、身份键、时间/数值/状态字段、关联对象都从本体与实例推导；不再要求 `plate`。自动化测试含 `Device/Site` 无车牌本体、高速 `Vehicle`、AI 建模 `PassageTransaction`，以及金融租赁 `LeaseContract`（合同/租赁物/账单/预警）场景 |
 | 参数化动作 | 已修复：能力 `inputs` 经适配层 → 引擎 `Action.parameters` → L4 `ActionButton` 的 `parameters` JSON 进入运行时；确认弹窗按 `type` 渲染输入并校验，后端 `_action_args` 拒绝未知/缺失/类型不符的 `args`。无参数动作仍走原 mutation 路径 |
 | 动作后数据刷新 | 已修复：动作成功（`ok !== false`）后运行时以当前问题重新 compile，刷新平台真实状态；动作请求带幂等键 |
-| iframe 沙箱告警 | 已修复：去掉 `allow-same-origin`，运行时在 opaque origin 中执行；令牌经 postMessage 传入内存，API 走 CORS。浏览器验证父/子 DOM 与 storage 互相不可读，页面无沙箱逃逸告警 |
+| iframe 沙箱告警 | 已修复：去掉 `allow-same-origin`，运行时在 opaque origin 中执行；令牌与 API 请求经 postMessage 交给父页面同源代理，API 直连仍拒绝 `Origin: null`。浏览器验证父/子 DOM 与 storage 互相不可读，页面无沙箱逃逸告警 |
+| 智能视图 iframe 资源/接口 403 | 已修复（2026-11）：第一步的 Origin 白名单把 opaque origin 的 `/smart-ui/assets/*` 与 API 请求一并拒掉，表现为 iframe 白屏 + CORS/403。现静态产物在 Origin 校验前返回且带 `Access-Control-Allow-Origin: *`，运行时 API 走父页面代理，`Origin: null` 直连 API 继续 403 |
 | 确认弹窗可测试性 | 已修复：`window.confirm` 换成应用内 `role="dialog"` 弹窗，包含参数输入与错误区；CDP e2e 覆盖取消、空值校验、成功执行 |
 | 平台角色 vs 运行时角色 | 运行时默认使用 `meta.actorRole`，切换只影响编译视角；后端校验“请求角色 ≤ actor 角色”，真实写权限仍由平台 actor 决定 |
 

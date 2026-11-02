@@ -13,6 +13,9 @@ These are the regression tests for the four defects fixed together:
 
 from __future__ import annotations
 
+import urllib.error
+import urllib.request
+
 import pytest
 
 from onto_platform.errors import (
@@ -20,6 +23,7 @@ from onto_platform.errors import (
     NotFoundError,
     ValidationError,
 )
+from onto_platform.interfaces.api import SMART_UI_DIR
 from onto_platform.ports.runtime import ObjectUpsert, SemanticDelta
 from tests.conftest import http_call, http_get, http_post, seed_workspace
 
@@ -417,6 +421,49 @@ def test_no_origin_requests_stay_usable(http_server):
     assert status == 204
     methods = headers["Access-Control-Allow-Methods"]
     assert "PATCH" in methods and "DELETE" in methods
+
+
+def _raw_get(base: str, path: str, headers: dict):
+    request = urllib.request.Request(base + path, headers=headers)
+    try:
+        with urllib.request.urlopen(request) as res:
+            return res.status, dict(res.headers), res.read().decode("utf-8")
+    except urllib.error.HTTPError as exc:
+        return exc.code, dict(exc.headers), exc.read().decode("utf-8")
+
+
+def test_static_assets_are_public_to_an_opaque_iframe_origin(http_server):
+    """The sandboxed smart-UI iframe has ``Origin: null``.
+
+    Its module scripts/styles are CORS requests, so static build output must be
+    served before the origin gate and with a wildcard grant.  Without this the
+    runtime iframe shows an empty page with 403s on ``/smart-ui/assets/*``.
+    """
+    base, _wid = http_server
+    opaque = {"Origin": "null"}
+
+    assert (SMART_UI_DIR / "index.html").is_file(), "smart-ui runtime not built"
+    status, headers, html = _raw_get(base, "/smart-ui/", opaque)
+    assert status == 200, html
+    assert _acao(headers) == "*"
+    assert "/smart-ui/assets/" in html
+
+    status, headers, _ = _raw_get(base, "/", opaque)
+    assert status == 200
+    assert _acao(headers) == "*"
+
+
+def test_opaque_origin_cannot_call_the_api_directly(http_server):
+    """Keep the CSRF boundary: the iframe reaches the API via its parent."""
+    base, _wid = http_server
+    opaque = {"Origin": "null"}
+
+    status, headers, _ = http_call("GET", base, "/api/health", headers=opaque)
+    assert status == 403 and _acao(headers) is None
+
+    status, headers, _ = http_call(
+        "OPTIONS", base, "/api/workspaces", headers=opaque)
+    assert status == 403 and _acao(headers) is None
 
 
 def test_post_and_patch_require_json_content_type(http_server):

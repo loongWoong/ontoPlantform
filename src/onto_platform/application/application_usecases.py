@@ -217,6 +217,37 @@ class UpdateApplication(_AppMixin):
         return app.to_dict()
 
 
+class AttachUiArtifact(_AppMixin):
+    """Attach a generated smart-UI snapshot to a draft application.
+
+    Published applications are immutable (clone first), and only metadata is
+    written: the declarative views/queries are left untouched so a Studio
+    publish can never silently change an existing app's data contract.
+    """
+
+    def __init__(self, ctx: ApplicationContext) -> None:
+        self._ctx = ctx
+
+    def __call__(self, workspace_id: str, app_id: str, actor: str,
+                 artifact: dict) -> dict:
+        self._ctx.require(actor, workspace_id, "editor")
+        if not isinstance(artifact, dict) or not artifact.get("generation_id"):
+            raise ValidationError("ui artifact needs a generation_id")
+        app = self._load(self._ctx, workspace_id, app_id)
+        self._assert_editable(app)
+        app.ui_artifact = dict(artifact)
+        app.updated_at = self._ctx.clock()
+        self._ctx.save("application", app.to_dict())
+        self._ctx.audit_event(
+            actor, workspace_id, "application.ui_artifact", app_id,
+            {"generation_id": artifact.get("generation_id"),
+             "draft_id": artifact.get("draft_id"),
+             "version": artifact.get("version"),
+             "program_hash": artifact.get("program_hash")},
+        )
+        return app.to_dict()
+
+
 class UpdateView(_AppMixin):
     """Edit one view in place (draft/validated applications only)."""
 

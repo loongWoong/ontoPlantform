@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import {
-  Database, GearSix, Graph, Layout, Lightning, Pulse, Sparkle,
+  Database, GearSix, Graph, Layout, Lightning, Pulse, Robot, Sparkle,
   SquaresFour, Target,
 } from "@phosphor-icons/react";
 
@@ -20,6 +20,7 @@ export const NAV: { group: string; items: NavItem[] }[] = [
       { id: "application", label: "应用", icon: <Layout size={16} /> },
       { id: "state", label: "对象实例", icon: <Target size={16} /> },
       { id: "smartui", label: "智能视图", icon: <Sparkle size={16} /> },
+      { id: "aiview", label: "AI视图", icon: <Robot size={16} /> },
     ],
   },
   {
@@ -37,8 +38,8 @@ export const NAV: { group: string; items: NavItem[] }[] = [
 
 export const PAGE_LABEL: Record<string, string> = {
   workbench: "工作台", ontology: "本体", data: "数据", capability: "能力",
-  application: "应用", state: "对象实例", smartui: "智能视图", operations: "运行",
-  assistant: "AI 助手", settings: "设置",
+  application: "应用", state: "对象实例", smartui: "智能视图", aiview: "AI视图",
+  operations: "运行", assistant: "AI 助手", settings: "设置",
 };
 
 export function navItems(): NavItem[] {

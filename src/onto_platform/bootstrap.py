@@ -16,10 +16,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .application.application_usecases import (    AddAgent,
+from .application.application_usecases import (
+    AddAgent,
     AddQuery,
     AddView,
     AttachCapability,
+    AttachUiArtifact,
     CloneApplication,
     CreateApplication,
     DeleteApplication,
@@ -289,6 +291,7 @@ class ApplicationUseCases:
         self.update_query = UpdateQuery(ctx)
         self.clone = CloneApplication(ctx)
         self.attach_capability = AttachCapability(ctx)
+        self.attach_ui_artifact = AttachUiArtifact(ctx)
         self.add_agent = AddAgent(ctx)
         self.publish = PublishApplication(ctx)
         self.run_query = RunAppQuery(ctx)

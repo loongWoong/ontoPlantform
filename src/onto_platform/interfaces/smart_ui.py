@@ -83,7 +83,10 @@ def _engine() -> dict[str, Any]:
         try:
             import onto_ui_engine  # noqa: PLC0415
             from onto_ui_engine import compiler, models, planner  # noqa: PLC0415
-            from onto_ui_engine.capabilities import derive_capabilities  # noqa: PLC0415
+            from onto_ui_engine.capabilities import (  # noqa: PLC0415
+                derive_capabilities,
+                resolve_query_root,
+            )
         except Exception as exc:  # pragma: no cover - environment failure
             raise ValidationError(
                 f"smart-ui engine found at {resolved} but could not be imported: {exc}"
@@ -93,6 +96,7 @@ def _engine() -> dict[str, Any]:
             "models": models,
             "planner": planner,
             "derive_capabilities": derive_capabilities,
+            "resolve_query_root": resolve_query_root,
             "version": str(getattr(onto_ui_engine, "__version__", ENGINE_VERSION)),
             "source": resolved,
         }
@@ -1949,6 +1953,148 @@ def compile_smart_ui(platform: "Platform", workspace_id: str, actor: str,
         "engineVersion": str(modules.get("version") or ENGINE_VERSION),
         "capabilities": [cap.get("key") for cap in _capabilities_of(platform, workspace_id, actor)
                          if cap.get("key")],
+        "dataSource": "ontoPlantform runtime gateway",
+    }
+    return {"compiled": payload, "bundle": bundle}
+
+
+def smart_ui_snapshot(platform: "Platform", workspace_id: str,
+                      actor: str) -> dict[str, Any]:
+    """One consistent view of ontology + focus for a generation.
+
+    Studio builds the LLM context pack and the compiler input from the same
+    snapshot so the proposal cannot be judged against a different ontology
+    revision than the one used to compile it.
+    """
+    ontology_data = _ontology_of(platform, workspace_id, actor)
+    context = _select_focus(platform, workspace_id, ontology_data)
+    ontology, bridge = build_engine_ontology(
+        platform, workspace_id, actor,
+        ontology_data=ontology_data, context=context,
+    )
+    return {
+        "ontologyData": ontology_data,
+        "context": context,
+        "ontology": ontology,
+        "bridge": bridge,
+    }
+
+
+def compile_smart_ui_blueprint(
+    platform: "Platform",
+    workspace_id: str,
+    actor: str,
+    question: str,
+    roles: list[str],
+    blueprint: dict[str, Any],
+    *,
+    snapshot: dict[str, Any] | None = None,
+    base_diagnostics: tuple[Any, ...] = (),
+    pruned: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Compile a platform-adjudicated blueprint instead of re-planning it.
+
+    The LLM never reaches the compiler: Studio normalizes its proposal into a
+    schema-valid blueprint and this function runs the *existing* deterministic
+    validator/compiler on it.  A rejected blueprint raises ``ValidationError``
+    with the engine diagnostics, so nothing half-built can be rendered.
+    """
+    modules = _engine()
+    compiler = modules["compiler"]
+
+    question = (question or "").strip()
+    if not question:
+        raise ValidationError("question must not be empty")
+    roles = [role for role in (roles or []) if role in ROLE_IDS]
+    if not roles:
+        raise ValidationError(f"roles must contain at least one of {list(ROLE_IDS)}")
+    actor_role = _actor_role(platform, workspace_id, actor)
+    _require_roles_at_most(actor_role, roles)
+
+    if not isinstance(blueprint, dict):
+        raise ValidationError("blueprint must be an object")
+    snapshot = snapshot or smart_ui_snapshot(platform, workspace_id, actor)
+    ontology = snapshot["ontology"]
+    bridge = snapshot["bridge"]
+    context = snapshot["context"]
+    ontology_data = snapshot["ontologyData"]
+
+    compiled = compiler.compile_blueprint(
+        blueprint,
+        ontology,
+        tuple(roles),
+        base_diagnostics=tuple(base_diagnostics),
+    )
+    if compiled.errors:
+        raise ValidationError(
+            "L4 compile failed: "
+            + "; ".join(d.message for d in compiled.errors[:3])
+        )
+
+    context_spec = blueprint.get("context") or {}
+    focus = context_spec.get("focus") or {}
+    intent = modules["models"].Intent(
+        goal=str(context_spec.get("goal") or "overview"),
+        object=str(context_spec.get("object") or ""),
+        focus_key=str(focus.get("key")) if focus.get("key") else None,
+        focus_value=str(focus.get("value")) if focus.get("value") else None,
+        source_question=question,
+        confidence=float((blueprint.get("meta") or {}).get("confidence") or 0.85),
+    )
+    capabilities = [
+        cap.to_dict()
+        for cap in modules["derive_capabilities"](
+            ontology, str(context_spec.get("object") or ""))
+    ]
+    view_list = [
+        str(view.get("perspective"))
+        for view in (blueprint.get("views") or [])
+        if isinstance(view, dict) and view.get("perspective")
+    ]
+    artifacts = {
+        "engineVersion": str(modules.get("version") or ENGINE_VERSION),
+        "generatedAt": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "question": question,
+        "intent": intent.to_dict(),
+        "ontology": ontology.to_summary(),
+        "capabilities": capabilities,
+        "requestedPerspectives": view_list,
+        "finalPerspectives": view_list,
+        "prunedPerspectives": list(pruned or []),
+        "planningDiagnostics": [
+            d.to_dict() for d in compiled.diagnostics
+        ],
+        "programBytes": len(compiled.program.encode("utf-8")),
+        "programLines": len(compiled.program.splitlines()),
+        "toolClosure": {
+            "programTools": sorted(
+                modules["models"].extract_program_tool_names(compiled.program)
+            ),
+            "compiledTools": [tool.name for tool in compiled.tools],
+            "closed": modules["models"].extract_program_tool_names(compiled.program)
+            <= {tool.name for tool in compiled.tools},
+        },
+    }
+    payload = compiled.to_dict()
+    payload.update({
+        "artifacts": artifacts,
+        "question": question,
+        "ok": bool(compiled.program) and not compiled.errors,
+    })
+    bundle = build_bundle(
+        platform, workspace_id, actor, ontology_data, bridge, question,
+        context=context,
+    )
+    payload["bridge"] = {
+        **bridge,
+        "workspaceId": workspace_id,
+        "actorRole": actor_role,
+        "engineVersion": str(modules.get("version") or ENGINE_VERSION),
+        "capabilities": [
+            cap.get("key")
+            for cap in _capabilities_of(platform, workspace_id, actor)
+            if cap.get("key")
+        ],
         "dataSource": "ontoPlantform runtime gateway",
     }
     return {"compiled": payload, "bundle": bundle}

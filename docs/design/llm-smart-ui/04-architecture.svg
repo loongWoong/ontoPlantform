@@ -1,0 +1,118 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="760" viewBox="0 0 1600 760" role="img">
+<rect width="1600" height="760" fill="#f7f6f3"/>
+<line x1="60" y1="64" x2="74" y2="64" stroke="#d5d0c4" stroke-width="1"/>
+<text x="80" y="67.4" fill="#6b665c" font-size="8.6" font-family="'Cascadia Mono',Consolas,monospace" font-weight="400" letter-spacing="1.4">SMART UI STUDIO · PIPELINE</text>
+<text x="60" y="104" fill="#1a1814" font-size="32" font-family="'Newsreader','Songti SC','SimSun',Georgia,serif" font-weight="500" letter-spacing="-0.6">LLM 提议，平台裁决</text>
+<text x="60" y="128" fill="#6b665c" font-size="12.2" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">模型只产出受 Schema 约束的蓝图提案；校验、编译、数据与权限始终由平台决定。</text>
+<line x1="1160" y1="76" x2="1186" y2="76" stroke="#1a1814" stroke-width="1.4"/>
+<text x="1194" y="79" fill="#6b665c" font-size="8.4" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">主链路</text>
+<line x1="1250" y1="76" x2="1276" y2="76" stroke="#9a5944" stroke-width="1.4" stroke-dasharray="4 3"/>
+<text x="1284" y="79" fill="#6b665c" font-size="8.4" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">重试 / 回退</text>
+<line x1="1356" y1="76" x2="1382" y2="76" stroke="#6b665c" stroke-width="1.2" stroke-dasharray="2 3"/>
+<text x="1390" y="79" fill="#6b665c" font-size="8.4" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">审计写入</text>
+<line x1="52" y1="162" x2="468" y2="162" stroke="#e6e2d9" stroke-width="1"/>
+<text x="52" y="156" fill="#736d61" font-size="7.8" font-family="'Cascadia Mono',Consolas,monospace" font-weight="400" letter-spacing="1">控制台 · 同源</text>
+<line x1="492" y1="162" x2="1348" y2="162" stroke="#e6e2d9" stroke-width="1"/>
+<text x="492" y="156" fill="#736d61" font-size="7.8" font-family="'Cascadia Mono',Consolas,monospace" font-weight="400" letter-spacing="1">应用层 + 引擎</text>
+<line x1="1372" y1="162" x2="1568" y2="162" stroke="#e6e2d9" stroke-width="1"/>
+<text x="1372" y="156" fill="#736d61" font-size="7.8" font-family="'Cascadia Mono',Consolas,monospace" font-weight="400" letter-spacing="1">资产 · 治理</text>
+<rect x="52" y="180" width="196" height="150" fill="#ffffff" stroke="#e6e2d9" stroke-width="1" rx="8" data-panel="node01"/>
+<text x="68" y="204" fill="#736d61" font-size="8.2" font-family="'Cascadia Mono',Consolas,monospace" font-weight="400" letter-spacing="1.2">01</text>
+<text x="68" y="230" fill="#1a1814" font-size="13" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="600">描述与约束</text>
+<text x="68" y="252" fill="#6b665c" font-size="8.4" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">业务语言 + 角色 / 输出</text>
+<text x="68" y="267" fill="#6b665c" font-size="8.4" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">设备 / 风格约束；不含</text>
+<text x="68" y="282" fill="#6b665c" font-size="8.4" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">任何数据实例值</text>
+<line x1="68" y1="300" x2="232" y2="300" stroke="#efede7" stroke-width="1"/>
+<rect x="272" y="180" width="196" height="150" fill="#ffffff" stroke="#e6e2d9" stroke-width="1" rx="8" data-panel="node02"/>
+<text x="288" y="204" fill="#736d61" font-size="8.2" font-family="'Cascadia Mono',Consolas,monospace" font-weight="400" letter-spacing="1.2">02</text>
+<text x="288" y="230" fill="#1a1814" font-size="13" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="600">上下文包</text>
+<text x="288" y="252" fill="#6b665c" font-size="8.4" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">L0 本体 + L1 能力 + L2</text>
+<text x="288" y="267" fill="#6b665c" font-size="8.4" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">模板；focus 与计数；</text>
+<text x="288" y="282" fill="#6b665c" font-size="8.4" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">actor 权限快照</text>
+<line x1="288" y1="300" x2="452" y2="300" stroke="#efede7" stroke-width="1"/>
+<rect x="492" y="180" width="196" height="150" fill="#ffffff" stroke="#e6e2d9" stroke-width="1" rx="8" data-panel="node03"/>
+<text x="508" y="204" fill="#736d61" font-size="8.2" font-family="'Cascadia Mono',Consolas,monospace" font-weight="400" letter-spacing="1.2">03</text>
+<text x="508" y="230" fill="#1a1814" font-size="13" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="600">LLM 提议</text>
+<text x="508" y="252" fill="#6b665c" font-size="8.4" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">Schema 约束的</text>
+<text x="508" y="267" fill="#6b665c" font-size="8.4" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">BlueprintIntent；禁止坐标、</text>
+<text x="508" y="282" fill="#6b665c" font-size="8.4" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">脚本与表现层字段</text>
+<line x1="508" y1="300" x2="672" y2="300" stroke="#efede7" stroke-width="1"/>
+<rect x="712" y="180" width="196" height="150" fill="#ffffff" stroke="#e6e2d9" stroke-width="1" rx="8" data-panel="node04"/>
+<text x="728" y="204" fill="#736d61" font-size="8.2" font-family="'Cascadia Mono',Consolas,monospace" font-weight="400" letter-spacing="1.2">04</text>
+<text x="728" y="230" fill="#1a1814" font-size="13" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="600">平台裁决</text>
+<text x="728" y="252" fill="#6b665c" font-size="8.4" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">Schema / 组件白名单 /</text>
+<text x="728" y="267" fill="#6b665c" font-size="8.4" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">数据范围 / 动作权限 /</text>
+<text x="728" y="282" fill="#6b665c" font-size="8.4" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">预算与时延</text>
+<line x1="728" y1="300" x2="892" y2="300" stroke="#efede7" stroke-width="1"/>
+<rect x="932" y="180" width="196" height="150" fill="#ffffff" stroke="#e6e2d9" stroke-width="1" rx="8" data-panel="node05"/>
+<text x="948" y="204" fill="#736d61" font-size="8.2" font-family="'Cascadia Mono',Consolas,monospace" font-weight="400" letter-spacing="1.2">05</text>
+<text x="948" y="230" fill="#1a1814" font-size="13" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="600">确定性编译</text>
+<text x="948" y="252" fill="#6b665c" font-size="8.4" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">复用 L3 规划 + L4 编译；</text>
+<text x="948" y="267" fill="#6b665c" font-size="8.4" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">同一 proposal 编译出</text>
+<text x="948" y="282" fill="#6b665c" font-size="8.4" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">同一程序与哈希</text>
+<line x1="948" y1="300" x2="1112" y2="300" stroke="#efede7" stroke-width="1"/>
+<rect x="1152" y="180" width="196" height="150" fill="#ffffff" stroke="#e6e2d9" stroke-width="1" rx="8" data-panel="node06"/>
+<text x="1168" y="204" fill="#736d61" font-size="8.2" font-family="'Cascadia Mono',Consolas,monospace" font-weight="400" letter-spacing="1.2">06</text>
+<text x="1168" y="230" fill="#1a1814" font-size="13" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="600">沙箱预览</text>
+<text x="1168" y="252" fill="#6b665c" font-size="8.4" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">Opaque origin + bridge；</text>
+<text x="1168" y="267" fill="#6b665c" font-size="8.4" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">绑定真实 payload；</text>
+<text x="1168" y="282" fill="#6b665c" font-size="8.4" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">角色切换不重调模型</text>
+<line x1="1168" y1="300" x2="1332" y2="300" stroke="#efede7" stroke-width="1"/>
+<rect x="1372" y="180" width="196" height="150" fill="#ffffff" stroke="#e6e2d9" stroke-width="1" rx="8" data-panel="node07"/>
+<text x="1388" y="204" fill="#736d61" font-size="8.2" font-family="'Cascadia Mono',Consolas,monospace" font-weight="400" letter-spacing="1.2">07</text>
+<text x="1388" y="230" fill="#1a1814" font-size="13" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="600">资产化</text>
+<text x="1388" y="252" fill="#6b665c" font-size="8.4" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">草稿 / 版本 / 发布快照；</text>
+<text x="1388" y="267" fill="#6b665c" font-size="8.4" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">program_hash 与</text>
+<text x="1388" y="282" fill="#6b665c" font-size="8.4" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">审计事件绑定</text>
+<line x1="1388" y1="300" x2="1552" y2="300" stroke="#efede7" stroke-width="1"/>
+<line x1="249" y1="255" x2="266" y2="255" stroke="#1a1814" stroke-width="1.4"/>
+<path d="M266 255 l-5 -3.2 v6.4 Z" fill="#1a1814"/>
+<line x1="469" y1="255" x2="486" y2="255" stroke="#1a1814" stroke-width="1.4"/>
+<path d="M486 255 l-5 -3.2 v6.4 Z" fill="#1a1814"/>
+<line x1="689" y1="255" x2="706" y2="255" stroke="#1a1814" stroke-width="1.4"/>
+<path d="M706 255 l-5 -3.2 v6.4 Z" fill="#1a1814"/>
+<line x1="909" y1="255" x2="926" y2="255" stroke="#1a1814" stroke-width="1.4"/>
+<path d="M926 255 l-5 -3.2 v6.4 Z" fill="#1a1814"/>
+<line x1="1129" y1="255" x2="1146" y2="255" stroke="#1a1814" stroke-width="1.4"/>
+<path d="M1146 255 l-5 -3.2 v6.4 Z" fill="#1a1814"/>
+<line x1="1349" y1="255" x2="1366" y2="255" stroke="#1a1814" stroke-width="1.4"/>
+<path d="M1366 255 l-5 -3.2 v6.4 Z" fill="#1a1814"/>
+<path d="M790 330 V370 H590 V332" stroke="#9a5944" stroke-width="1.3" stroke-dasharray="5 3"/>
+<path d="M590 332 l-3.4 5 h6.8 Z" fill="#9a5944"/>
+<text x="700" y="362" fill="#9a5944" font-size="8.2" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">校验失败 · 带诊断重试 ≤ 1 次</text>
+<path d="M830 330 V404 H1030 V332" stroke="#6b665c" stroke-width="1.3" stroke-dasharray="5 3"/>
+<path d="M1030 332 l-3.4 5 h6.8 Z" fill="#6b665c"/>
+<text x="880" y="396" fill="#6b665c" font-size="8.2" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">模型不可用 / 超时 / 校验仍失败 → 确定性回退</text>
+<rect x="52" y="452" width="1516" height="118" fill="#fbfaf8" stroke="#e6e2d9" stroke-width="1" rx="10" data-panel="governance"/>
+<text x="72" y="478" fill="#6b665c" font-size="8.6" font-family="'Cascadia Mono',Consolas,monospace" font-weight="400" letter-spacing="1.2">治理闸门 · 每一步都留痕</text>
+<text x="72" y="510" fill="#1a1814" font-size="10.4" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="600">Schema 校验</text>
+<text x="72" y="528" fill="#6b665c" font-size="8.2" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">蓝图 Schema · 视角词表 · 属性存在性</text>
+<text x="448" y="510" fill="#1a1814" font-size="10.4" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="600">权限剪裁</text>
+<text x="448" y="528" fill="#6b665c" font-size="8.2" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">actor 角色 ≤ 请求角色；动作二次校验</text>
+<line x1="432" y1="492" x2="432" y2="548" stroke="#efede7" stroke-width="1"/>
+<text x="824" y="510" fill="#1a1814" font-size="10.4" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="600">预算与时延</text>
+<text x="824" y="528" fill="#6b665c" font-size="8.2" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">60s 超时 · token 上限 · 失败自动降级</text>
+<line x1="808" y1="492" x2="808" y2="548" stroke="#efede7" stroke-width="1"/>
+<text x="1200" y="510" fill="#1a1814" font-size="10.4" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="600">审计与版本</text>
+<text x="1200" y="528" fill="#6b665c" font-size="8.2" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">prompt_hash · program_hash · 发布人</text>
+<line x1="1184" y1="492" x2="1184" y2="548" stroke="#efede7" stroke-width="1"/>
+<rect x="52" y="596" width="360" height="34" fill="#ffffff" stroke="#e6e2d9" stroke-width="1" rx="6"/>
+<circle cx="70" cy="613" r="6" fill="#edf2ea" stroke="#3d6744" stroke-width="1"/>
+<path d="M67.4 613 L69.4 615.2 L73 610.8" stroke="#3d6744" stroke-width="1.3" stroke-linecap="round"/>
+<text x="84" y="617" fill="#4b473f" font-size="9" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">I1 LLM 不写表现层</text>
+<rect x="432" y="596" width="360" height="34" fill="#ffffff" stroke="#e6e2d9" stroke-width="1" rx="6"/>
+<circle cx="450" cy="613" r="6" fill="#edf2ea" stroke="#3d6744" stroke-width="1"/>
+<path d="M447.4 613 L449.4 615.2 L453 610.8" stroke="#3d6744" stroke-width="1.3" stroke-linecap="round"/>
+<text x="464" y="617" fill="#4b473f" font-size="9" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">I4 视角必须有本体依据</text>
+<rect x="812" y="596" width="360" height="34" fill="#ffffff" stroke="#e6e2d9" stroke-width="1" rx="6"/>
+<circle cx="830" cy="613" r="6" fill="#edf2ea" stroke="#3d6744" stroke-width="1"/>
+<path d="M827.4 613 L829.4 615.2 L833 610.8" stroke="#3d6744" stroke-width="1.3" stroke-linecap="round"/>
+<text x="844" y="617" fill="#4b473f" font-size="9" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">实例数据不出发</text>
+<rect x="1192" y="596" width="360" height="34" fill="#ffffff" stroke="#e6e2d9" stroke-width="1" rx="6"/>
+<circle cx="1210" cy="613" r="6" fill="#edf2ea" stroke="#3d6744" stroke-width="1"/>
+<path d="M1207.4 613 L1209.4 615.2 L1213 610.8" stroke="#3d6744" stroke-width="1.3" stroke-linecap="round"/>
+<text x="1224" y="617" fill="#4b473f" font-size="9" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">发布不改写生命周期</text>
+<text x="52" y="664" fill="#6b665c" font-size="9.2" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">现有确定性链路保持可用：Studio 是增量入口，关闭开关后回到原形态。</text>
+<text x="52" y="690" fill="#6b665c" font-size="9.2" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">失败语义：failed 不渲染半成品；fallback 明示降级原因；ready 才允许保存与发布。</text>
+<text x="52" y="716" fill="#6b665c" font-size="9.2" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">模型调用与数据访问解耦：proposal 只含字段名与视角，payload 只在沙箱内按权限取数。</text>
+</svg>

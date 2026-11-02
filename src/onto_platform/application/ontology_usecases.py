@@ -843,7 +843,7 @@ class SchemaPublisher:
                 f"agent://{data['id']}",
                 make_agent_runner(
                     gateway,
-                    lambda: self._ctx.llm,
+                    lambda: self._ctx.llm_for(workspace_id),
                     context_text,
                     impl.get("goal", ""),
                     function_name=function_name,

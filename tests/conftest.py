@@ -157,6 +157,20 @@ def http_post(base: str, path: str, body: dict | None = None,
         return exc.code, json.loads(exc.read().decode("utf-8"))
 
 
+def http_put(base: str, path: str, body: dict | None = None,
+             headers: dict | None = None):
+    """PUT JSON; returns (status, body) instead of raising on HTTP errors."""
+    request = urllib.request.Request(
+        base + path, data=json.dumps(body or {}).encode("utf-8"),
+        method="PUT",
+        headers={"Content-Type": "application/json", **(headers or {})})
+    try:
+        with urllib.request.urlopen(request) as res:
+            return res.status, json.loads(res.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        return exc.code, json.loads(exc.read().decode("utf-8"))
+
+
 def http_delete(base: str, path: str):
     """DELETE; returns (status, body) instead of raising on HTTP errors."""
     request = urllib.request.Request(base + path, method="DELETE")

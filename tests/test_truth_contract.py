@@ -11,7 +11,7 @@ from __future__ import annotations
 import pytest
 
 from onto_platform.bootstrap import PlatformConfig, build_platform
-from conftest import http_get, http_post, make_platform, seed_workspace
+from conftest import http_get, http_post, http_put, make_platform, seed_workspace
 
 
 def test_empty_workspace_slo_is_not_a_fake_success():
@@ -176,7 +176,9 @@ def test_canary_check_is_fresh_and_promotion_requires_it(http_server):
 
 def test_llm_config_is_workspace_scoped_and_write_only(http_server):
     base, wid = http_server
-    status, body = http_post(
+    # The documented contract is PUT; the console uses it.  POST stays as a
+    # backward-compatible alias so older scripts do not break.
+    status, body = http_put(
         base, f"/api/workspaces/{wid}/llm-config",
         {"user": "admin", "provider": "openai",
          "base_url": "https://example.invalid/v1", "model": "test-model",
@@ -189,6 +191,15 @@ def test_llm_config_is_workspace_scoped_and_write_only(http_server):
     assert "sk-very-secret-value" not in str(body)
     assert body["model"] == "test-model"
     assert body["api_key_masked"].startswith("sk-v")
+
+
+def test_llm_config_post_alias_keeps_old_clients_working(http_server):
+    base, wid = http_server
+    status, body = http_post(
+        base, f"/api/workspaces/{wid}/llm-config",
+        {"user": "admin", "provider": "openai", "model": "alias-model"})
+    assert status == 200, body
+    assert body["model"] == "alias-model"
 
 
 def test_contract_compensate_accepts_empty_string():

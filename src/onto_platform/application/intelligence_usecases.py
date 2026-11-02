@@ -107,8 +107,8 @@ class RunAgent:
         effective = provider or self._ctx.llm_for(workspace_id)
         if effective is None:
             raise ValidationError(
-                "no LLM provider configured; pass one or configure the platform"
-            )
+                "no LLM provider configured; save a workspace model in "
+                "Settings or configure the platform")
         ontology_data = _ontology_of(self._ctx, workspace_id)
         ontology = _ontology_from_dict(ontology_data)
         context_text = SemanticIndex.from_ontology(ontology).context_text(ontology)

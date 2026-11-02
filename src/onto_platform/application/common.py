@@ -101,17 +101,23 @@ class ApplicationContext:
         choice cannot silently drive another tenant's agent.
         """
         row = self.repo.get("llm_config", workspace_id, "llm")
-        if row and row.get("provider") == "openai" and row.get("api_key"):
+        if row and row.get("provider") == "openai":
             from ..infrastructure.llm.openai_compat import OpenAICompatProvider
             from ..infrastructure.security import unprotect
 
-            key = unprotect(row.get("api_key") or "")
-            if key:
-                return OpenAICompatProvider(
-                    base_url=row.get("base_url") or "https://api.openai.com/v1",
-                    model=row.get("model") or "gpt-4o-mini",
-                    api_key=key,
-                )
+            # The key is optional: local OpenAI-compatible gateways (Ollama,
+            # vLLM, llmrouter, ...) often run without authentication.  A
+            # configured workspace endpoint must win even when no credential
+            # was saved, instead of silently falling back to the platform
+            # default.  A key that fails to decrypt is passed as empty rather
+            # than ignored, so the failure is a visible 401 instead of another
+            # tenant's model being used.
+            key = unprotect(row.get("api_key") or "") if row.get("api_key") else ""
+            return OpenAICompatProvider(
+                base_url=row.get("base_url") or "https://api.openai.com/v1",
+                model=row.get("model") or "gpt-4o-mini",
+                api_key=key,
+            )
         return self.llm
 
     def require(self, actor: str, workspace_id: str, role: str = "editor") -> None:
@@ -310,7 +316,7 @@ class ApplicationContext:
             gateway.register_agent_runner(
                 f"agent://{data['id']}",
                 make_agent_runner(
-                    gateway, lambda: self.llm, context_text,
+                    gateway, lambda: self.llm_for(workspace_id), context_text,
                     impl.get("goal", ""),
                     function_name=f"{data['target_type']}.{data['key']}",
                     invoker=make_audited_invoker(self, workspace_id, gateway),

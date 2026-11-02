@@ -165,6 +165,98 @@ export interface SmartUiMeta {
     laneObject: string | null;
     engineVersion: string;
   };
+  /** ONTO_SMART_UI_STUDIO 开关；关闭时生成台接口返回 4xx。 */
+  studio?: { enabled: boolean };
+}
+
+/** AI 生成台：一条生成记录（轮询到 succeeded/failed 为止）。 */
+export type UiGenerationStatus = "queued" | "running" | "succeeded" | "failed";
+export type UiGenerationMode = "llm" | "fallback" | "deterministic";
+
+export interface UiGenerationStep {
+  key: "context" | "propose" | "adjudicate" | "compile" | "ready" | string;
+  label: string;
+  status: "pending" | "running" | "ok" | "warn" | "err";
+  detail: string;
+  startedAt?: string;
+  finishedAt?: string;
+  durationMs: number | null;
+}
+
+export interface UiGenerationCheck {
+  key: string;
+  label: string;
+  status: "ok" | "warn" | "err";
+  detail: string;
+}
+
+export interface UiGenerationSummary {
+  id: string;
+  workspace_id: string;
+  question: string;
+  instruction: string;
+  status: UiGenerationStatus;
+  mode: UiGenerationMode;
+  parent_id: string | null;
+  version: number;
+  created_at: string;
+  updated_at: string;
+  finished_at: string | null;
+  actor: string;
+  roles: string[];
+  object: string | null;
+  goal: string | null;
+  view_count: number;
+  program_hash: string | null;
+  model: string | null;
+  provider: string | null;
+  error: string | null;
+  draft_id: string | null;
+  published_application_id: string | null;
+}
+
+export interface UiGeneration extends UiGenerationSummary {
+  steps: UiGenerationStep[];
+  validation: {
+    ok: boolean;
+    checks: UiGenerationCheck[];
+    pruned?: { kind: string; key: string; reason: string }[];
+    fallbackReason?: string;
+    error?: string;
+  };
+  trace: Record<string, string | number | boolean | null | undefined>;
+  metrics: { totalMs?: number; compileMs?: number };
+  proposal: Record<string, unknown> | null;
+  blueprint: {
+    name?: string; displayName?: string; description?: string;
+    context?: { object?: string; goal?: string; focus?: { key: string; value: string } };
+    views?: { perspective: string; title?: string }[];
+    actions?: string[];
+  } | null;
+  context: Record<string, unknown>;
+  budget: Record<string, number>;
+}
+
+export interface UiDraft {
+  id: string;
+  workspace_id: string;
+  generation_id: string;
+  name: string;
+  version: number;
+  program_hash: string | null;
+  status: "draft" | "published";
+  created_at: string;
+  created_by: string;
+  updated_at: string;
+  published_at: string | null;
+  application_id: string | null;
+}
+
+export interface UiGenerationViewResult {
+  compiled: Record<string, unknown>;
+  /** 运行时 bundle，交给 iframe 自己取数，控制台不解释。 */
+  bundle: Record<string, unknown>;
+  generation: UiGenerationSummary;
 }
 /** 视图的渲染配置：chart 用 {x,y}，map 用 {lat,lng}；值是对象属性名。 */
 export type ViewConfig = Record<string, string>;
@@ -211,6 +303,12 @@ export interface Application {
   views: Record<string, AppView>; queries: Record<string, AppQuery>;
   agents: AppAgent[]; capabilities: string[];
   objective?: ObjectiveSpec;
+  /** Studio 发布时附带的生成快照；只描述呈现，不改 views/queries。 */
+  ui_artifact?: {
+    generation_id: string; draft_id: string; version: number;
+    program_hash?: string | null; published_at?: string; published_by?: string;
+    name?: string;
+  };
   created_at?: string; updated_at?: string;
 }
 export interface Obj { type: string; id: string; properties: Record<string, unknown> }
@@ -980,6 +1078,20 @@ export interface Api {
 
   capabilities(wid: string): Promise<Capability[]>;
   smartUiMeta(wid: string): Promise<SmartUiMeta>;
+  /** 202 + 后台生成；用 smartUiGeneration 轮询。 */
+  smartUiGenerate(wid: string, body: {
+    question: string; roles: string[]; mode?: "auto" | "llm" | "deterministic";
+  }): Promise<UiGeneration>;
+  smartUiGenerations(wid: string, limit?: number): Promise<{ items: UiGenerationSummary[]; total: number }>;
+  smartUiGeneration(wid: string, gid: string): Promise<UiGeneration>;
+  /** 按已存蓝图重编译 + 当前数据快照；iframe 用这个地址取最新数据。 */
+  smartUiGenerationView(wid: string, gid: string): Promise<UiGenerationViewResult>;
+  smartUiRefine(wid: string, gid: string, instruction: string): Promise<UiGeneration>;
+  smartUiAccept(wid: string, gid: string, name?: string): Promise<UiDraft>;
+  smartUiPublish(wid: string, gid: string, body?: {
+    name?: string; application_id?: string;
+  }): Promise<{ draft: UiDraft; application: Application; artifact: Record<string, unknown> }>;
+  smartUiDrafts(wid: string): Promise<{ items: UiDraft[]; total: number }>;
   createCapability(wid: string, body: Record<string, unknown>): Promise<Capability>;
   /** 改能力定义；后端只允许改草稿（已发布请用 cloneCapability 复制出新草稿）。 */
   updateCapability(wid: string, cid: string, body: CapabilityUpdate): Promise<Capability>;
@@ -1127,6 +1239,20 @@ export const api: Api = {
 
   capabilities: wid => call(ws(wid, "/capabilities")),
   smartUiMeta: wid => call(ws(wid, "/smart-ui/meta")),
+  smartUiGenerate: (wid, b) => post(ws(wid, "/smart-ui/generations"), b),
+  smartUiGenerations: (wid, limit = 30) =>
+    call(ws(wid, `/smart-ui/generations?limit=${Math.max(1, Math.min(100, limit))}`)),
+  smartUiGeneration: (wid, gid) =>
+    call(ws(wid, `/smart-ui/generations/${encodeURIComponent(gid)}`)),
+  smartUiGenerationView: (wid, gid) =>
+    call(ws(wid, `/smart-ui/generations/${encodeURIComponent(gid)}/view`)),
+  smartUiRefine: (wid, gid, instruction) =>
+    post(ws(wid, `/smart-ui/generations/${encodeURIComponent(gid)}/refine`), { instruction }),
+  smartUiAccept: (wid, gid, name) =>
+    post(ws(wid, `/smart-ui/generations/${encodeURIComponent(gid)}/accept`), { name: name ?? "" }),
+  smartUiPublish: (wid, gid, body) =>
+    post(ws(wid, `/smart-ui/generations/${encodeURIComponent(gid)}/publish`), body ?? {}),
+  smartUiDrafts: wid => call(ws(wid, "/smart-ui/drafts")),
   createCapability: (wid, b) => post(ws(wid, "/capabilities"), b),
   updateCapability: (wid, cid, b) =>
     patch(ws(wid, `/capabilities/${encodeURIComponent(cid)}`), b),

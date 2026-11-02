@@ -108,11 +108,11 @@ class DraftOntologyFromText:
                 raise ValidationError(
                     f"business description is too long: {len(body)} > {MAX_TEXT_CHARS} chars"
                 )
-            effective = provider or self._ctx.llm
+            effective = provider or self._ctx.llm_for(workspace_id)
             if effective is None:
                 raise ValidationError(
-                    "no LLM provider configured; configure the platform "
-                    "(ONTO_LLM_*) or pass one with the request"
+                    "no LLM provider configured; save a workspace model in Settings "
+                    "or configure the platform (ONTO_LLM_*)"
                 )
             payload = _extract_json(self._complete(effective, body, existing_data))
 

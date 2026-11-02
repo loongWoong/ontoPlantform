@@ -1,0 +1,12 @@
+{
+  "texts": 62,
+  "panels": 8,
+  "fonts": {
+    "yahei": true,
+    "consolas": true,
+    "simsun": true,
+    "newsreader": true
+  },
+  "min_font": 7.8,
+  "issues": []
+}

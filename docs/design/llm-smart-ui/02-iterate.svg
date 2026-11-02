@@ -1,0 +1,332 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000" role="img">
+<rect width="1600" height="1000" fill="#f7f6f3"/>
+<rect x="0" y="0" width="236" height="1000" fill="#fbfaf8" data-panel="sidebar"/>
+<line x1="236" y1="0" x2="236" y2="1000" stroke="#e6e2d9" stroke-width="1"/>
+<rect x="24" y="22" width="24" height="24" fill="#1a1814" rx="7"/>
+<text x="36" y="39.4" fill="#ffffff" font-size="13" font-family="'Newsreader','Songti SC','SimSun',Georgia,serif" font-weight="500" text-anchor="middle">O</text>
+<text x="58" y="34" fill="#1a1814" font-size="13.2" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="600">OntoPlatform</text>
+<text x="58" y="49" fill="#6b665c" font-size="9.2" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">业务世界控制台</text>
+<rect x="14" y="68" width="208" height="62" fill="#f1efe9" rx="8"/>
+<text x="28" y="86" fill="#736d61" font-size="7.8" font-family="'Cascadia Mono',Consolas,monospace" font-weight="400" letter-spacing="1.2">WORKSPACE</text>
+<text x="28" y="104" fill="#1a1814" font-size="11.4" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="600">收费站全链路演练</text>
+<text x="28" y="120" fill="#6b665c" font-size="8.2" font-family="'Cascadia Mono',Consolas,monospace" font-weight="400">7c33935df1d1 · 全功能</text>
+<text x="24" y="160" fill="#736d61" font-size="7.8" font-family="'Cascadia Mono',Consolas,monospace" font-weight="400" letter-spacing="1.2">业务世界</text>
+<path d="M26 181 L31 184 L31 189 L26 192 L21 189 L21 184 Z" stroke="#6b665c" stroke-width="1.3"/>
+<path d="M26 186.5 L31 184 M26 186.5 L21 184 M26 186.5 L26 192" stroke="#6b665c" stroke-width="1.1"/>
+<text x="48" y="191" fill="#4b473f" font-size="11.6" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">本体</text>
+<path d="M21 212 A5 2.2 0 0 1 31 212 A5 2.2 0 0 1 21 212 Z" stroke="#6b665c" stroke-width="1.3"/>
+<path d="M21 212 L21 219 A5 2.2 0 0 0 31 219 L31 212" stroke="#6b665c" stroke-width="1.3"/>
+<path d="M21 215.5 A5 2.2 0 0 0 31 215.5" stroke="#6b665c" stroke-width="1.1"/>
+<text x="48" y="221" fill="#4b473f" font-size="11.6" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">数据</text>
+<path d="M27 240 L22 247 L26 247 L25 252 L30 245 L26 245 Z" fill="#6b665c"/>
+<text x="48" y="251" fill="#4b473f" font-size="11.6" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">能力</text>
+<rect x="21" y="271" width="4.4" height="4.4" stroke="#6b665c" stroke-width="1.2" rx="0.6"/>
+<rect x="27" y="271" width="4.4" height="4.4" stroke="#6b665c" stroke-width="1.2" rx="0.6"/>
+<rect x="21" y="277" width="4.4" height="4.4" stroke="#6b665c" stroke-width="1.2" rx="0.6"/>
+<rect x="27" y="277" width="4.4" height="4.4" stroke="#6b665c" stroke-width="1.2" rx="0.6"/>
+<text x="48" y="281" fill="#4b473f" font-size="11.6" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">应用</text>
+<circle cx="26" cy="306" r="5.4" stroke="#6b665c" stroke-width="1.3"/>
+<circle cx="26" cy="306" r="1.8" fill="#6b665c"/>
+<line x1="19" y1="306" x2="21.6" y2="306" stroke="#6b665c" stroke-width="1.2"/>
+<line x1="30.4" y1="306" x2="33" y2="306" stroke="#6b665c" stroke-width="1.2"/>
+<line x1="26" y1="299" x2="26" y2="301.6" stroke="#6b665c" stroke-width="1.2"/>
+<line x1="26" y1="310.4" x2="26" y2="313" stroke="#6b665c" stroke-width="1.2"/>
+<text x="48" y="311" fill="#4b473f" font-size="11.6" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">对象实例</text>
+<rect x="12" y="322" width="212" height="30" fill="#f1efe9" rx="6"/>
+<rect x="12" y="322" width="2.5" height="30" fill="#1a1814"/>
+<path d="M26 330 L27.6 334.4 L32 336 L27.6 337.6 L26 342 L24.4 337.6 L20 336 L24.4 334.4 Z" fill="#1a1814"/>
+<text x="48" y="341" fill="#1a1814" font-size="11.6" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="600">智能视图</text>
+<text x="206" y="340" fill="#9a5944" font-size="7.4" font-family="'Cascadia Mono',Consolas,monospace" font-weight="600" text-anchor="end">AI</text>
+<line x1="20" y1="372" x2="216" y2="372" stroke="#efede7" stroke-width="1"/>
+<text x="24" y="394" fill="#736d61" font-size="7.8" font-family="'Cascadia Mono',Consolas,monospace" font-weight="400" letter-spacing="1.2">运行</text>
+<text x="24" y="418" fill="#4b473f" font-size="11" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">运行日志</text>
+<text x="24" y="446" fill="#4b473f" font-size="11" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">AI 助手</text>
+<text x="24" y="474" fill="#4b473f" font-size="11" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">审计</text>
+<text x="24" y="520" fill="#736d61" font-size="7.8" font-family="'Cascadia Mono',Consolas,monospace" font-weight="400" letter-spacing="1.2">平台</text>
+<text x="24" y="544" fill="#4b473f" font-size="11" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">设置</text>
+<text x="24" y="572" fill="#4b473f" font-size="11" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">帮助</text>
+<line x1="20" y1="936" x2="216" y2="936" stroke="#efede7" stroke-width="1"/>
+<text x="24" y="958" fill="#736d61" font-size="8.2" font-family="'Cascadia Mono',Consolas,monospace" font-weight="400">v0.3.0 · local</text>
+<rect x="236" y="0" width="1364" height="58" fill="#f7f6f3"/>
+<line x1="236" y1="58" x2="1600" y2="58" stroke="#e6e2d9" stroke-width="1"/>
+<text x="260" y="36" fill="#6b665c" font-size="10.4" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">工作台</text>
+<text x="302" y="36" fill="#736d61" font-size="10.4" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">/</text>
+<text x="314" y="36" fill="#6b665c" font-size="10.4" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">收费站全链路演练</text>
+<text x="414" y="36" fill="#736d61" font-size="10.4" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">/</text>
+<text x="426" y="36" fill="#6b665c" font-size="10.4" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">智能视图</text>
+<text x="482" y="36" fill="#736d61" font-size="10.4" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">·</text>
+<text x="492" y="36" fill="#1a1814" font-size="10.4" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="600">AI 生成台</text>
+<rect x="1160" y="14" width="180" height="30" fill="#ffffff" stroke="#e6e2d9" stroke-width="1" rx="6"/>
+<text x="1176" y="33" fill="#736d61" font-size="9.4" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">搜索或跳转</text>
+<text x="1322" y="33" fill="#736d61" font-size="8.6" font-family="'Cascadia Mono',Consolas,monospace" font-weight="400">⌘K</text>
+<rect x="1356" y="14" width="122" height="30" fill="#ffffff" stroke="#e6e2d9" stroke-width="1" rx="6"/>
+<circle cx="1370" cy="29" r="3.4" fill="#5a6d57"/>
+<text x="1380" y="33" fill="#4b473f" font-size="9.2" font-family="'Cascadia Mono',Consolas,monospace" font-weight="400">gpt-4o-mini</text>
+<circle cx="1520" cy="29" r="13" fill="#e9e4d8"/>
+<text x="1520" y="33" fill="#1a1814" font-size="10.4" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="600" text-anchor="middle">L</text>
+<circle cx="1560" cy="29" r="12" stroke="#d5d0c4" stroke-width="1"/>
+<text x="1560" y="32.6" fill="#6b665c" font-size="9.6" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="600" text-anchor="middle">?</text>
+<line x1="262" y1="96" x2="276" y2="96" stroke="#d5d0c4" stroke-width="1"/>
+<text x="282" y="99.4" fill="#6b665c" font-size="8.6" font-family="'Cascadia Mono',Consolas,monospace" font-weight="400" letter-spacing="1.4">AI ADAPTIVE UI · REFINE</text>
+<text x="262" y="136" fill="#1a1814" font-size="29" font-family="'Newsreader','Songti SC','SimSun',Georgia,serif" font-weight="500" letter-spacing="-0.5">多轮修改，保留每一次版本</text>
+<text x="262" y="159" fill="#6b665c" font-size="12" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">每次修改生成新版本；旧版本可回看、对比、回滚。发布仍然走应用生命周期。</text>
+<rect x="1370" y="94" width="92" height="32" fill="#ffffff" stroke="#d5d0c4" stroke-width="1" rx="6"/>
+<text x="1416" y="113.5" fill="#1a1814" font-size="9.8" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="500" text-anchor="middle">对比 v3</text>
+<rect x="1470" y="94" width="104" height="32" fill="#1a1814" rx="6"/>
+<text x="1522" y="113.5" fill="#ffffff" font-size="9.8" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="500" text-anchor="middle">发布</text>
+<line x1="262" y1="176" x2="1574" y2="176" stroke="#e6e2d9" stroke-width="1"/>
+<rect x="262" y="192" width="340" height="764" fill="#ffffff" stroke="#e6e2d9" stroke-width="1" rx="10" data-panel="left-thread"/>
+<text x="282" y="222" fill="#1a1814" font-size="13.4" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="600">修改意见</text>
+<text x="282" y="239" fill="#6b665c" font-size="9.8" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">第 2 轮 · 基于 v3 生成 v4</text>
+<line x1="282" y1="252" x2="582" y2="252" stroke="#efede7" stroke-width="1"/>
+<rect x="282" y="264" width="300" height="54" fill="#f1efe9" rx="8"/>
+<text x="294" y="284" fill="#4b473f" font-size="10.2" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">把异常交易按站点分组，</text>
+<text x="294" y="299" fill="#4b473f" font-size="10.2" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">顶部加时间范围筛选。</text>
+<text x="282" y="330" fill="#736d61" font-size="8.2" font-family="'Cascadia Mono',Consolas,monospace" font-weight="400">你 · 10:41</text>
+<rect x="282" y="346" width="18" height="18" fill="#1a1814" rx="4"/>
+<text x="291" y="358.6" fill="#ffffff" font-size="7.2" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="600" text-anchor="middle">AI</text>
+<text x="308" y="360" fill="#1a1814" font-size="9.8" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="600">已生成 v4 草稿</text>
+<text x="308" y="376" fill="#6b665c" font-size="8.6" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">新增时间范围筛选（近 7 天）；</text>
+<text x="308" y="390" fill="#6b665c" font-size="8.6" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">异常表按站点分组；</text>
+<text x="308" y="404" fill="#6b665c" font-size="8.6" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">set_status 对 editor 已剪除。</text>
+<text x="282" y="424" fill="#736d61" font-size="8" font-family="'Cascadia Mono',Consolas,monospace" font-weight="400">4.6s · 2,140 tokens</text>
+<rect x="282" y="440" width="300" height="106" fill="#fbfaf8" stroke="#e6e2d9" stroke-width="1" rx="8"/>
+<text x="294" y="460" fill="#6b665c" font-size="8.6" font-family="'Cascadia Mono',Consolas,monospace" font-weight="400">本轮改动 · 3 处</text>
+<circle cx="300" cy="479" r="6.5" fill="#9a5944"/>
+<text x="300" y="481.6" fill="#ffffff" font-size="7.6" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="600" text-anchor="middle">1</text>
+<text x="312" y="482" fill="#4b473f" font-size="8.8" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">新增时间范围筛选器</text>
+<circle cx="300" cy="499" r="6.5" fill="#9a5944"/>
+<text x="300" y="501.6" fill="#ffffff" font-size="7.6" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="600" text-anchor="middle">2</text>
+<text x="312" y="502" fill="#4b473f" font-size="8.8" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">异常表按站点分组</text>
+<circle cx="300" cy="519" r="6.5" fill="#9a5944"/>
+<text x="300" y="521.6" fill="#ffffff" font-size="7.6" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="600" text-anchor="middle">3</text>
+<text x="312" y="522" fill="#4b473f" font-size="8.8" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">剪除 1 个越权动作</text>
+<line x1="282" y1="566" x2="582" y2="566" stroke="#efede7" stroke-width="1"/>
+<text x="282" y="586" fill="#6b665c" font-size="8.6" font-family="'Cascadia Mono',Consolas,monospace" font-weight="400" letter-spacing="1">上下文已锁定</text>
+<text x="282" y="608" fill="#736d61" font-size="8.2" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">对象</text>
+<text x="324" y="608" fill="#4b473f" font-size="8.4" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">TollTransaction · 鲁C56789</text>
+<text x="282" y="628" fill="#736d61" font-size="8.2" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">角色</text>
+<text x="324" y="628" fill="#4b473f" font-size="8.4" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">editor · 动作剪除 1</text>
+<text x="282" y="648" fill="#736d61" font-size="8.2" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">模型</text>
+<text x="324" y="648" fill="#4b473f" font-size="8.4" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">gpt-4o-mini · 预算 8k</text>
+<text x="282" y="678" fill="#6b665c" font-size="8.2" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">修改只重算差异局部，不重新理解</text>
+<text x="282" y="692" fill="#6b665c" font-size="8.2" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">全部本体与数据。</text>
+<text x="282" y="790" fill="#6b665c" font-size="8.6" font-family="'Cascadia Mono',Consolas,monospace" font-weight="400" letter-spacing="1">继续修改</text>
+<rect x="282" y="800" width="300" height="58" fill="#ffffff" stroke="#9a5944" stroke-width="1" rx="6" stroke-dasharray="4 3"/>
+<text x="294" y="818" fill="#4b473f" font-size="9.4" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">再给金额加阈值高亮：</text>
+<text x="294" y="833" fill="#4b473f" font-size="9.4" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">超过 ¥300 的行标红。</text>
+<rect x="282" y="866" width="300" height="34" fill="#1a1814" rx="6"/>
+<text x="432" y="886.7" fill="#ffffff" font-size="10.2" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="500" text-anchor="middle">生成 v5 · ⌘↵</text>
+<rect x="282" y="910" width="54" height="22" fill="#f1efe9" rx="11"/>
+<text x="309" y="924.2" fill="#4b473f" font-size="8.8" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400" text-anchor="middle">换角色</text>
+<rect x="344" y="910" width="54" height="22" fill="#f1efe9" rx="11"/>
+<text x="371" y="924.2" fill="#4b473f" font-size="8.8" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400" text-anchor="middle">精简</text>
+<rect x="406" y="910" width="54" height="22" fill="#f1efe9" rx="11"/>
+<text x="433" y="924.2" fill="#4b473f" font-size="8.8" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400" text-anchor="middle">加地图</text>
+<rect x="620" y="192" width="664" height="764" fill="#ffffff" stroke="#e6e2d9" stroke-width="1" rx="10" data-panel="center-preview"/>
+<text x="640" y="222" fill="#1a1814" font-size="13.6" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="600">预览 · v4 草稿</text>
+<text x="640" y="239" fill="#6b665c" font-size="8.8" font-family="'Cascadia Mono',Consolas,monospace" font-weight="400">TollTransaction · 鲁C56789 · editor · 对比 v3</text>
+<line x1="640" y1="252" x2="1264" y2="252" stroke="#efede7" stroke-width="1"/>
+<rect x="1066" y="200" width="58" height="22" fill="#f8f1dc" rx="4"/>
+<text x="1095" y="214.1" fill="#86610f" font-size="8.6" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="600" text-anchor="middle">待发布</text>
+<rect x="1132" y="200" width="88" height="22" fill="#ffffff" stroke="#e6e2d9" stroke-width="1" rx="5"/>
+<text x="1152" y="215" fill="#4b473f" font-size="8.2" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400" text-anchor="middle">对比 v3</text>
+<rect x="1228" y="200" width="34" height="22" fill="#ffffff" stroke="#d5d0c4" stroke-width="1" rx="5"/>
+<text x="1245" y="215" fill="#4b473f" font-size="9.4" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400" text-anchor="middle">↗</text>
+<rect x="640" y="258" width="624" height="540" fill="#f1efe9" stroke="#e6e2d9" stroke-width="1" rx="8"/>
+<rect x="652" y="270" width="600" height="516" fill="#fbfaf8" rx="4"/>
+<rect x="652" y="270" width="600" height="30" fill="#f1efe9"/>
+<line x1="652" y1="300" x2="1252" y2="300" stroke="#e6e2d9" stroke-width="1"/>
+<text x="666" y="289.5" fill="#1a1814" font-size="8.4" font-family="'Cascadia Mono',Consolas,monospace" font-weight="600" letter-spacing="1.4">VIBE</text>
+<text x="704" y="289.5" fill="#6b665c" font-size="7.6" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">本体驱动 · 智能视图</text>
+<rect x="1030" y="277" width="58" height="17" fill="#ffffff" stroke="#e6e2d9" stroke-width="1" rx="3"/>
+<text x="1059" y="288.6" fill="#4b473f" font-size="7.2" font-family="'Cascadia Mono',Consolas,monospace" font-weight="400" text-anchor="middle">鲁C56789</text>
+<rect x="1094" y="277" width="44" height="17" fill="#ffffff" stroke="#e6e2d9" stroke-width="1" rx="3"/>
+<text x="1116" y="288.6" fill="#4b473f" font-size="7.2" font-family="'Cascadia Mono',Consolas,monospace" font-weight="400" text-anchor="middle">editor</text>
+<rect x="1144" y="277" width="66" height="17" fill="#ffffff" stroke="#e6e2d9" stroke-width="1" rx="3"/>
+<text x="1177" y="288.6" fill="#4b473f" font-size="7.2" font-family="'Cascadia Mono',Consolas,monospace" font-weight="400" text-anchor="middle">2/3 可执行</text>
+<text x="666" y="328" fill="#1a1814" font-size="15" font-family="'Newsreader','Songti SC','SimSun',Georgia,serif" font-weight="500">异常交易 · 按站点分组</text>
+<text x="666" y="344" fill="#6b665c" font-size="7.3" font-family="'Cascadia Mono',Consolas,monospace" font-weight="400">收费站全链路演练（全功能） · 40 笔交易 · 6 站点</text>
+<rect x="1160" y="314" width="82" height="18" fill="#f8f1dc" rx="4"/>
+<text x="1201" y="325.7" fill="#86610f" font-size="7.6" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="600" text-anchor="middle">草稿 v4</text>
+<rect x="666" y="354" width="572" height="28" fill="#ffffff" stroke="#9a5944" stroke-width="1" rx="4" stroke-dasharray="4 3"/>
+<circle cx="659" cy="348" r="6.2" fill="#9a5944"/>
+<text x="659" y="350.6" fill="#ffffff" font-size="7.6" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="600" text-anchor="middle">1</text>
+<text x="678" y="371.6" fill="#6b665c" font-size="7.4" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">时间范围</text>
+<text x="722" y="371.6" fill="#1a1814" font-size="8" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="600">近 7 天</text>
+<path d="M748 367 l3 3 l3 -3" stroke="#6b665c" stroke-width="1"/>
+<line x1="768" y1="361" x2="768" y2="375" stroke="#e6e2d9" stroke-width="1"/>
+<text x="780" y="371.6" fill="#6b665c" font-size="7.4" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">站点</text>
+<text x="806" y="371.6" fill="#1a1814" font-size="8" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="600">全部</text>
+<line x1="838" y1="361" x2="838" y2="375" stroke="#e6e2d9" stroke-width="1"/>
+<text x="850" y="371.6" fill="#6b665c" font-size="7.4" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">状态</text>
+<text x="876" y="371.6" fill="#1a1814" font-size="8" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="600">异常 + 待核</text>
+<text x="1204" y="371.6" fill="#6b665c" font-size="7.4" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="600">筛选</text>
+<path d="M1196 365 h-6 M1190 362 l-3 3 l3 3" stroke="#6b665c" stroke-width="1"/>
+<rect x="666" y="392" width="137" height="58" fill="#ffffff" stroke="#e6e2d9" stroke-width="1" rx="4"/>
+<text x="678" y="406" fill="#6b665c" font-size="7.2" font-family="'Cascadia Mono',Consolas,monospace" font-weight="400">异常交易</text>
+<text x="678" y="427" fill="#1a1814" font-size="13.6" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="600">18 笔</text>
+<text x="678" y="442" fill="#3d6744" font-size="7" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">-12% 较上周</text>
+<rect x="811" y="392" width="137" height="58" fill="#ffffff" stroke="#e6e2d9" stroke-width="1" rx="4"/>
+<text x="823" y="406" fill="#6b665c" font-size="7.2" font-family="'Cascadia Mono',Consolas,monospace" font-weight="400">异常金额</text>
+<text x="823" y="427" fill="#1a1814" font-size="13.6" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="600">¥46,200</text>
+<text x="823" y="442" fill="#9a5944" font-size="7" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">+8% 较上周</text>
+<rect x="956" y="392" width="137" height="58" fill="#ffffff" stroke="#e6e2d9" stroke-width="1" rx="4"/>
+<text x="968" y="406" fill="#6b665c" font-size="7.2" font-family="'Cascadia Mono',Consolas,monospace" font-weight="400">涉及站点</text>
+<text x="968" y="427" fill="#1a1814" font-size="13.6" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="600">4 / 6</text>
+<text x="968" y="442" fill="#6b665c" font-size="7" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">2 站拥堵</text>
+<rect x="1101" y="392" width="137" height="58" fill="#ffffff" stroke="#e6e2d9" stroke-width="1" rx="4"/>
+<text x="1113" y="406" fill="#6b665c" font-size="7.2" font-family="'Cascadia Mono',Consolas,monospace" font-weight="400">待处置</text>
+<text x="1113" y="427" fill="#1a1814" font-size="13.6" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="600">6 笔</text>
+<text x="1113" y="442" fill="#86610f" font-size="7" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">阈值 ¥300</text>
+<rect x="666" y="462" width="286" height="160" fill="#ffffff" stroke="#e6e2d9" stroke-width="1" rx="4"/>
+<text x="678" y="480" fill="#1a1814" font-size="9" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="600">异常金额 · 按站点分组</text>
+<text x="678" y="493" fill="#6b665c" font-size="7" font-family="'Cascadia Mono',Consolas,monospace" font-weight="400">近 7 天 · sum(fee) · 异常交易</text>
+<circle cx="659" cy="478" r="6.2" fill="#9a5944"/>
+<text x="659" y="480.6" fill="#ffffff" font-size="7.6" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="600" text-anchor="middle">2</text>
+<rect x="700" y="542" width="20" height="54" fill="#9a5944" rx="1.5"/>
+<text x="710" y="608" fill="#6b665c" font-size="7" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400" text-anchor="middle">济西</text>
+<rect x="737" y="566" width="20" height="30" fill="#cdc6b7" rx="1.5"/>
+<text x="747" y="608" fill="#6b665c" font-size="7" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400" text-anchor="middle">青东</text>
+<rect x="774" y="554" width="20" height="42" fill="#cdc6b7" rx="1.5"/>
+<text x="784" y="608" fill="#6b665c" font-size="7" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400" text-anchor="middle">淄博</text>
+<rect x="811" y="578" width="20" height="18" fill="#cdc6b7" rx="1.5"/>
+<text x="821" y="608" fill="#6b665c" font-size="7" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400" text-anchor="middle">潍坊</text>
+<rect x="848" y="536" width="20" height="60" fill="#9a5944" rx="1.5"/>
+<text x="858" y="608" fill="#6b665c" font-size="7" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400" text-anchor="middle">德州</text>
+<rect x="885" y="570" width="20" height="26" fill="#cdc6b7" rx="1.5"/>
+<text x="895" y="608" fill="#6b665c" font-size="7" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400" text-anchor="middle">临沂</text>
+<line x1="684" y1="599" x2="938" y2="599" stroke="#e6e2d9" stroke-width="1"/>
+<rect x="960" y="462" width="278" height="160" fill="#ffffff" stroke="#e6e2d9" stroke-width="1" rx="4"/>
+<text x="972" y="480" fill="#1a1814" font-size="9" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="600">异常站点分布</text>
+<text x="972" y="493" fill="#6b665c" font-size="7" font-family="'Cascadia Mono',Consolas,monospace" font-weight="400">济南西 / 德州 拥堵</text>
+<circle cx="953" cy="478" r="6.2" fill="#9a5944"/>
+<text x="953" y="480.6" fill="#ffffff" font-size="7.6" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="600" text-anchor="middle">3</text>
+<rect x="972" y="502" width="254" height="104" fill="#f1efe9" rx="4"/>
+<path d="M980 588 C 1012 572 1034 556 1064 558 S 1112 540 1142 546 S 1196 520 1218 528" stroke="#d5d0c4" stroke-width="2"/>
+<path d="M984 520 C 1016 528 1046 546 1074 566 S 1136 584 1176 580 S 1210 586 1222 582" stroke="#d5d0c4" stroke-width="1.4" stroke-dasharray="4 3"/>
+<path d="M1038 506 L1046 596" stroke="#d5d0c4" stroke-width="1" stroke-dasharray="3 3"/>
+<circle cx="1020" cy="556" r="4.2" fill="#9a5944" stroke="#ffffff" stroke-width="1.4"/>
+<circle cx="1092" cy="538" r="4.2" fill="#9a5944" stroke="#ffffff" stroke-width="1.4"/>
+<circle cx="1150" cy="570" r="4.2" fill="#89692f" stroke="#ffffff" stroke-width="1.4"/>
+<circle cx="1198" cy="532" r="4.2" fill="#5a6d57" stroke="#ffffff" stroke-width="1.4"/>
+<circle cx="986" cy="616" r="2.6" fill="#9a5944"/>
+<text x="993" y="618.5" fill="#6b665c" font-size="7" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">拥堵 2</text>
+<circle cx="1040" cy="616" r="2.6" fill="#89692f"/>
+<text x="1047" y="618.5" fill="#6b665c" font-size="7" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">繁忙 1</text>
+<circle cx="1094" cy="616" r="2.6" fill="#5a6d57"/>
+<text x="1101" y="618.5" fill="#6b665c" font-size="7" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">畅通 1</text>
+<rect x="666" y="632" width="572" height="150" fill="#ffffff" stroke="#e6e2d9" stroke-width="1" rx="4"/>
+<text x="678" y="650" fill="#1a1814" font-size="9" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="600">异常交易明细 · 按站点分组</text>
+<text x="1226" y="650" fill="#6b665c" font-size="7" font-family="'Cascadia Mono',Consolas,monospace" font-weight="400" text-anchor="end">共 18 笔 · 阈值 ¥300</text>
+<line x1="666" y1="658" x2="1238" y2="658" stroke="#efede7" stroke-width="1"/>
+<rect x="666" y="662" width="572" height="15" fill="#f1efe9"/>
+<text x="678" y="674" fill="#1a1814" font-size="7.6" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="600">济南西收费站 · 6 笔 · 拥堵</text>
+<text x="1226" y="674" fill="#736d61" font-size="7.2" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400" text-anchor="end">已剪除处置</text>
+<text x="678" y="690" fill="#4b473f" font-size="7.8" font-family="'Cascadia Mono',Consolas,monospace" font-weight="400">07:08</text>
+<text x="730" y="690" fill="#4b473f" font-size="7.8" font-family="'Cascadia Mono',Consolas,monospace" font-weight="400">鲁D56789</text>
+<text x="796" y="690" fill="#6b665c" font-size="7.8" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">→ 济南西</text>
+<text x="878" y="690" fill="#9a5944" font-size="7.8" font-family="'Cascadia Mono',Consolas,monospace" font-weight="600">¥316.80</text>
+<rect x="966" y="682" width="34" height="14" fill="#fbeceb" rx="4"/>
+<text x="983" y="691.6" fill="#98372e" font-size="7.2" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="600" text-anchor="middle">异常</text>
+<rect x="1086" y="681" width="66" height="15" fill="#f1efe9" rx="3"/>
+<text x="1119" y="691.6" fill="#736d61" font-size="7" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400" text-anchor="middle">锁定</text>
+<text x="678" y="711" fill="#4b473f" font-size="7.8" font-family="'Cascadia Mono',Consolas,monospace" font-weight="400">07:22</text>
+<text x="730" y="711" fill="#4b473f" font-size="7.8" font-family="'Cascadia Mono',Consolas,monospace" font-weight="400">鲁A12345</text>
+<text x="796" y="711" fill="#6b665c" font-size="7.8" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">→ 济南西</text>
+<text x="878" y="711" fill="#9a5944" font-size="7.8" font-family="'Cascadia Mono',Consolas,monospace" font-weight="600">¥402.10</text>
+<rect x="966" y="703" width="34" height="14" fill="#fbeceb" rx="4"/>
+<text x="983" y="712.6" fill="#98372e" font-size="7.2" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="600" text-anchor="middle">异常</text>
+<rect x="1086" y="702" width="66" height="15" fill="#f1efe9" rx="3"/>
+<text x="1119" y="712.6" fill="#736d61" font-size="7" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400" text-anchor="middle">锁定</text>
+<rect x="666" y="724" width="572" height="15" fill="#f1efe9"/>
+<text x="678" y="736" fill="#1a1814" font-size="7.6" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="600">德州收费站 · 4 笔 · 拥堵</text>
+<text x="678" y="752" fill="#4b473f" font-size="7.8" font-family="'Cascadia Mono',Consolas,monospace" font-weight="400">07:15</text>
+<text x="730" y="752" fill="#4b473f" font-size="7.8" font-family="'Cascadia Mono',Consolas,monospace" font-weight="400">鲁A45678</text>
+<text x="796" y="752" fill="#6b665c" font-size="7.8" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">→ 德州</text>
+<text x="878" y="752" fill="#4b473f" font-size="7.8" font-family="'Cascadia Mono',Consolas,monospace" font-weight="400">¥287.28</text>
+<rect x="966" y="744" width="34" height="14" fill="#fbeceb" rx="4"/>
+<text x="983" y="753.6" fill="#98372e" font-size="7.2" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="600" text-anchor="middle">异常</text>
+<rect x="1086" y="743" width="66" height="15" fill="#f1efe9" rx="3"/>
+<text x="1119" y="753.6" fill="#736d61" font-size="7" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400" text-anchor="middle">锁定</text>
+<circle cx="1164" cy="706" r="6.2" fill="#9a5944"/>
+<text x="1164" y="708.6" fill="#ffffff" font-size="7.6" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="600" text-anchor="middle">3</text>
+<text x="640" y="828" fill="#6b665c" font-size="8.8" font-family="'Cascadia Mono',Consolas,monospace" font-weight="400" letter-spacing="1">版本</text>
+<rect x="690" y="812" width="42" height="22" fill="#ffffff" stroke="#e6e2d9" stroke-width="1" rx="4"/>
+<text x="711" y="827" fill="#4b473f" font-size="8.4" font-family="'Cascadia Mono',Consolas,monospace" font-weight="400" text-anchor="middle">v1</text>
+<rect x="740" y="812" width="42" height="22" fill="#ffffff" stroke="#e6e2d9" stroke-width="1" rx="4"/>
+<text x="761" y="827" fill="#4b473f" font-size="8.4" font-family="'Cascadia Mono',Consolas,monospace" font-weight="400" text-anchor="middle">v2</text>
+<rect x="790" y="812" width="42" height="22" fill="#ffffff" stroke="#e6e2d9" stroke-width="1" rx="4"/>
+<text x="811" y="827" fill="#4b473f" font-size="8.4" font-family="'Cascadia Mono',Consolas,monospace" font-weight="400" text-anchor="middle">v3</text>
+<rect x="840" y="812" width="42" height="22" fill="#1a1814" rx="4"/>
+<text x="861" y="827" fill="#ffffff" font-size="8.4" font-family="'Cascadia Mono',Consolas,monospace" font-weight="600" text-anchor="middle">v4</text>
+<text x="930" y="828" fill="#6b665c" font-size="8.6" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">与 v3 对比：+ 筛选器 · 表格分组 · 1 动作剪除</text>
+<text x="640" y="852" fill="#6b665c" font-size="8.4" font-family="'Cascadia Mono',Consolas,monospace" font-weight="400">program sha256:4d2e… · 2,140 tokens · 剪除 1 项动作</text>
+<text x="640" y="868" fill="#6b665c" font-size="8.8" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">旧版本保留；发布生成不可变快照。</text>
+<rect x="640" y="888" width="92" height="32" fill="#ffffff" stroke="#d5d0c4" stroke-width="1" rx="6"/>
+<text x="686" y="907.5" fill="#1a1814" font-size="9.6" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="500" text-anchor="middle">对比 v3</text>
+<rect x="740" y="888" width="100" height="32" fill="#ffffff" stroke="#d5d0c4" stroke-width="1" rx="6"/>
+<text x="790" y="907.5" fill="#1a1814" font-size="9.6" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="500" text-anchor="middle">保存草稿</text>
+<rect x="848" y="888" width="120" height="32" fill="#1a1814" rx="6"/>
+<text x="908" y="907.5" fill="#ffffff" font-size="9.6" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="500" text-anchor="middle">发布到应用</text>
+<rect x="1302" y="192" width="272" height="764" fill="#ffffff" stroke="#e6e2d9" stroke-width="1" rx="10" data-panel="right-publish"/>
+<text x="1322" y="222" fill="#1a1814" font-size="13.6" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="600">裁决与发布</text>
+<text x="1322" y="239" fill="#6b665c" font-size="9.6" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">v4 草稿 · owner 审批</text>
+<line x1="1322" y1="252" x2="1554" y2="252" stroke="#efede7" stroke-width="1"/>
+<circle cx="1334" cy="272" r="5.2" fill="#edf2ea" stroke="#3d6744" stroke-width="1"/>
+<path d="M1331.4 272 L1333.4 274.2 L1337 269.8" stroke="#3d6744" stroke-width="1.3" stroke-linecap="round"/>
+<text x="1350" y="275.4" fill="#4b473f" font-size="9.6" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">Schema 校验</text>
+<rect x="1500" y="264" width="54" height="17" fill="#edf2ea" rx="4"/>
+<text x="1527" y="275.5" fill="#3d6744" font-size="8.2" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="600" text-anchor="middle">通过</text>
+<circle cx="1334" cy="298" r="5.2" fill="#edf2ea" stroke="#3d6744" stroke-width="1"/>
+<path d="M1331.4 298 L1333.4 300.2 L1337 295.8" stroke="#3d6744" stroke-width="1.3" stroke-linecap="round"/>
+<text x="1350" y="301.4" fill="#4b473f" font-size="9.6" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">组件白名单</text>
+<rect x="1500" y="290" width="54" height="17" fill="#edf2ea" rx="4"/>
+<text x="1527" y="301.5" fill="#3d6744" font-size="8.2" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="600" text-anchor="middle">通过</text>
+<circle cx="1334" cy="324" r="5.2" fill="#edf2ea" stroke="#3d6744" stroke-width="1"/>
+<path d="M1331.4 324 L1333.4 326.2 L1337 321.8" stroke="#3d6744" stroke-width="1.3" stroke-linecap="round"/>
+<text x="1350" y="327.4" fill="#4b473f" font-size="9.6" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">数据范围</text>
+<rect x="1500" y="316" width="54" height="17" fill="#f1efe9" rx="4"/>
+<text x="1527" y="327.5" fill="#4b473f" font-size="8.2" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="600" text-anchor="middle">只读</text>
+<circle cx="1334" cy="350" r="5.2" fill="#f8f1dc" stroke="#89692f" stroke-width="1"/>
+<path d="M1331.4 350 L1333.4 352.2 L1337 347.8" stroke="#89692f" stroke-width="1.3" stroke-linecap="round"/>
+<text x="1350" y="353.4" fill="#4b473f" font-size="9.6" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">动作权限</text>
+<rect x="1500" y="342" width="54" height="17" fill="#f8f1dc" rx="4"/>
+<text x="1527" y="353.5" fill="#86610f" font-size="8.2" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="600" text-anchor="middle">剪除 1</text>
+<circle cx="1334" cy="376" r="5.2" fill="#edf2ea" stroke="#3d6744" stroke-width="1"/>
+<path d="M1331.4 376 L1333.4 378.2 L1337 373.8" stroke="#3d6744" stroke-width="1.3" stroke-linecap="round"/>
+<text x="1350" y="379.4" fill="#4b473f" font-size="9.6" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">预算 / 时延</text>
+<rect x="1500" y="368" width="54" height="17" fill="#edf2ea" rx="4"/>
+<text x="1527" y="379.5" fill="#3d6744" font-size="8.2" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="600" text-anchor="middle">通过</text>
+<text x="1350" y="402" fill="#6b665c" font-size="8" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">set_status 需要 owner 角色</text>
+<line x1="1322" y1="416" x2="1554" y2="416" stroke="#efede7" stroke-width="1"/>
+<text x="1322" y="438" fill="#6b665c" font-size="8.8" font-family="'Cascadia Mono',Consolas,monospace" font-weight="400" letter-spacing="1">发布到应用</text>
+<text x="1322" y="462" fill="#6b665c" font-size="8.2" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">应用</text>
+<rect x="1322" y="468" width="238" height="30" fill="#ffffff" stroke="#d5d0c4" stroke-width="1" rx="5"/>
+<text x="1334" y="487" fill="#1a1814" font-size="9.2" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="500">收费稽核 · 演示</text>
+<path d="M1536 480 l4 4 l4 -4" stroke="#6b665c" stroke-width="1"/>
+<text x="1322" y="516" fill="#6b665c" font-size="8.2" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">版本</text>
+<rect x="1322" y="522" width="110" height="30" fill="#ffffff" stroke="#d5d0c4" stroke-width="1" rx="5"/>
+<text x="1334" y="541" fill="#1a1814" font-size="9.2" font-family="'Cascadia Mono',Consolas,monospace" font-weight="500">v4</text>
+<text x="1450" y="516" fill="#6b665c" font-size="8.2" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">角色</text>
+<rect x="1450" y="522" width="110" height="30" fill="#ffffff" stroke="#d5d0c4" stroke-width="1" rx="5"/>
+<text x="1462" y="541" fill="#1a1814" font-size="9.2" font-family="'Cascadia Mono',Consolas,monospace" font-weight="500">owner</text>
+<rect x="1322" y="564" width="238" height="62" fill="#f8f1dc" rx="6"/>
+<text x="1334" y="584" fill="#86610f" font-size="8.4" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">发布后不可原地编辑；</text>
+<text x="1334" y="599" fill="#86610f" font-size="8.4" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">调整需克隆新版本后重新发布。</text>
+<text x="1334" y="615" fill="#86610f" font-size="8" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400" opacity="0.85">published 语义与应用一致。</text>
+<rect x="1322" y="640" width="12" height="12" fill="#1a1814" rx="3"/>
+<path d="M1324.5 646 l2 2.2 l4 -4" stroke="#ffffff" stroke-width="1.2"/>
+<text x="1340" y="650" fill="#4b473f" font-size="8.2" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">保存 UI 快照（program hash）</text>
+<rect x="1322" y="668" width="110" height="32" fill="#ffffff" stroke="#d5d0c4" stroke-width="1" rx="6"/>
+<text x="1377" y="687.4" fill="#1a1814" font-size="9.4" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="500" text-anchor="middle">保存草稿</text>
+<rect x="1444" y="668" width="116" height="32" fill="#1a1814" rx="6"/>
+<text x="1502" y="687.4" fill="#ffffff" font-size="9.4" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="500" text-anchor="middle">发布到应用</text>
+<line x1="1322" y1="716" x2="1554" y2="716" stroke="#efede7" stroke-width="1"/>
+<text x="1322" y="738" fill="#6b665c" font-size="8.8" font-family="'Cascadia Mono',Consolas,monospace" font-weight="400" letter-spacing="1">发布影响</text>
+<text x="1322" y="758" fill="#6b665c" font-size="8.4" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">应用：收费稽核 · 演示 (draft)</text>
+<text x="1322" y="774" fill="#6b665c" font-size="8.4" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">运行时：新版本 v4 快照</text>
+<text x="1322" y="790" fill="#6b665c" font-size="8.4" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">回滚：可切回 v3</text>
+<text x="1322" y="820" fill="#736d61" font-size="8" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">发布人 owner · 写入审计与事件流</text>
+<text x="1322" y="844" fill="#4b473f" font-size="8.6" font-family="'Microsoft YaHei','Segoe UI',sans-serif" font-weight="400">查看应用详情 ↗</text>
+</svg>

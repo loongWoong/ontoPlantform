@@ -16,6 +16,7 @@ import { CapabilityView } from "./views/Capability";
 import { ApplicationView } from "./views/Application";
 import { StateView } from "./views/StateBrowser";
 import { SmartUIView } from "./views/SmartUI";
+import { AIView } from "./views/AIView";
 import { OperationsView } from "./views/Operations";
 import { AssistantView } from "./views/Assistant";
 import { SettingsView } from "./views/Settings";
@@ -28,6 +29,7 @@ const VIEWS: Record<string, () => ReactElement> = {
   application: ApplicationView,
   state: StateView,
   smartui: SmartUIView,
+  aiview: AIView,
   operations: OperationsView,
   assistant: AssistantView,
   settings: SettingsView,
