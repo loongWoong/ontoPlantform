@@ -244,6 +244,37 @@ npm --prefix ../vibe-可视化engine/runtime-web run build:platform
 模型服务也可以只用环境变量固定（无需改代码）：`ONTO_LLM_BASE_URL` /
 `ONTO_LLM_MODEL` / `ONTO_LLM_API_KEY`。
 
+### AI视图（LLM 生成链路，插件化）
+
+`AI视图` 与「智能视图」是两个独立菜单：前者让模型用业务语言提议蓝图，平台裁决后
+再做 L4 确定性编译与 sandbox 预览；后者只走确定性编译链路。两者不共享页面状态，
+插件化只作用于 AI视图，不改变智能视图的入口或产物。
+
+生成链路的贡献点由 `application/smartui/` 的插件宿主承载：`context`、`generator`、
+`prompt`、`adjudicator`、`view`、`renderer`、`publisher`、`ui` 都是可替换贡献点；
+对象/视角语义、权限、审计、编译与发布仍在内核。模型输出永远只是 proposal，必须
+经过 sanitizer + schema 裁决，再交给确定性编译器。视图插件当前内置 `table` /
+`chart` 两种表现；renderer 插件声明 `viewType → component` 映射，组件仍随构建期
+bundle 发布，不加载远程脚本。
+
+`GET /smart-ui/meta` 会返回 `plugins`、执行组合锁 `pluginLock`、`ui` slot 与
+`renderers`、`engineDescriptors`、`activePack` 与声明式 `packs`（内置
+`onto.pack.traffic`、`onto.pack.finance-lease`）。工作空间可通过
+`smartui_config` 绑定 Pack，生成请求
+也接受 `pack_id` 覆盖；Pack 只影响本次生成的 context、prompt 与视图 preset。
+`GET /smart-ui/generations/{id}/replay` 用历史蓝图和当前执行锁重编译，报告插件锁
+漂移。工作空间包只能是 JSON 数据，不能携带代码；外部签名代码插件需显式开启环境
+开关与密钥，当前仍在宿主进程内执行，尚未提供进程隔离。
+
+```text
+AI 描述 → context pack → LLM proposal
+  → adjudicator chain（sanitizer → 对象/视角/动作/选项白名单）
+  → Blueprint v1.0 → 确定性编译 → sandbox 预览 → 草稿/迭代/发布
+```
+
+完整阶段记录、贡献点与验收数字见
+[`docs/design/llm-smart-ui/pluginization.md`](docs/design/llm-smart-ui/pluginization.md)。
+
 ### 作为库使用
 
 ```python

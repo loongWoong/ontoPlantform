@@ -10,12 +10,15 @@ from .common import ApplicationContext
 #: settings are workspace plumbing; controller state and the outbox log are
 #: derived/replayed infrastructure rather than definitions or business state.
 NON_CONTENT_KINDS = frozenset({
-    "workspace", "membership", "llm_config", "controller_state", "event",
+    "workspace", "membership", "llm_config", "smartui_config",
+    "controller_state", "event",
 })
 
 #: A reset keeps the container, its people and its model configuration; every
 #: other document (definitions, data, releases, runs, events) is removed.
-RESET_PRESERVED_KINDS = frozenset({"workspace", "membership", "llm_config"})
+RESET_PRESERVED_KINDS = frozenset({
+    "workspace", "membership", "llm_config", "smartui_config",
+})
 
 
 def workspace_blockers(ctx: ApplicationContext, workspace_id: str) -> dict[str, int]:

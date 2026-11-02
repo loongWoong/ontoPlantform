@@ -92,6 +92,8 @@ from .application.ontology_usecases import (
     ValidateOntology,
 )
 from .application.releases import ReleaseUseCases
+from .application.smartui.builtin import build_default_host
+from .application.smartui.host import PluginHost
 from .application.state_usecases import StateUseCases
 from .application.verifier import (
     CapabilityVerifier,
@@ -163,6 +165,9 @@ class Platform:
     service_levels: ServiceLevels
     history: StateHistory
     objectives: ObjectiveUseCases
+    #: Smart-UI contribution registry; built-in plugins are registered by the
+    #: composition root so a Platform never depends on a concrete adapter.
+    smartui: PluginHost
     #: long-running slow loop; started explicitly by the HTTP adapter (or a
     #: test) so building a Platform never opens a background thread
     scheduler: Scheduler | None = None
@@ -422,6 +427,7 @@ def build_platform(config: PlatformConfig | None = None) -> Platform:
         service_levels=ServiceLevels(ctx),
         history=StateHistory(ctx),
         objectives=ObjectiveUseCases(ctx),
+        smartui=build_default_host(),
     )
     platform.dispatcher.subscribe("todo.opened", _notification_handler(ctx))
     platform.dispatcher.subscribe("application.objective_breached",

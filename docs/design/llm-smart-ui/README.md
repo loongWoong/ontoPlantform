@@ -1,6 +1,7 @@
 # Smart UI Studio 原型稿
 
-配套方案：[`docs/smart-ui-llm-generation.md`](../../smart-ui-llm-generation.md)（第 8 节界面方案）。
+配套方案：[`docs/smart-ui-llm-generation.md`](../../smart-ui-llm-generation.md)（第 8 节界面方案）；
+插件化落地记录见 [`pluginization.md`](pluginization.md)。
 
 ## 文件
 
@@ -10,6 +11,8 @@
 | `02-iterate.svg` | 多轮修改：对话与改动清单、v4 差异预览、版本条、发布抽屉 |
 | `03-library.svg` | 生成记录与版本审计：列表、详情、回滚、质量与成本 |
 | `04-architecture.svg` | 生成链路：LLM 提议 → 平台裁决 → 确定性编译 → 预览 → 资产化 |
+| `architecture-current.svg` | 当前插件化架构：微内核、8 类贡献点、Pack / 执行锁 / 描述符 / renderer |
+| `architecture-evolution.svg` | 可演化目标架构：已落地基线与后续隔离 / 独立 renderer 前端包 |
 | `build_mockups.py` | 可复现生成器（纯 Python + PIL 文本度量），产物即 4 个 SVG |
 | `audit_dom.py` | 浏览器真实 bbox 审计（文本重叠、越界、面板包含） |
 | `render_png.py` | 用 Edge/Chromium 渲染 PNG，检查 console 错误 |

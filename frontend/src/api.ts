@@ -167,9 +167,87 @@ export interface SmartUiMeta {
   };
   /** ONTO_SMART_UI_STUDIO 开关；关闭时生成台接口返回 4xx。 */
   studio?: { enabled: boolean };
+  /** Smart-UI contribution registry snapshot; generation is still platform-adjudicated. */
+  plugins?: SmartUiPluginManifest[];
+  /** Plugin combination pinned into generation artifacts/drafts. */
+  pluginLock?: { id: string; kind: string; version: string; apiVersion: string }[];
+  /** Registry lock (includes manifests without a runtime implementation). */
+  pluginRegistryLock?: { id: string; kind: string; version: string }[];
+  /** Declarative workspace packs; they carry no executable code. */
+  packs?: SmartUiWorkspacePack[];
+  /** Pack bound to this workspace, if any. */
+  activePack?: SmartUiWorkspacePack | null;
+  /** UI slot manifest from the UI contribution plus registered renderers. */
+  ui?: SmartUiUIManifest;
+  /** View descriptors registered by view plugins (perspective -> renderer). */
+  engineDescriptors?: SmartUiEngineDescriptor[];
   /** 这个工作空间实际会用的模型（服务端按 workspace > platform > none 解析）。
    *  生成台以它为准判断“模型 / 确定性回退”，不看全局 llmReady。 */
   model?: SmartUiModelStatus;
+}
+
+export interface SmartUiUIManifest {
+  slots: { slot: string; id: string; order: number; label: string; builtin: boolean }[];
+  renderers: {
+    viewType: string;
+    component: string;
+    pluginId?: string;
+    order?: number;
+    format?: string;
+  }[];
+  remoteScripts: boolean;
+}
+
+export interface SmartUiEngineDescriptor {
+  perspective: string;
+  viewType: string;
+  component: string;
+  pluginId: string;
+  order: number;
+}
+
+export interface SmartUiPluginManifest {
+  id: string;
+  kind:
+    | "context"
+    | "generator"
+    | "prompt"
+    | "adjudicator"
+    | "view"
+    | "renderer"
+    | "publisher"
+    | "ui";
+  version: string;
+  apiVersion: string;
+  apiVersions?: string[];
+  summary: string;
+  order: number;
+  enabled: boolean;
+  implemented: boolean;
+  builtin: boolean;
+  permissions?: string[];
+  viewType?: string;
+  component?: string;
+}
+
+export interface SmartUiWorkspacePack {
+  id: string;
+  name: string;
+  version: string;
+  description: string;
+  promptPack: string;
+  ontologyProfile: string;
+  perspectives: string[];
+  defaultQuestion: string;
+  permissions?: string[];
+  viewPresets?: { perspective: string; options: Record<string, unknown> }[];
+  builtin: boolean;
+}
+
+export interface SmartUiConfig {
+  workspaceId: string;
+  packId: string;
+  pack: SmartUiWorkspacePack | null;
 }
 
 export interface SmartUiModelStatus {
@@ -1242,6 +1320,10 @@ export interface Api {
 
   capabilities(wid: string): Promise<Capability[]>;
   smartUiMeta(wid: string): Promise<SmartUiMeta>;
+  /** 读取工作空间绑定的声明式 Pack。 */
+  smartUiConfig(wid: string): Promise<SmartUiConfig>;
+  /** 绑定/清空工作空间默认 Pack；pack_id 为空字符串表示清空。 */
+  smartUiSetPack(wid: string, packId: string): Promise<SmartUiConfig>;
   /** 可搜索的焦点实例：object 缺省时返回所有对象类型里的实例。 */
   smartUiEntities(wid: string, params?: {
     object?: string; q?: string; limit?: number;
@@ -1249,7 +1331,7 @@ export interface Api {
   /** 202 + 后台生成；用 smartUiGeneration 轮询。focus 指定“这次只看某个实例”。 */
   smartUiGenerate(wid: string, body: {
     question: string; roles: string[]; mode?: "auto" | "llm" | "deterministic";
-    focus?: SmartUiFocusRequest;
+    focus?: SmartUiFocusRequest; pack_id?: string;
   }): Promise<UiGeneration>;
   /** 分页 + 过滤（q/status/object）的生成列表；返回 total/offset/limit/all。 */
   smartUiGenerations(wid: string, params?: SmartUiGenerationListQuery): Promise<SmartUiGenerationListResult>;
@@ -1261,6 +1343,14 @@ export interface Api {
   smartUiCancel(wid: string, gid: string): Promise<UiGeneration>;
   /** 按已存蓝图重编译 + 当前数据快照；iframe 用这个地址取最新数据。 */
   smartUiGenerationView(wid: string, gid: string): Promise<UiGenerationViewResult>;
+  /** 回放已成功版本并报告插件锁漂移；不重新调用模型。 */
+  smartUiReplayGeneration(wid: string, gid: string): Promise<UiGenerationViewResult & {
+    replay: {
+      ok: boolean; pinned: { id: string; kind: string; version: string }[];
+      current: { id: string; kind: string; version: string }[];
+      missing: string[]; changed: string[]; added: string[];
+    };
+  }>;
   /** 基于已成功版本继续修改；focus 省略时后端继承父记录的焦点。 */
   smartUiRefine(wid: string, gid: string, instruction: string,
                 focus?: SmartUiFocusRequest): Promise<UiGenerationDetail>;
@@ -1422,6 +1512,9 @@ export const api: Api = {
 
   capabilities: wid => call(ws(wid, "/capabilities")),
   smartUiMeta: wid => call(ws(wid, "/smart-ui/meta")),
+  smartUiConfig: wid => call(ws(wid, "/smart-ui/config")),
+  smartUiSetPack: (wid, packId) =>
+    post(ws(wid, "/smart-ui/config"), { pack_id: packId }),
   smartUiEntities: (wid, params = {}) => {
     const search = new URLSearchParams();
     if (params.object) search.set("object", params.object);
@@ -1450,6 +1543,8 @@ export const api: Api = {
     post(ws(wid, `/smart-ui/generations/${encodeURIComponent(gid)}/cancel`), {}),
   smartUiGenerationView: (wid, gid) =>
     call(ws(wid, `/smart-ui/generations/${encodeURIComponent(gid)}/view`)),
+  smartUiReplayGeneration: (wid, gid) =>
+    call(ws(wid, `/smart-ui/generations/${encodeURIComponent(gid)}/replay`)),
   smartUiRefine: (wid, gid, instruction, focus) =>
     post(ws(wid, `/smart-ui/generations/${encodeURIComponent(gid)}/refine`), {
       instruction,

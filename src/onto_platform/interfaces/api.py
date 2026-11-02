@@ -96,6 +96,10 @@ from ..errors import (
     ValidationError,
     classify,
 )
+from ..application.smartui.packs import (
+    set_workspace_pack,
+    workspace_pack_id,
+)
 from ..infrastructure.llm.echo import EchoLLMProvider
 from ..infrastructure.llm.openai_compat import OpenAICompatProvider
 from .smart_ui import (
@@ -117,6 +121,7 @@ from .smart_ui_studio import (
     delete_generation,
     publish_generation,
     refine_generation,
+    replay_generation,
     start_generation,
     studio_enabled,
     update_draft,
@@ -595,6 +600,19 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
                 meta["studio"] = {"enabled": studio_enabled()}
                 meta["model"] = platform.llm_config.status(wid, user)
                 return self._send(200, meta)
+            if rest == ["smart-ui", "config"]:
+                pack_id = workspace_pack_id(platform, wid, user)
+                pack = None
+                if pack_id:
+                    try:
+                        pack = platform.smartui.pack(pack_id).as_dict()
+                    except Exception:
+                        pack = None
+                return self._send(200, {
+                    "workspaceId": wid,
+                    "packId": pack_id,
+                    "pack": pack,
+                })
             if rest == ["smart-ui", "entities"]:
                 return self._send(200, smart_ui_focus_options(
                     platform, wid, user,
@@ -619,6 +637,10 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
             if (len(rest) == 4 and rest[0] == "smart-ui"
                     and rest[1] == "generations" and rest[3] == "view"):
                 return self._send(200, generation_view(platform, wid, user, rest[2]))
+            if (len(rest) == 4 and rest[0] == "smart-ui"
+                    and rest[1] == "generations" and rest[3] == "replay"):
+                return self._send(200, replay_generation(
+                    platform, wid, user, rest[2]))
             if rest == ["smart-ui", "drafts"]:
                 if not studio_enabled():
                     raise NotFoundError("smart-UI Studio is disabled")
@@ -971,6 +993,9 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
                         if body.get("timeout") is not None else None))
                 status = 202 if result.get("status") == "unknown" else 200
                 return self._send(status, result)
+            if rest == ["smart-ui", "config"]:
+                return self._send(200, set_workspace_pack(
+                    platform, wid, user, str(body.get("pack_id") or "")))
             if rest == ["smart-ui", "generations"]:
                 if not studio_enabled():
                     raise NotFoundError("smart-UI Studio is disabled")
@@ -980,7 +1005,8 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
                     roles=[str(role) for role in (body.get("roles") or [])],
                     mode=str(body.get("mode") or "auto"),
                     focus=body.get("focus") if isinstance(body.get("focus"), dict)
-                    else None)
+                    else None,
+                    pack_id=str(body.get("pack_id") or ""))
                 return self._send(202, generation)
             if (len(rest) == 4 and rest[0] == "smart-ui"
                     and rest[1] == "generations" and rest[3] == "cancel"):
