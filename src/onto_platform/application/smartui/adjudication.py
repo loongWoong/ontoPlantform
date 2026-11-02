@@ -23,6 +23,7 @@ from .catalog import (
     SCHEMA_VERSION,
 )
 from .views import table as table_view
+from .views.spatial import SPATIAL_VIEW_TYPES
 
 # Must stay aligned with the engine's Blueprint validator.  Keeping a local
 # copy lets the platform prune with a reason *before* compilation.
@@ -71,6 +72,25 @@ def _pascal_name(proposal: dict[str, Any], object_name: str) -> str:
     return raw[:64]
 
 
+def requested_view_type(raw: Any, perspective: str) -> str:
+    """Map a proposed ``display``/``chartType`` to the matching view plugin.
+
+    Returns an empty string when the proposal does not choose a variant, so the
+    caller can keep its fallback behaviour (default map, default chart, ...).
+    Location variants deliberately need an explicit ``display``: absent that
+    option the engine must stay on the canonical ``map``/GeoMap component.
+    """
+    if not isinstance(raw, dict):
+        return ""
+    if perspective == "location":
+        return SPATIAL_VIEW_TYPES.get(str(raw.get("display") or "").strip(), "")
+    if perspective == "statistics":
+        if raw.get("chartType") == "table" or raw.get("display") == "table":
+            return "table"
+        return "chart"
+    return ""
+
+
 def normalize_view_options(raw: Any, obj: Any, perspective: str,
                            pruned: list[dict[str, Any]],
                            platform: Any | None = None) -> dict[str, Any]:
@@ -85,14 +105,12 @@ def normalize_view_options(raw: Any, obj: Any, perspective: str,
                 if implementation is not None and hasattr(
                         implementation, "adjudicate_options"):
                     candidates.append((record, implementation))
-            view_type = "table" if isinstance(raw, dict) and (
-                raw.get("chartType") == "table" or raw.get("display") == "table"
-            ) else "chart"
+            view_type = requested_view_type(raw, perspective)
             for record, implementation in candidates:
-                if record.manifest.view_type == view_type:
+                if view_type and record.manifest.view_type == view_type:
                     return implementation.adjudicate_options(
                         raw, obj, perspective, pruned)
-            if candidates:
+            if candidates and perspective != "location":
                 return candidates[0][1].adjudicate_options(
                     raw, obj, perspective, pruned)
         except Exception:

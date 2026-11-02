@@ -26,9 +26,16 @@ from .host import PluginHost
 from .packs import BUILTIN_PACKS
 from .prompt import DefaultPromptPack
 from .publisher import DefaultPublisher
-from .renderers import ChartRenderer, TableRenderer
+from .renderers import (
+    ChartRenderer,
+    GISRenderer,
+    Scene25DRenderer,
+    TableRenderer,
+    Twin3DRenderer,
+)
 from .ui import AIViewUIProvider
 from .views.chart import ChartPlugin
+from .views.spatial import GISPlugin, Scene25DPlugin, Twin3DPlugin
 from .views.table import TablePlugin
 
 BUILTIN_MANIFESTS: tuple[PluginManifest, ...] = (
@@ -89,6 +96,40 @@ BUILTIN_MANIFESTS: tuple[PluginManifest, ...] = (
         permissions=(PERMISSION_VIEW_RENDER,),
     ),
     PluginManifest(
+        id="onto.smartui.view.gis",
+        kind="view",
+        summary="位置视角的分层 GIS 地图：底图、图层、聚合与围栏",
+        perspectives=("location",),
+        view_type="gis",
+        component="GISMap",
+        permissions=(PERMISSION_VIEW_RENDER,),
+        metadata={"engine": {"perspectives": ["location"],
+                            "viewType": "gis", "component": "GISMap"}},
+    ),
+    PluginManifest(
+        id="onto.smartui.view.scene25d",
+        kind="view",
+        summary="位置视角的 2.5D 等轴场景：按业务指标拉伸对象",
+        perspectives=("location",),
+        view_type="scene_2_5d",
+        component="Scene25D",
+        permissions=(PERMISSION_VIEW_RENDER,),
+        metadata={"engine": {"perspectives": ["location"],
+                            "viewType": "scene_2_5d",
+                            "component": "Scene25D"}},
+    ),
+    PluginManifest(
+        id="onto.smartui.view.twin3d",
+        kind="view",
+        summary="位置视角的 3D 孪生场景：深度排序的对象块与联动选择",
+        perspectives=("location",),
+        view_type="twin_3d",
+        component="Twin3D",
+        permissions=(PERMISSION_VIEW_RENDER,),
+        metadata={"engine": {"perspectives": ["location"],
+                            "viewType": "twin_3d", "component": "Twin3D"}},
+    ),
+    PluginManifest(
         id="onto.smartui.renderer.table",
         kind="renderer",
         version="1.1.0",
@@ -109,6 +150,39 @@ BUILTIN_MANIFESTS: tuple[PluginManifest, ...] = (
         order=20,
         permissions=(PERMISSION_RENDER_COMPONENT,),
         metadata={"format": "chart"},
+    ),
+    PluginManifest(
+        id="onto.smartui.renderer.gis",
+        kind="renderer",
+        version="1.0.0",
+        summary="GIS renderer 描述符（GISMap，构建期组件）",
+        view_type="gis",
+        component="GISMap",
+        order=30,
+        permissions=(PERMISSION_RENDER_COMPONENT,),
+        metadata={"format": "gis"},
+    ),
+    PluginManifest(
+        id="onto.smartui.renderer.scene25d",
+        kind="renderer",
+        version="1.0.0",
+        summary="2.5D renderer 描述符（Scene25D，构建期组件）",
+        view_type="scene_2_5d",
+        component="Scene25D",
+        order=40,
+        permissions=(PERMISSION_RENDER_COMPONENT,),
+        metadata={"format": "scene25d"},
+    ),
+    PluginManifest(
+        id="onto.smartui.renderer.twin3d",
+        kind="renderer",
+        version="1.0.0",
+        summary="3D 孪生 renderer 描述符（Twin3D，构建期组件）",
+        view_type="twin_3d",
+        component="Twin3D",
+        order=50,
+        permissions=(PERMISSION_RENDER_COMPONENT,),
+        metadata={"format": "twin3d"},
     ),
     PluginManifest(
         id="onto.smartui.publisher.default",
@@ -138,8 +212,14 @@ def build_default_host() -> PluginHost:
         "onto.smartui.adjudicator.default": DefaultProposalAdjudicator(),
         "onto.smartui.view.table": TablePlugin(),
         "onto.smartui.view.chart": ChartPlugin(),
+        "onto.smartui.view.gis": GISPlugin(),
+        "onto.smartui.view.scene25d": Scene25DPlugin(),
+        "onto.smartui.view.twin3d": Twin3DPlugin(),
         "onto.smartui.renderer.table": TableRenderer(),
         "onto.smartui.renderer.chart": ChartRenderer(),
+        "onto.smartui.renderer.gis": GISRenderer(),
+        "onto.smartui.renderer.scene25d": Scene25DRenderer(),
+        "onto.smartui.renderer.twin3d": Twin3DRenderer(),
         "onto.smartui.publisher.default": DefaultPublisher(),
         "onto.smartui.ui.aiview": AIViewUIProvider(),
     }

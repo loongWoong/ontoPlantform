@@ -31,7 +31,7 @@ application/smartui/            Platform/Application 层
   studio.py       generation 状态机；委托 host 的 context / generator /
                   prompt / adjudicator / view / publisher
   host.py         PluginHost + 权限 / 执行锁 / UI manifest / 引擎描述符 / renderer
-  builtin.py      12 个内置插件与默认宿主
+  builtin.py      18 个内置插件与默认宿主
   contracts.py    PluginManifest / PluginLockEntry / 版本与权限常量
   version.py      apiVersion 区间解析与兼容判定
   catalog.py      语义视角与上限
@@ -39,7 +39,7 @@ application/smartui/            Platform/Application 层
   prompt.py       PromptPack 贡献点（默认实现）
   generators.py   Generator 贡献点（deterministic / LLM）
   adjudication.py Adjudicator 链（sanitizer → default）
-  views/          View 插件（table / chart）
+  views/          View 插件（table / chart / spatial: gis / scene25d / twin3d）
   renderers.py    Renderer 贡献点（viewType → 构建期组件，可版本化/禁用）
   publisher.py    Publisher 贡献点（默认实现）
   ui.py           UI 贡献点（aiview slots 与前端 fallback 描述）
@@ -52,8 +52,10 @@ ports/smart_ui.py               Generator / PromptPack / Adjudicator / ViewPlugi
 
 贡献点：`context`、`generator`、`prompt`、`adjudicator`、`view`、`renderer`、
 `publisher`、`ui`。语义视角（`identity / relationship / timeline / location /
-statistics / state / rule / action`）仍是 core 语义；`table` / `chart` 的取数
-与选项由 view 插件负责，`viewType → component` 映射由 renderer 插件声明。
+statistics / state / rule / action`）仍是 core 语义；`table` / `chart` / `gis` /
+`scene25d` / `twin3d` 的取数与选项由 view 插件负责，`viewType → component`
+映射由 renderer 插件声明。三种空间形态共享 `location` 能力与同一份
+`view_location` payload，只通过 `display` 选项选择表现，默认仍是 `map`/`GeoMap`。
 
 ## 阶段结果
 
@@ -67,6 +69,7 @@ statistics / state / rule / action`）仍是 core 语义；`table` / `chart` 的
 | 5 | `context` / `publisher` / `ui` 运行时实现；后端 manifest 过滤前端 tabs | `context.py`、`publisher.py`、`ui.py`、`builtin.py` |
 | 6 | workspace 绑定：`smartui_config` + config API；生成请求携带 `pack`，prompt/context 注入；preset 兜底 | `packs.py`、`studio.py`、`interfaces/api.py` |
 | 7 | apiVersion 区间、permissions 授权、执行锁、引擎描述符、renderer、回放、签名外部包 | `version.py`、`host.py`、`descriptors.py`、`renderers.py`、`external.py`、`studio.py` |
+| 8 | GIS / 2.5D / 3D 孪生空间视图：`display` 变体、选项裁决、引擎编译、构建期组件与样式 | `views/spatial.py`、`builtin.py`、引擎 `capabilities.py`/`blueprint.py`/`emitter.py`、runtime-web `spatial.tsx` |
 
 ## ABI 与观测
 
@@ -103,6 +106,21 @@ statistics / state / rule / action`）仍是 core 语义；`table` / `chart` 的
 - UI slot 仍由构建期 React registry 提供组件；后端 `ui.slots` 只决定可见性与
   排序，缺 manifest 时前端回退到全部构建期 tab。
 
+### 空间视图（GIS / 2.5D / 3D）
+
+`location` 仍由 core 推导，插件只接管表现选项。`display` 是唯一的选择键：
+
+| display | viewType | 组件 | 主要选项 |
+|---|---|---|---|
+| （省略） | `map` | `GeoMap` | 默认轨迹地图 |
+| `gis` | `gis` | `GISMap` | `basemap` / `layers` / `cluster` |
+| `scene25d` | `scene_2_5d` | `Scene25D` | `heightField` / `showLabels` / `theme` |
+| `twin3d` | `twin_3d` | `Twin3D` | `heightField` / `theme` |
+
+三种变体共享 `view_location` 的同一份 payload；bridge 额外写入 `viewType`、
+`display`、`style`，并按 `heightField`（缺省时取首个数值属性）给每个点补
+`field`/`value`。组件全部是纯 SVG/CSS：不加载瓦片、远程脚本或 3D/WebGL 库。
+
 ## 版本、权限与信任
 
 - **API 版本**：`HOST_API_VERSION = smartui/v1.2`，插件可用
@@ -121,7 +139,7 @@ statistics / state / rule / action`）仍是 core 语义；`table` / `chart` 的
 
 ## 架构图
 
-- 当前：`Phase 0–7` 已落地的分层、贡献点、Pack 绑定与运行链路
+- 当前：`Phase 0–8` 已落地的分层、贡献点、Pack 绑定、运行链路与空间视图
   （[architecture-current.svg](architecture-current.svg)）
 - 演化：在保持 ABI / 治理不变的前提下，补外部**进程隔离**、独立 renderer
   bundle、成本遥测等运营能力的
@@ -131,10 +149,10 @@ statistics / state / rule / action`）仍是 core 语义；`table` / `chart` 的
 
 | 能力 | 状态 | 判据 / 剩余缺口 |
 |---|---|---|
-| 微内核与 manifest / host / registry lock | 已完成 | `contracts.py`、`host.py`、`builtin.py`；12 个内置 manifest |
+| 微内核与 manifest / host / registry lock | 已完成 | `contracts.py`、`host.py`、`builtin.py`；18 个内置 manifest |
 | 生成 / 提示词 / 裁决 / 视图贡献点 | 已完成 | `studio` 通过 host 解析；sanitizer(10) → default(100) 顺序由测试锁定 |
 | context / publisher / ui 贡献点 | 已完成 | `DefaultContextPack`、`DefaultPublisher`、`AIViewUIProvider` 均有实现；Studio 已走插件路径 |
-| 视图 / 取数插件 | 已完成（平台侧） | `table` / `chart` 接管选项裁决与 payload；引擎描述符已注册并进入产物 |
+| 视图 / 取数插件 | 已完成（平台侧） | `table` / `chart` 接管选项裁决与 payload；`gis` / `scene25d` / `twin3d` 共享 `view_location` 并裁决空间选项；引擎描述符已注册并进入产物 |
 | 前端 UI 槽位 | 已完成（构建期 + 后端过滤） | `ui-slots.tsx` + `ai-view-slots.tsx`；后端 `ui.slots` 过滤/排序；无远程脚本 |
 | 工作区包 | 已完成 | `smartui_config` 绑定；GET/POST config；`pack_id` 覆盖；prompt/context/preset 注入 |
 | 版本协商 | 已完成 | `version.py` 支持 `>= <= > < = *` 与区间；默认 v1.x；不兼容拒绝 |
@@ -152,16 +170,19 @@ statistics / state / rule / action`）仍是 core 语义；`table` / `chart` 的
 
 ## 验收证据
 
-- 后端全量：`python -m pytest -q` → **494 passed**（新增 runtime / pack / 版本 /
-  权限 / renderer / 回放 / 外部签名 / config API 测试）。
+- 后端全量：`python -m pytest -q` → **497 passed**（含 runtime / pack / 版本 /
+  权限 / renderer / 回放 / 外部签名 / config API 与空间视图测试）。
 - Smart-UI 定向：`tests/test_smart_ui.py`、`test_smart_ui_studio.py`、
   `test_finance_lease_smart_ui.py`、`test_smart_ui_plugins.py`、
   `test_smart_ui_plugin_runtime.py`。
 - 前端：`npm --prefix frontend test` → **46 passed**；
   `npm --prefix frontend run build` 通过。
-- 引擎：`python -m pytest`（engine 目录）→ **29 passed**。
-- 插件面：12 个内置 manifest，12 个均有运行时 `implementation`；8 个贡献点
-  全部有默认实现；2 个声明式工作空间包；2 个 renderer 映射。
+- 引擎：`python -m pytest`（engine 目录）→ **31 passed**；新增 location 三种
+  `display` 变体与默认 `GeoMap` 回归用例。
+- 运行时：`runtime-web` 下 `npm test` → **19 passed**，`npm run typecheck` 通过；
+  平台 `npm run build:platform` 产物已包含 `GISMap` / `Scene25D` / `Twin3D`。
+- 插件面：18 个内置 manifest，18 个均有运行时 `implementation`；8 个贡献点
+  全部有默认实现；3 个声明式工作空间包；5 个 renderer 映射。
 
 ## 暂未落地（有意留给下一阶段）
 

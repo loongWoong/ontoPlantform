@@ -87,8 +87,11 @@ def test_renderer_registry_is_versioned_and_follows_view_lifecycle():
     assert renderers["table"]["component"] == "DataTable"
     assert renderers["table"]["pluginId"] == "onto.smartui.renderer.table"
     assert renderers["chart"]["pluginId"] == "onto.smartui.renderer.chart"
+    assert renderers["gis"]["component"] == "GISMap"
+    assert renderers["scene_2_5d"]["component"] == "Scene25D"
+    assert renderers["twin_3d"]["component"] == "Twin3D"
     assert {item["viewType"] for item in host.ui_manifest()["renderers"]} >= {
-        "table", "chart"}
+        "table", "chart", "gis", "scene_2_5d", "twin_3d"}
     host.disable("onto.smartui.renderer.table")
     assert host.renderer("table") is None
     assert "table" not in {
@@ -210,12 +213,18 @@ def test_adjudicator_chain_orders_sanitizer_before_schema(platform):
 def test_declarative_workspace_packs_are_registered_and_validated(platform,
                                                                   workspace_id):
     assert {pack.id for pack in BUILTIN_PACKS} == {
-        "onto.pack.traffic", "onto.pack.finance-lease"}
+        "onto.pack.traffic", "onto.pack.finance-lease",
+        "onto.pack.digital-twin"}
     assert platform.smartui.pack("onto.pack.traffic").name == "高速运营"
-    assert len(platform.smartui.pack_summaries()) == 2
+    twin = platform.smartui.pack("onto.pack.digital-twin")
+    assert twin.perspectives == ("identity", "location", "state", "rule")
+    assert any(preset["options"].get("display") == "gis"
+               for preset in twin.view_presets)
+    assert len(platform.smartui.pack_summaries()) == 3
     meta = smart_ui_meta(platform, workspace_id, "admin")
     assert {item["id"] for item in meta["packs"]} == {
-        "onto.pack.traffic", "onto.pack.finance-lease"}
+        "onto.pack.traffic", "onto.pack.finance-lease",
+        "onto.pack.digital-twin"}
     # A pack is data only: unknown perspectives / non-declarative keys fail.
     with pytest.raises(ValidationError):
         WorkspacePack(id="onto.pack.bad", name="bad",

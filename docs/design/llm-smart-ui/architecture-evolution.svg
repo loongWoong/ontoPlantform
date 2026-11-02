@@ -109,7 +109,7 @@
   <g data-shape="node">
     <path d="M 587.00 562.00 A 8.00 8.00 0 0 1 595.00 554.00 L 763.00 554.00 A 8.00 8.00 0 0 1 771.00 562.00 L 771.00 600.00 A 8.00 8.00 0 0 1 763.00 608.00 L 595.00 608.00 A 8.00 8.00 0 0 1 587.00 600.00 L 587.00 562.00 Z" fill="#ccfbf1" stroke="#0f766e" stroke-width="1.5" />
     <text x="679.00" y="577.40" fill="#134e4a" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">视图 / renderer 插件</text>
-    <text x="679.00" y="593.00" fill="#134e4a" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">table/chart · component</text>
+    <text x="679.00" y="593.00" fill="#134e4a" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">table/chart/gis/2.5D/3D</text>
   </g>
   <g data-shape="node">
     <path d="M 83.00 634.00 A 8.00 8.00 0 0 1 91.00 626.00 L 209.00 626.00 A 8.00 8.00 0 0 1 217.00 634.00 L 217.00 672.00 A 8.00 8.00 0 0 1 209.00 680.00 L 91.00 680.00 A 8.00 8.00 0 0 1 83.00 672.00 L 83.00 634.00 Z" fill="#ccfbf1" stroke="#0f766e" stroke-width="1.5" />
@@ -212,10 +212,10 @@
     <path d="M 484.50 396.00 L 484.50 454.00 A 10.00 10.00 0 0 1 474.50 464.00 L 452.50 464.00 A 5.50 5.50 0 0 0 447.00 469.50 L 447.00 475.00" fill="none" stroke="#64748b" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
     <path d="M 447.00 482.00 L 443.85 475.00 L 450.15 475.00 Z" fill="#64748b" stroke="#64748b" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
   </g>
-  <text x="27.00" y="39.40" fill="#475569" font-family="inherit" font-size="21">AI视图 · 可演化目标架构（Phase 0–7 基线 + 后续）</text>
+  <text x="27.00" y="39.40" fill="#475569" font-family="inherit" font-size="21">AI视图 · 可演化目标架构（Phase 0–8 基线 + 后续）</text>
   <text x="27.00" y="60.20" fill="#475569" font-family="inherit" font-size="12">基线已落地 Pack / 版本 / 权限 / 描述符 / renderer / 签名 / 回放；后续补外部隔离、独立前端包与遥测</text>
   <text x="417.00" y="709.70" fill="#9f1239" font-family="inherit" font-size="10.5">外部信任边界：签名包 · 最小权限 · 进程隔离（不执行远程脚本）</text>
-  <text x="27.00" y="1038.00" fill="#334155" font-family="inherit" font-size="11.5">已落地：Pack 绑定 + config API、apiVersion 区间、permissions、签名包（进程内）、描述符、renderer、UI manifest、回放。</text>
+  <text x="27.00" y="1038.00" fill="#334155" font-family="inherit" font-size="11.5">已落地：Pack 绑定 + config API、apiVersion 区间、permissions、签名包（进程内）、描述符、renderer、UI manifest、回放、GIS/2.5D/3D 视图。</text>
   <text x="27.00" y="1058.00" fill="#334155" font-family="inherit" font-size="11.5">后续：进程隔离 / SBOM、独立 renderer 前端包、成本遥测与弃用策略；Blueprint 顶层仍由 core 写入。</text>
   <text x="27.00" y="1078.00" fill="#64748b" font-family="inherit" font-size="11.5">图例：青 = 已落地 · violet = 后续新增 · rose = 外部信任边界 · 琥珀 = 平台 / 引擎 · 实线 = 主调用。</text>
 </svg>

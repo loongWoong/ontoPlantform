@@ -1284,13 +1284,18 @@ def _geo_coordinates(record: dict | None) -> tuple[float, float] | None:
 
 def _location_payload(platform: "Platform", workspace_id: str,
                       context: dict[str, Any], related: list[dict[str, Any]],
-                      workspace_name: str) -> dict[str, Any]:
+                      workspace_name: str,
+                      options: dict[str, Any] | None = None) -> dict[str, Any]:
     """Build the generic ``view_location`` payload from real geo properties.
 
     The engine derives a location capability when the focus or a directly
     related object carries longitude/latitude.  The adapter must therefore
     provide a payload for that capability; otherwise the compiled program asks
     for ``view_location`` and the runtime raises ``E_TOOL_UNKNOWN``.
+
+    GIS / 2.5D / 3D displays all consume this one payload.  The adjudicated
+    presentation options travel as ``style`` so the build-time components can
+    switch layers/height without receiving layout or code from the model.
     """
     points: list[dict[str, Any]] = []
     seen: set[str] = set()
@@ -1305,7 +1310,8 @@ def _location_payload(platform: "Platform", workspace_id: str,
         seen.add(point_id)
         status_key = semantics.get("statusKey")
         status_value = _record_value(record, status_key)
-        points.append({
+        numeric_keys = list(semantics.get("numericKeys") or [])
+        point: dict[str, Any] = {
             "id": point_id,
             "label": _display_of(record, semantics),
             "kind": kind,
@@ -1313,7 +1319,19 @@ def _location_payload(platform: "Platform", workspace_id: str,
             "lat": coordinates[1],
             "time": _fmt_time(str(_record_value(record, semantics.get("timeKey")) or "")),
             "tone": _tone_for_status(status_value) if status_key else "neutral",
-        })
+        }
+        height_field = str((options or {}).get("heightField") or "")
+        candidate_keys = ([height_field] if height_field else []) + [
+            str(item) for item in numeric_keys]
+        for key in candidate_keys:
+            if not key:
+                continue
+            value = _as_float(_record_value(record, key), default=float("nan"))
+            if value == value:  # not NaN
+                point["field"] = key
+                point["value"] = value
+                break
+        points.append(point)
 
     focus_semantics = context.get("keys") or {}
     # Prefer the focus group (its own location history), then real related
@@ -1326,6 +1344,17 @@ def _location_payload(platform: "Platform", workspace_id: str,
         add(item["record"], semantics, "station")
         if len(points) >= 8:
             break
+    view_type = {
+        "gis": "gis",
+        "scene25d": "scene_2_5d",
+        "twin3d": "twin_3d",
+    }.get(str((options or {}).get("display") or ""), "map")
+    style = {
+        key: (options or {})[key]
+        for key in ("basemap", "layers", "cluster", "heightField",
+                    "colorField", "labelField", "showLabels", "theme")
+        if key in (options or {})
+    }
     return {
         "region": workspace_name,
         "points": points[:8],
@@ -1333,7 +1362,23 @@ def _location_payload(platform: "Platform", workspace_id: str,
         "durationMin": 0,
         "mode": "points",
         "summary": f"{len(points[:8])} 个位置点",
+        "viewType": view_type,
+        "display": str((options or {}).get("display") or "map"),
+        "style": style,
     }
+
+
+def _location_request(blueprint: dict[str, Any] | None) -> dict[str, Any]:
+    """The adjudicated location options, if any (empty means canonical map)."""
+    if not isinstance(blueprint, dict):
+        return {}
+    for view in blueprint.get("views") or []:
+        if not isinstance(view, dict):
+            continue
+        if view.get("perspective") == "location":
+            options = view.get("options")
+            return dict(options) if isinstance(options, dict) else {}
+    return {}
 
 
 def _table_request(blueprint: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -1910,7 +1955,8 @@ def build_bundle(platform: "Platform", workspace_id: str, actor: str,
     workspace = platform.workspaces.get(workspace_id, actor)
     workspace_name = str(workspace.get("name") or workspace_id)
     location = _location_payload(
-        platform, workspace_id, context, related, workspace_name)
+        platform, workspace_id, context, related, workspace_name,
+        _location_request(blueprint))
 
     view_payloads = {
         "view_identity": {"rows": [identity]},

@@ -2,11 +2,19 @@
 
 from __future__ import annotations
 
+import time
+
 import pytest
 
+from onto_platform.application.smartui.studio import (
+    _get as _generation_row,
+    get_generation,
+    start_generation,
+)
 from onto_platform.errors import PlatformError, ValidationError
 from onto_platform.interfaces.smart_ui import (
     compile_smart_ui,
+    compile_smart_ui_blueprint,
     invoke_smart_action,
     smart_ui_meta,
 )
@@ -196,6 +204,12 @@ def test_generic_ontology_without_plate_compiles_and_renders(platform):
     assert location["mode"] == "points"
     assert len(location["points"]) >= 1
     assert {"lng", "lat", "label"} <= set(location["points"][0])
+    # Default location stays the canonical map; the spatial variants are
+    # opt-in through the adjudicated display option.
+    assert location["viewType"] == "map"
+    assert location["display"] == "map"
+    assert location["style"] == {}
+    assert location["points"][0].get("value") is not None
 
     action = invoke_smart_action(
         platform, wid, "admin", "site_check",
@@ -204,6 +218,69 @@ def test_generic_ontology_without_plate_compiles_and_renders(platform):
     assert action["target"].startswith("Site/")
     assert action["result"]["status"] == "succeeded"
     assert action["plate"] == meta["bridge"]["focusValue"]
+
+
+def test_spatial_location_variants_compile_and_carry_style(platform):
+    wid = _seed_generic_workspace(platform)
+    meta = smart_ui_meta(platform, wid, "admin")
+    question = f"{meta['bridge']['focusValue']} 为什么异常？"
+    roles = ["owner"]
+    base = compile_smart_ui(platform, wid, "admin", question, roles)
+    blueprint = base["compiled"]["blueprint"]
+    for display, component, view_type, extra in (
+        ("gis", "GISMap", "gis",
+         {"basemap": "terrain", "layers": ["route", "points"], "cluster": False}),
+        ("scene25d", "Scene25D", "scene_2_5d",
+         {"heightField": "temperature"}),
+        ("twin3d", "Twin3D", "twin_3d",
+         {"heightField": "temperature", "theme": "dark"}),
+    ):
+        candidate = {
+            **blueprint,
+            "views": [dict(view) for view in blueprint["views"]],
+        }
+        candidate["views"] = [
+            {**view,
+             "options": {**(view.get("options") or {}), "display": display,
+                         **extra}}
+            if view.get("perspective") == "location" else view
+            for view in candidate["views"]
+        ]
+        result = compile_smart_ui_blueprint(
+            platform, wid, "admin", question, roles, candidate)
+        assert result["compiled"]["ok"] is True
+        assert f"{component}(" in result["compiled"]["program"]
+        location = result["bundle"]["viewPayloads"]["view_location"]["rows"][0]
+        assert location["viewType"] == view_type
+        assert location["display"] == display
+        for key, value in extra.items():
+            assert location["style"][key] == value
+        if "heightField" in extra:
+            point = location["points"][0]
+            assert point["field"] == "temperature"
+            assert isinstance(point["value"], (int, float))
+
+
+def test_digital_twin_pack_preset_recompiles_to_gis_component(platform):
+    wid = _seed_generic_workspace(platform)
+    started = start_generation(
+        platform, wid, "admin", "查看设备轨迹", ["owner"],
+        mode="deterministic", pack_id="onto.pack.digital-twin")
+    deadline = time.time() + 8.0
+    row: dict = {}
+    while time.time() < deadline:
+        row = get_generation(platform, wid, "admin", started["id"])
+        if row.get("status") in {"succeeded", "failed", "cancelled"}:
+            break
+        time.sleep(0.02)
+    assert row["status"] == "succeeded"
+    assert any(view.get("perspective") == "location"
+               and (view.get("options") or {}).get("display") == "gis"
+               for view in row["blueprint"]["views"])
+    # The program must be compiled from the preset-applied blueprint, not the
+    # planner's pre-preset default (which would still call GeoMap).
+    assert "GISMap(" in _generation_row(
+        platform, wid, started["id"])["program"]
 
 
 def test_status_normalization_understands_chinese_labels():

@@ -67,9 +67,15 @@ def test_meta_exposes_ui_slots_engine_descriptors_and_active_pack(
     assert renderers["table"]["component"] == "DataTable"
     assert renderers["table"]["pluginId"] == "onto.smartui.renderer.table"
     assert renderers["chart"]["format"] == "chart"
+    assert renderers["gis"]["component"] == "GISMap"
+    assert renderers["scene_2_5d"]["format"] == "scene25d"
+    assert renderers["twin_3d"]["pluginId"] == "onto.smartui.renderer.twin3d"
     descriptors = {item["viewType"]: item for item in meta["engineDescriptors"]}
     assert descriptors["table"]["component"] == "DataTable"
     assert descriptors["chart"]["perspective"] == "statistics"
+    assert descriptors["gis"]["perspective"] == "location"
+    assert descriptors["scene_2_5d"]["component"] == "Scene25D"
+    assert descriptors["twin_3d"]["component"] == "Twin3D"
     assert meta["pluginLock"] == platform.smartui.execution_lock_dicts()
     assert meta["plugins"]
 
@@ -87,6 +93,53 @@ def test_permission_and_execution_lock_are_enforced():
     assert empty.execution_lock_dicts() == []
     with pytest.raises(ValidationError):
         empty.implementation("onto.test.context", permission="context.read")
+
+
+def test_spatial_view_plugins_register_and_adjudicate_options():
+    host = build_default_host()
+    records = {record.manifest.view_type: record for record in
+               host.find("view", perspective="location",
+                         permission="view.render")}
+    assert set(records) == {"gis", "scene_2_5d", "twin_3d"}
+
+    obj = SimpleNamespace(properties=[
+        SimpleNamespace(name="longitude", is_numeric=True),
+        SimpleNamespace(name="latitude", is_numeric=True),
+        SimpleNamespace(name="speed", is_numeric=True),
+        SimpleNamespace(name="station", is_numeric=False),
+    ])
+    scene = records["scene_2_5d"].implementation.adjudicate_options(
+        {"display": "scene25d", "heightField": "speed",
+         "colorField": "station", "showLabels": False},
+        obj, "location", [])
+    assert scene == {"display": "scene25d", "heightField": "speed",
+                     "colorField": "station", "showLabels": False}
+
+    scene_pruned: list[dict] = []
+    scene = records["scene_2_5d"].implementation.adjudicate_options(
+        {"heightField": "station"}, obj, "location", scene_pruned)
+    assert "heightField" not in scene
+    assert {item["key"] for item in scene_pruned} == {"heightField"}
+
+    gis_pruned: list[dict] = []
+    gis = records["gis"].implementation.adjudicate_options(
+        {"display": "gis", "basemap": "terrain", "layers": ["route", "bad"],
+         "cluster": True, "heightField": "speed"},
+        obj, "location", gis_pruned)
+    assert gis["display"] == "gis"
+    assert gis["basemap"] == "terrain"
+    assert gis["layers"] == ["route"]
+    assert gis["cluster"] is True
+    assert "heightField" not in gis
+    assert {item["key"] for item in gis_pruned} == set()
+
+    # A focus object without its own geo props can still get a location view
+    # through related objects; the plugin must not drop the display choice.
+    vehicle = SimpleNamespace(properties=[
+        SimpleNamespace(name="speed", is_numeric=True)])
+    related_geo = records["gis"].implementation.adjudicate_options(
+        {"display": "gis", "basemap": "night"}, vehicle, "location", [])
+    assert related_geo == {"display": "gis", "basemap": "night"}
 
 
 def test_api_version_range_is_negotiated_and_incompatible_is_rejected():

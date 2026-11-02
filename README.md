@@ -253,13 +253,16 @@ npm --prefix ../vibe-可视化engine/runtime-web run build:platform
 生成链路的贡献点由 `application/smartui/` 的插件宿主承载：`context`、`generator`、
 `prompt`、`adjudicator`、`view`、`renderer`、`publisher`、`ui` 都是可替换贡献点；
 对象/视角语义、权限、审计、编译与发布仍在内核。模型输出永远只是 proposal，必须
-经过 sanitizer + schema 裁决，再交给确定性编译器。视图插件当前内置 `table` /
-`chart` 两种表现；renderer 插件声明 `viewType → component` 映射，组件仍随构建期
-bundle 发布，不加载远程脚本。
+经过 sanitizer + schema 裁决，再交给确定性编译器。视图插件内置 `table` / `chart`，
+以及三种 `location` 空间表现：`gis`（GISMap 分层地图）、`scene25d`（Scene25D
+等距挤压场景）、`twin3d`（Twin3D 伪 3D 孪生）；三者共享同一份 `view_location`
+payload，只通过 `display` 选项切换，未指定时保持默认 `map` / `GeoMap`。renderer
+插件声明 `viewType → component` 映射，组件仍随构建期 bundle 发布，不加载远程脚本
+或第三方 3D/WebGL 库。
 
 `GET /smart-ui/meta` 会返回 `plugins`、执行组合锁 `pluginLock`、`ui` slot 与
 `renderers`、`engineDescriptors`、`activePack` 与声明式 `packs`（内置
-`onto.pack.traffic`、`onto.pack.finance-lease`）。工作空间可通过
+`onto.pack.traffic`、`onto.pack.finance-lease`、`onto.pack.digital-twin`）。工作空间可通过
 `smartui_config` 绑定 Pack，生成请求
 也接受 `pack_id` 覆盖；Pack 只影响本次生成的 context、prompt 与视图 preset。
 `GET /smart-ui/generations/{id}/replay` 用历史蓝图和当前执行锁重编译，报告插件锁

@@ -38,6 +38,7 @@ from .adjudication import (
     AdjudicationContext,
     AdjudicatorChain,
     DefaultProposalAdjudicator,
+    normalize_view_options,
 )
 from .bridge import (
     ENGINE_VERSION,
@@ -57,7 +58,6 @@ from .contracts import (
     PERMISSION_CONTEXT_READ,
     PERMISSION_PROPOSAL_ADJUDICATE,
     PERMISSION_PROPOSAL_GENERATE,
-    PERMISSION_VIEW_RENDER,
 )
 from .generators import (
     GenerationRequest,
@@ -68,7 +68,6 @@ from .generators import (
 from .packs import apply_view_presets, resolve_generation_pack
 from .prompt import DefaultPromptPack, PromptRequest
 from .publisher import DefaultPublisher, PublishRequest
-from .views import table as table_view
 
 MAX_PROMPT_BYTES = 16000
 # A generation can outlive a server restart.  Anything older than this without
@@ -431,30 +430,8 @@ def _context_pack(platform, workspace_id: str, actor: str,
 def _normalize_view_options(raw: Any, obj: Any, perspective: str,
                             pruned: list[dict[str, Any]],
                             platform: Any | None = None) -> dict[str, Any]:
-    """Delegate v1.1 render options to the view plugin for this perspective."""
-    host = getattr(platform, "smartui", None) if platform is not None else None
-    if host is not None:
-        try:
-            candidates = []
-            for record in host.find("view", perspective=perspective,
-                                    permission=PERMISSION_VIEW_RENDER):
-                implementation = getattr(record, "implementation", None)
-                if implementation is not None and hasattr(
-                        implementation, "adjudicate_options"):
-                    candidates.append((record, implementation))
-            view_type = "table" if isinstance(raw, dict) and (
-                raw.get("chartType") == "table" or raw.get("display") == "table"
-            ) else "chart"
-            for record, implementation in candidates:
-                if record.manifest.view_type == view_type:
-                    return implementation.adjudicate_options(
-                        raw, obj, perspective, pruned)
-            if candidates:
-                return candidates[0][1].adjudicate_options(
-                    raw, obj, perspective, pruned)
-        except Exception:
-            pass
-    return table_view.adjudicate_options(raw, obj, perspective, pruned)
+    """Studio entry point; the shared chain owns plugin selection."""
+    return normalize_view_options(raw, obj, perspective, pruned, platform)
 
 
 def _normalize_proposal(proposal: dict[str, Any],
@@ -633,6 +610,14 @@ def _fallback(platform, workspace_id: str, actor: str, row: dict,
     if not blueprint:
         raise ValidationError("deterministic fallback produced no blueprint")
     blueprint = apply_view_presets(blueprint, workspace_pack)
+    if workspace_pack is not None and workspace_pack.view_presets:
+        # Presets change the blueprint, so the program must be compiled from
+        # the *preset-applied* blueprint rather than the planner's default.
+        snapshot = smart_ui_snapshot(
+            platform, workspace_id, actor, focus=row.get("focus"))
+        compiled = compile_smart_ui_blueprint(
+            platform, workspace_id, actor, question, roles, blueprint,
+            snapshot=snapshot)["compiled"]
     row["mode"] = "deterministic" if row.get("requested_mode") == "deterministic" else "fallback"
     row["status"] = "succeeded"
     row["blueprint"] = blueprint

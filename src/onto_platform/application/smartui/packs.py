@@ -25,6 +25,9 @@ _VERSION_RE = re.compile(r"^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$")
 _PRESET_KEYS = {
     "chartType", "display", "groupBy", "metric", "sort", "limit",
     "columns", "filters",
+    # Spatial presentation options; still declarative data, never code.
+    "basemap", "layers", "cluster", "heightField", "colorField",
+    "labelField", "showLabels", "theme",
 }
 
 
@@ -174,6 +177,23 @@ BUILTIN_PACKS: tuple[WorkspacePack, ...] = (
              "options": {"display": "table", "limit": 50}},
         ),
         default_question="哪些租赁合同存在回款风险",
+        builtin=True,
+    ),
+    WorkspacePack(
+        id="onto.pack.digital-twin",
+        name="数字孪生",
+        description="空间资产的 GIS 分层地图、2.5D 与 3D 孪生呈现",
+        ontology_profile="digital_twin",
+        perspectives=("identity", "location", "state", "rule"),
+        view_presets=(
+            {"perspective": "identity", "options": {}},
+            {"perspective": "location",
+             "options": {"display": "gis", "basemap": "grid",
+                         "layers": ["route", "points", "labels"],
+                         "cluster": False}},
+            {"perspective": "state", "options": {}},
+        ),
+        default_question="查看资产空间分布与运行状态",
         builtin=True,
     ),
 )

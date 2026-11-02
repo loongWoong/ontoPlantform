@@ -85,7 +85,7 @@
   <g data-shape="node">
     <path d="M 624.00 522.00 A 8.00 8.00 0 0 1 632.00 514.00 L 804.00 514.00 A 8.00 8.00 0 0 1 812.00 522.00 L 812.00 560.00 A 8.00 8.00 0 0 1 804.00 568.00 L 632.00 568.00 A 8.00 8.00 0 0 1 624.00 560.00 L 624.00 522.00 Z" fill="#ccfbf1" stroke="#0f766e" stroke-width="1.5" />
     <text x="718.00" y="537.40" fill="#134e4a" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">视图 / renderer 插件</text>
-    <text x="718.00" y="553.00" fill="#134e4a" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">table · chart · component</text>
+    <text x="718.00" y="553.00" fill="#134e4a" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">table/chart · gis/2.5D/3D</text>
   </g>
   <g data-shape="node">
     <path d="M 161.00 594.00 A 8.00 8.00 0 0 1 169.00 586.00 L 287.00 586.00 A 8.00 8.00 0 0 1 295.00 594.00 L 295.00 632.00 A 8.00 8.00 0 0 1 287.00 640.00 L 169.00 640.00 A 8.00 8.00 0 0 1 161.00 632.00 L 161.00 594.00 Z" fill="#ccfbf1" stroke="#0f766e" stroke-width="1.5" />
@@ -159,11 +159,11 @@
     <path d="M 487.00 346.00 L 487.00 415.75 A 8.25 8.25 0 0 1 478.75 424.00 L 476.00 424.00 A 5.50 5.50 0 0 0 470.50 429.50 L 470.50 435.00" fill="none" stroke="#64748b" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
     <path d="M 470.50 442.00 L 467.35 435.00 L 473.65 435.00 Z" fill="#64748b" stroke="#64748b" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
   </g>
-  <text x="27.00" y="39.40" fill="#475569" font-family="inherit" font-size="21">AI视图 · 当前插件化架构（Phase 0–7）</text>
+  <text x="27.00" y="39.40" fill="#475569" font-family="inherit" font-size="21">AI视图 · 当前插件化架构（Phase 0–8）</text>
   <text x="27.00" y="60.20" fill="#475569" font-family="inherit" font-size="12">微内核 + 贡献点已落地；模型只提交 proposal，Blueprint v1.0 由内核编译与裁决</text>
   <text x="27.00" y="858.00" fill="#334155" font-family="inherit" font-size="11.5">边界：AI视图（LLM / 插件链）与智能视图（确定性 compile）互不影响；Blueprint v1.0 是稳定 ABI。</text>
   <text x="27.00" y="878.00" fill="#64748b" font-family="inherit" font-size="11.5">色义：蓝 = 接入层 · 灰 = 应用 core · 青 = 插件贡献 · 琥珀 = 平台 / 引擎。实线 = 已落地链路。</text>
   <text x="27.00" y="907.70" fill="#0f766e" font-family="inherit" font-size="10.5">已补齐：context / publisher / ui 实现；Pack 绑定 + config API；apiVersion 区间 / permissions 授权 / 执行锁；</text>
-  <text x="27.00" y="924.70" fill="#0f766e" font-family="inherit" font-size="10.5">引擎描述符、renderer 注册 / UI manifest、历史回放与签名外部插件（进程内信任）。</text>
+  <text x="27.00" y="924.70" fill="#0f766e" font-family="inherit" font-size="10.5">引擎描述符、renderer 注册 / UI manifest、回放、签名外部插件与 GIS/2.5D/3D 空间视图。</text>
   <text x="27.00" y="944.70" fill="#9f1239" font-family="inherit" font-size="10.5">剩余边界：外部插件仍无进程隔离；renderer 描述符已注册，独立前端包仍待补。</text>
 </svg>

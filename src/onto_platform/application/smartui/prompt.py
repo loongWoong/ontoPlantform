@@ -48,7 +48,8 @@ class DefaultPromptPack:
                  "title": "可选中文标题",
                  "options": {
                      "chartType": "可选 bar|line|pie|table；table 仅用于 statistics",
-                     "display": "可选 panel|table",
+                     "display": "可选 panel|table（statistics）；"
+                                "gis|scene25d|twin3d（仅 location 空间呈现）",
                      "groupBy": "可选对象属性名",
                      "metric": {"field": "对象属性名", "agg": "sum|avg|count|min|max"},
                      "sort": {"field": "对象属性名", "direction": "asc|desc"},
@@ -71,6 +72,8 @@ class DefaultPromptPack:
             "需要列表/筛选/排序/取前 N 条时，在对应 view 的 options 中表达，不要编造新视角",
             "options 的 groupBy/sort.field/columns/filters[].field 必须是该对象属性；limit ≤ 200",
             "table 形态只用于 statistics 视角；不得输出坐标、颜色、CSS、脚本或 expressions",
+            "gis/scene25d/twin3d 只用于 location 视角；heightField 必须是该对象的数值属性，"
+            "其余空间选项只能使用 schema 中声明的枚举，平台会剪除非法值",
             "若 context_pack.focus 存在且用户未明确要求别的实例，focus 应沿用该对象与值",
         ]
         workspace_pack = (request.pack or {}).get("workspacePack")

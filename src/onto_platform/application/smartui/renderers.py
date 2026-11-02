@@ -112,3 +112,54 @@ class ChartRenderer:
             "component": self.component,
             "format": self.format,
         }
+
+
+class GISRenderer:
+    """Layered GIS renderer descriptor (GISMap ships in the runtime bundle)."""
+
+    id = "onto.smartui.renderer.gis"
+    version = "1.0.0"
+    view_type = "gis"
+    component = "GISMap"
+    format = "gis"
+
+    def descriptor(self) -> dict[str, Any]:
+        return {
+            "viewType": self.view_type,
+            "component": self.component,
+            "format": self.format,
+        }
+
+
+class Scene25DRenderer:
+    """Isometric 2.5D renderer descriptor (Scene25D ships in the bundle)."""
+
+    id = "onto.smartui.renderer.scene25d"
+    version = "1.0.0"
+    view_type = "scene_2_5d"
+    component = "Scene25D"
+    format = "scene25d"
+
+    def descriptor(self) -> dict[str, Any]:
+        return {
+            "viewType": self.view_type,
+            "component": self.component,
+            "format": self.format,
+        }
+
+
+class Twin3DRenderer:
+    """Digital-twin renderer descriptor (Twin3D ships in the bundle)."""
+
+    id = "onto.smartui.renderer.twin3d"
+    version = "1.0.0"
+    view_type = "twin_3d"
+    component = "Twin3D"
+    format = "twin3d"
+
+    def descriptor(self) -> dict[str, Any]:
+        return {
+            "viewType": self.view_type,
+            "component": self.component,
+            "format": self.format,
+        }
