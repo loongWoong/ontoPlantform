@@ -55,6 +55,7 @@ class GenerationRequest:
     instruction: str = ""
     mode: str = "auto"
     pack: dict[str, Any] = field(default_factory=dict)
+    rule_pack: dict[str, Any] | None = None
     snapshot: Any = None
     provider: Any = None
     max_prompt_bytes: int = 0
@@ -89,17 +90,63 @@ class DeterministicGenerator:
     def generate(self, request: GenerationRequest) -> Candidate:
         result = compile_smart_ui(
             request.platform, request.workspace_id, request.actor,
-            request.question, request.roles, focus=request.focus)
+            request.question, request.roles, focus=request.focus,
+            rule_pack=request.rule_pack)
         compiled = result["compiled"]
         blueprint = compiled.get("blueprint")
         if not blueprint:
             from ...errors import ValidationError
             raise ValidationError("deterministic fallback produced no blueprint")
+        artifacts = compiled.get("artifacts") or {}
         return Candidate(
             source=self.id,
             blueprint=blueprint,
             compiled=compiled,
-            trace={"generatorPlugin": self.id},
+            trace={
+                "generatorPlugin": self.id,
+                "rulePack": artifacts.get("rulePack") or {},
+                "ruleTrace": artifacts.get("ruleTrace") or {},
+                "clarify": artifacts.get("clarify") or [],
+            },
+        )
+
+
+class RuleGenerator:
+    """No-model generator: evaluate the declarative rule pack, then compile.
+
+    It never calls an LLM and never bypasses L4: the rule pack only decides the
+    goal/object/focus/view candidates, and the unchanged compiler remains the
+    authority for the emitted program.
+    """
+
+    id = "onto.smartui.generator.rule"
+    version = "1.0.0"
+
+    def generate(self, request: GenerationRequest) -> Candidate:
+        result = compile_smart_ui(
+            request.platform, request.workspace_id, request.actor,
+            request.question, request.roles, focus=request.focus,
+            rule_pack=request.rule_pack)
+        compiled = result["compiled"]
+        blueprint = compiled.get("blueprint")
+        if not blueprint:
+            from ...errors import ValidationError
+            raise ValidationError("rule generation produced no blueprint")
+        artifacts = compiled.get("artifacts") or {}
+        rule_trace = artifacts.get("ruleTrace") or {}
+        rule_pack = artifacts.get("rulePack") or {}
+        return Candidate(
+            source=self.id,
+            blueprint=blueprint,
+            compiled=compiled,
+            trace={
+                "generatorPlugin": self.id,
+                "rulePack": rule_pack,
+                "rulePackId": rule_pack.get("id"),
+                "rulePackHash": (rule_trace.get("pack") or {}).get("hash"),
+                "ruleTrace": rule_trace,
+                "clarify": artifacts.get("clarify") or [],
+            },
         )
 
 

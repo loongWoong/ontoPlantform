@@ -85,6 +85,7 @@ def _engine() -> dict[str, Any]:
         try:
             import onto_ui_engine  # noqa: PLC0415
             from onto_ui_engine import compiler, models, planner  # noqa: PLC0415
+            from onto_ui_engine import rules as rules_engine  # noqa: PLC0415
             from onto_ui_engine.capabilities import (  # noqa: PLC0415
                 derive_capabilities,
                 resolve_query_root,
@@ -97,6 +98,7 @@ def _engine() -> dict[str, Any]:
             "compiler": compiler,
             "models": models,
             "planner": planner,
+            "rules": rules_engine,
             "derive_capabilities": derive_capabilities,
             "resolve_query_root": resolve_query_root,
             "version": str(getattr(onto_ui_engine, "__version__", ENGINE_VERSION)),
@@ -2208,7 +2210,8 @@ def smart_ui_meta(platform: "Platform", workspace_id: str, actor: str) -> dict[s
 
 def compile_smart_ui(platform: "Platform", workspace_id: str, actor: str,
                      question: str, roles: list[str],
-                     focus: dict[str, Any] | None = None) -> dict[str, Any]:
+                     focus: dict[str, Any] | None = None,
+                     rule_pack: dict[str, Any] | None = None) -> dict[str, Any]:
     modules = _engine()
     planner = modules["planner"]
     compiler = modules["compiler"]
@@ -2238,6 +2241,7 @@ def compile_smart_ui(platform: "Platform", workspace_id: str, actor: str,
         focus_object=str(bridge.get("focusObject") or "") or None,
         focus_key=str(bridge.get("identityKey") or "") or None,
         focus_value=str(bridge.get("focusValue") or "") or None,
+        rule_pack=rule_pack,
     )
     if plan.blueprint is None:
         details = [d.to_dict() for d in plan.diagnostics if d.severity.value == "error"]
@@ -2278,6 +2282,9 @@ def compile_smart_ui(platform: "Platform", workspace_id: str, actor: str,
         "requestedPerspectives": list(plan.requested),
         "finalPerspectives": list(plan.final),
         "prunedPerspectives": list(plan.pruned),
+        "rulePack": plan.rule_pack,
+        "ruleTrace": plan.rule_trace,
+        "clarify": list(plan.clarify),
         "planningDiagnostics": [d.to_dict() for d in plan.diagnostics],
         "programBytes": len(compiled.program.encode("utf-8")),
         "programLines": len(compiled.program.splitlines()),

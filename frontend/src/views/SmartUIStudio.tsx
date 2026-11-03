@@ -5,9 +5,11 @@ import {
 } from "@phosphor-icons/react";
 import {
   api, type ApiError, type Application, type LlmCheckResult, type SmartUiFocusOption,
-  type SmartUiFocusRequest, type SmartUiMeta, type UiDraft, type UiGeneration,
+  type SmartUiFocusRequest, type SmartUiMeta, type SmartUiRulePackSummary,
+  type UiDraft, type UiGeneration,
   type UiGenerationCost, type UiGenerationDetail, type UiGenerationDiffChange,
   type UiGenerationFocus, type UiGenerationSummary, type UiGenerationUsage,
+  type UiRuleTrace, type UiRuleClarify,
 } from "../api";
 import { usePlatform } from "../store";
 import { smartUiFrameSrc, smartUiStandaloneSrc, useSmartUiBridge } from "../smartui-bridge";
@@ -25,6 +27,7 @@ const EXAMPLES = [
 
 const MODE_LABEL: Record<string, string> = {
   llm: "AI 生成",
+  rule: "规则生成 · 无模型调用",
   fallback: "确定性回退",
   deterministic: "确定性模式",
 };
@@ -340,8 +343,114 @@ function ValidationList({ generation }: { generation: UiGeneration }) {
   );
 }
 
-interface StudioProps {
-  wid: string;
+/** 规则决策轨迹：证明“无模型”时目标/视角是依据什么选的。 */
+function RuleTracePanel({
+  trace, clarify, onUseQuestion,
+}: {
+  trace: UiRuleTrace | null | undefined;
+  clarify: UiRuleClarify[] | undefined;
+  onUseQuestion?: (question: string) => void;
+}) {
+  const matched = trace?.matched ?? [];
+  const candidates = trace?.candidates ?? [];
+  const skipped = trace?.skipped ?? [];
+  const pruned = trace?.pruned ?? [];
+  const questions = clarify ?? [];
+  if (!trace && !questions.length) return null;
+  return (
+    <Card
+      title="规则决策"
+      sub="命中/跳过/剪除都可解释；置信度是规则启发式评分，不是模型概率。"
+      aside={<Tag kind="ok">{trace?.pack?.id || "内置规则包"}</Tag>}
+    >
+      <div className="studio-rule-summary">
+        <span><b>{trace?.goal || "—"}</b><small>目标</small></span>
+        <span><b>{trace?.object || "—"}</b><small>对象</small></span>
+        <span><b>{Math.round((trace?.confidence ?? 0) * 100)}%</b><small>置信度</small></span>
+        <span><b>{matched.length}</b><small>命中规则</small></span>
+        <span><b>{candidates.length}</b><small>候选视角</small></span>
+      </div>
+      {trace?.pack?.hash ? (
+        <p className="studio-rule-hash mono">hash {String(trace.pack.hash).slice(0, 12)}…</p>
+      ) : null}
+      {matched.length ? (
+        <div className="studio-rule-section">
+          <h4>命中规则</h4>
+          <ul className="studio-rule-list">
+            {matched.map((item) => (
+              <li key={item.ruleId}>
+                <span className="studio-rule-id mono">{item.ruleId}</span>
+                <span className="studio-rule-priority">P{item.priority}</span>
+                <span className="studio-rule-reason">{item.reason || item.effects.join(" / ")}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : (
+        <p className="muted small">没有规则命中：使用默认目标与视角顺序。</p>
+      )}
+      {candidates.length ? (
+        <div className="studio-rule-section">
+          <h4>候选视角</h4>
+          <div className="studio-rule-candidates">
+            {candidates.map((item) => (
+              <span key={item.perspective} className="studio-rule-candidate">
+                <b>{item.title || item.perspective}</b>
+                <small>{item.perspective} · {item.weight.toFixed(2)}</small>
+              </span>
+            ))}
+          </div>
+        </div>
+      ) : null}
+      {skipped.length || pruned.length ? (
+        <div className="studio-rule-section">
+          <details>
+            <summary>未采用（{skipped.length + pruned.length}）</summary>
+            <ul className="studio-rule-list">
+              {skipped.map((item) => (
+                <li key={`skip:${item.ruleId}`}>
+                  <span className="studio-rule-id mono">{item.ruleId}</span>
+                  <span className="studio-rule-priority">P{item.priority}</span>
+                  <span className="studio-rule-reason">{item.reason}</span>
+                </li>
+              ))}
+              {pruned.map((item, index) => (
+                <li key={`prune:${item.kind}:${item.key}:${index}`}>
+                  <span className="studio-rule-id mono">{item.kind}</span>
+                  <span className="studio-rule-reason">{item.key} · {item.reason}</span>
+                </li>
+              ))}
+            </ul>
+          </details>
+        </div>
+      ) : null}
+      {questions.length ? (
+        <div className="studio-rule-section">
+          <h4>规则建议补充</h4>
+          {questions.map((item) => (
+            <div key={item.id} className="studio-rule-clarify">
+              <p>{item.question}</p>
+              <div className="studio-rule-candidates">
+                {item.options.map((option) => (
+                  <button
+                    key={option.id}
+                    type="button"
+                    className="studio-example"
+                    onClick={() => onUseQuestion?.(option.label)}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </Card>
+  );
+}
+
+interface StudioProps {  wid: string;
   meta: SmartUiMeta;
   generationId: string | null;
   onSelect: (gid: string) => void;
@@ -353,6 +462,10 @@ export function SmartUIStudio({ wid, meta, generationId, onSelect, onOpenHistory
   const [question, setQuestion] = useState(meta.defaultQuestion || EXAMPLES[0]);
   const [role, setRole] = useState(meta.roles.find((item) => item.id === meta.roles[0]?.id)?.id ?? "owner");
   const roleOptions = meta.roles.length ? meta.roles : [{ id: "owner", name: "空间所有者", glyph: "主" }];
+  const [mode, setMode] = useState<"auto" | "rule" | "deterministic">("auto");
+  const [rulePacks, setRulePacks] = useState<SmartUiRulePackSummary[]>([]);
+  const [rulePackId, setRulePackId] = useState("");
+  const effectiveRulePack = rulePackId || meta.boundRulePackId || "";
   const modelState = modelStatusLabel(meta.model);
   const willUseModel = meta.model?.will_use_model ?? false;
   const [generation, setGeneration] = useState<UiGenerationDetail | null>(null);
@@ -399,6 +512,23 @@ export function SmartUIStudio({ wid, meta, generationId, onSelect, onOpenHistory
   useEffect(() => {
     void refreshSide();
   }, [refreshSide]);
+
+  // 规则包列表用于“规则生成”模式；加载失败不影响模型/确定性路径。
+  useEffect(() => {
+    let cancelled = false;
+    api.smartUiRulePacks(wid)
+      .then((list) => {
+        if (cancelled) return;
+        setRulePacks(list.items);
+        setRulePackId((prev) => prev || list.boundRulePackId || "");
+      })
+      .catch(() => {
+        if (!cancelled) setRulePacks([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [wid]);
 
   // 打开已有生成（从 URL、最近列表或生成记录进入）时读取完整记录。
   useEffect(() => {
@@ -526,6 +656,8 @@ export function SmartUIStudio({ wid, meta, generationId, onSelect, onOpenHistory
       const created = await api.smartUiGenerate(wid, {
         question: question.trim(),
         roles: [role],
+        mode,
+        ...(mode === "rule" && effectiveRulePack ? { rule_pack_id: effectiveRulePack } : {}),
         ...(chosen ? { focus: chosen } : {}),
       });
       setGeneration(created);
@@ -579,7 +711,7 @@ export function SmartUIStudio({ wid, meta, generationId, onSelect, onOpenHistory
 
   /** 失败/中断/取消后重开一条同问题的新记录：自动=让平台再试模型，确定性=直接走回退。
    *  数据范围跟随当前选择；没有选择时沿用原记录的焦点，保证重试不丢失范围。 */
-  const retryGeneration = async (mode: "auto" | "deterministic") => {
+  const retryGeneration = async (mode: "auto" | "rule" | "deterministic") => {
     if (!generation || creating) return;
     setCreating(true);
     setLoadError(null);
@@ -589,6 +721,9 @@ export function SmartUIStudio({ wid, meta, generationId, onSelect, onOpenHistory
         question: generation.question,
         roles: generation.roles.length ? generation.roles : [role],
         mode,
+        ...(mode === "rule" && (generation.rule_pack_id || effectiveRulePack)
+          ? { rule_pack_id: generation.rule_pack_id || effectiveRulePack }
+          : {}),
         ...(chosen ? { focus: chosen } : {}),
       });
       setGeneration(created);
@@ -820,8 +955,59 @@ export function SmartUIStudio({ wid, meta, generationId, onSelect, onOpenHistory
               ) : null}
             </div>
           </Field>
+          <Field
+            label="生成方式"
+            hint={mode === "rule"
+              ? "不调用模型：用规则包 + 本体事实决定目标与视角"
+              : mode === "deterministic"
+                ? "跳过模型与规则，直接用 L3 关键词规划"
+                : "有模型时先由模型提议，失败/不可用时自动回退"}
+          >
+            <div className="studio-mode" role="radiogroup" aria-label="生成方式">
+              {([
+                ["auto", "自动", "模型优先，失败回退"],
+                ["rule", "规则生成", "无模型调用"],
+                ["deterministic", "确定性", "仅关键词规划"],
+              ] as const).map(([id, label, desc]) => (
+                <button
+                  key={id}
+                  type="button"
+                  role="radio"
+                  aria-checked={mode === id}
+                  className={`studio-mode-option ${mode === id ? "is-active" : ""}`}
+                  onClick={() => setMode(id)}
+                >
+                  <b>{label}</b>
+                  <span>{desc}</span>
+                </button>
+              ))}
+            </div>
+          </Field>
+          {mode === "rule" ? (
+            <Field
+              label="规则包"
+              hint={rulePacks.length
+                ? "规则包只声明目标/视角/权重/标题，不产生布局、样式或脚本"
+                : "规则包列表不可用；将使用内置默认规则包"}
+            >
+              <Select
+                value={effectiveRulePack}
+                onChange={(event) => setRulePackId(event.target.value)}
+              >
+                <option value="">内置默认规则包</option>
+                {rulePacks.filter((item) => item.id !== "onto.rules.default").map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name} · {item.version}（{item.status}，{item.ruleCount} 条）
+                  </option>
+                ))}
+              </Select>
+              <p className="studio-note">
+                规则引擎是纯函数：命中/跳过/剪除都会写入生成轨迹，最终仍由同一套 L4 编译器生成程序。
+              </p>
+            </Field>
+          ) : null}
           <Btn onClick={() => void startGeneration()} busy={creating} disabled={!question.trim()}>
-            <Sparkle size={14} /> 生成视图
+            <Sparkle size={14} /> {mode === "rule" ? "按规则生成" : "生成视图"}
           </Btn>
           {!willUseModel ? (
             <p className="studio-note">
@@ -986,6 +1172,14 @@ export function SmartUIStudio({ wid, meta, generationId, onSelect, onOpenHistory
           ) : null}
         </Card>
 
+        {generation && (generation.ruleTrace || generation.clarify?.length) ? (
+          <RuleTracePanel
+            trace={generation.ruleTrace}
+            clarify={generation.clarify}
+            onUseQuestion={(next) => setQuestion(next)}
+          />
+        ) : null}
+
         {ready && generation ? (
           <Card title="继续迭代" sub="新版本继承当前蓝图；每次修改都生成一条可追溯记录，旧版本不受影响。">
             <div className="studio-refine">
@@ -1046,6 +1240,17 @@ export function SmartUIStudio({ wid, meta, generationId, onSelect, onOpenHistory
                   {costText}
                 </span>
               </span>
+              {generation.rule_pack_id ? (
+                <span>
+                  <b>规则包</b>
+                  <span className="mono" title={generation.rule_pack_hash || ""}>
+                    {generation.rule_pack_id}
+                    {generation.rule_pack_hash
+                      ? ` · ${generation.rule_pack_hash.replace("sha256:", "").slice(0, 8)}`
+                      : ""}
+                  </span>
+                </span>
+              ) : null}
               {generation.focus ? (
                 <span>
                   <b>数据范围</b>

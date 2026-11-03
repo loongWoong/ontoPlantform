@@ -265,6 +265,13 @@ payload，只通过 `display` 选项切换，未指定时保持默认 `map` / `G
 `onto.pack.traffic`、`onto.pack.finance-lease`、`onto.pack.digital-twin`）。工作空间可通过
 `smartui_config` 绑定 Pack，生成请求
 也接受 `pack_id` 覆盖；Pack 只影响本次生成的 context、prompt 与视图 preset。
+
+无大模型时可用 `mode="rule"`：引擎先用本体事实（`UiFacts`）与声明式规则包决定
+目标/对象/焦点/视角候选，再交由同一套 L4 编译与平台裁决；生成记录保存
+`rule_pack_id`、`rule_pack_hash`、`rule_trace` 与 `clarify`，Studio 可展开规则决策轨迹。
+规则包支持列表/校验/dry-run/克隆/发布/回滚/归档/绑定（发布需 `owner`），
+解析顺序为请求覆盖 → Pack 的 `rulePack` → 工作空间绑定 → 内置默认包。设计见
+[`docs/design/llm-smart-ui/rule-driven-generation.md`](docs/design/llm-smart-ui/rule-driven-generation.md)。
 `GET /smart-ui/generations/{id}/replay` 用历史蓝图和当前执行锁重编译，报告插件锁
 漂移。工作空间包只能是 JSON 数据，不能携带代码；外部签名代码插件需显式开启环境
 开关与密钥，当前仍在宿主进程内执行，尚未提供进程隔离。

@@ -1,6 +1,6 @@
 # 智能 UI 生成能力（LLM Studio）方案
 
-> 版本 v0.2 · 2026-11-02 · 状态：**M1 + 部分 M2/M3 已实施（见 §15）**
+> 版本 v0.3 · 2026-11-03 · 状态：**M1 + 部分 M2/M3 + 无模型规则生成已实施（见 §15）**
 > 范围：在现有「智能视图（确定性编译）」之上，新增一条 **LLM 提议 → 平台裁决 → 确定性编译 → 沙箱预览 → 资产化** 的生成链路。
 > 配套原型稿：`docs/design/llm-smart-ui/01-studio.svg`、`02-iterate.svg`、`03-library.svg`、`04-architecture.svg`；实机截图：`live-aiview.png`、`live-aiview-history.png`、`live-smartui.png`、`live-run.png`（同目录）。
 
@@ -389,8 +389,8 @@ views:
 
 实际接口与 §6 的差异：
 
-- `POST .../generations` body 为 `{question, roles?, mode?, focus?}`，`mode ∈ auto|llm|deterministic`；`focus = {object?, key, value}`；返回 `202` 任务摘要。
-- 状态枚举：`queued | running | succeeded | failed | cancelled | interrupted`；模式 `llm | fallback | deterministic`；步骤 `context → propose → adjudicate → compile → ready`。
+- `POST .../generations` body 为 `{question, roles?, mode?, focus?, pack_id?, rule_pack_id?}`，`mode ∈ auto|llm|rule|deterministic`；`focus = {object?, key, value}`；返回 `202` 任务摘要。`rule` 模式不调用模型，由规则包决定目标/对象/焦点/视角候选，再交由同一套 L4 编译。
+- 状态枚举：`queued | running | succeeded | failed | cancelled | interrupted`；模式 `llm | rule | fallback | deterministic`；步骤 `context → propose → adjudicate → compile → ready`。
 - `GET .../generations/{gid}/view` 按当前真实数据重编译并返回 `{generation, compiled, bundle}`；`GET .../generations/{gid}` 额外返回 `lineage` 与 `diff`。
 - `POST .../generations/{gid}/cancel` 协作式取消；`GET /smart-ui/entities?object=&q=&limit=` 提供实体候选；`PUT/DELETE /smart-ui/drafts/{did}` 管理草稿；`GET /smart-ui/generations?q=&status=&object=&mode=&limit=&offset=` 服务端检索分页；`DELETE /smart-ui/generations/{gid}` 删除未发布记录并清理其未发布草稿。
 - 未实现 `/events` SSE；鉴权错误遵循现有 403，Studio 关闭时返回 404。
@@ -406,10 +406,10 @@ views:
 
 ### 15.4 测试与实机验证
 
-- `pytest tests/test_smart_ui.py tests/test_smart_ui_studio.py -q`：**45 passed**（Studio 27 项：确定性链路、LLM 裁决剪除、维度对象→查询根、不可达模型回退、非法 proposal 失败、refine 版本、accept/publish 不可变与重复发布拒绝、HTTP 202/400、viewer 403、v1.1 table/options 剪除、相对时间/布尔过滤、历史检索分页/删除/保留、usage/cost/耗时、原始响应诊断、提示词契约）。
-- 全量 pytest：**471 passed**（38.8s），无既有回归。
-- 引擎 pytest（`engine` + `PYTHONPATH=src`）：**29 passed**，含 `test_e2e_24_table_options_switch_component` 与未知 options 拒绝。
-- 前端 `npm run build`：通过；产物写入 `src/onto_platform/interfaces/web/dist`（当前 `index-B23SWgp3.js` / `index-HlkOmfmo.css`）。
+- `pytest tests/test_smart_ui.py tests/test_smart_ui_studio.py tests/test_smart_ui_rules.py -q`：**50 passed**（Studio 27 项：确定性链路、LLM 裁决剪除、维度对象→查询根、不可达模型回退、非法 proposal 失败、refine 版本、accept/publish 不可变与重复发布拒绝、HTTP 202/400、viewer 403、v1.1 table/options 剪除、相对时间/布尔过滤、历史检索分页/删除/保留、usage/cost/耗时、原始响应诊断、提示词契约；规则 3 项：规则模式生成、规则包治理、HTTP 契约）。
+- 全量 pytest：**500 passed**（40.6s），无既有回归。
+- 引擎 pytest（`engine` + `PYTHONPATH=src`）：**38 passed**，含默认规则包兼容、DSL 白名单/非法效果拒绝、预算裁剪、对象覆盖。
+- 前端 `npm run build`：通过；产物写入 `src/onto_platform/interfaces/web/dist`（当前 `index-Cl75sLW-.js` / `index-Cpmi5vlK.css`）。
 - 实机（工作空间 `7c33935df1d1`，临时把该工作空间模型指向本机可用 id，验证后已恢复 `provider=none`）：
   - `mode=llm` 生成成功：提示词“按出口站分组统计通行交易数量，用表格展示，按数量降序” → 模型给出 `chartType/display=table`、`groupBy=exit_station`、`metric=count`、`sort`、`columns`；
   - 编译产物含 `DataTable(`，服务端 `table.rows` 返回 6 个出口站分组及计数（ST005=10、ST001=8、ST006=7、ST003=7、ST002=5、ST004=3）；
@@ -417,7 +417,29 @@ views:
   - `GET .../generations?mode=llm` 服务端过滤命中该记录；`DELETE .../generations/{gid}` 删除成功且不影响其他记录；
   - 早前一次带“最近 7 天”提示词的生成也正确得到 `filters:[ts gte -7d]`，因示例数据时间较早返回空表，属于真实筛选结果而非链路失败。
 
-### 15.5 已知限制
+### 15.5 规则生成模式（无模型，已实施）
+
+在原有 `auto|llm|deterministic` 之外新增一等生成模式 `rule`。它把“无大模型时如何按业务规则出图”从设计稿落成可运行的闭环，且完全复用既有裁决与 L4 编译，不引入第二套渲染逻辑。
+
+| 层 | 实现 |
+|---|---|
+| 事实层（引擎） | `engine/src/onto_ui_engine/facts.py`：`UiFacts.from_ontology` 从本体推导对象/属性语义/关系可达/能力证据/动作角色，作为规则唯一可读输入；纯函数、无 I/O |
+| 规则 DSL（引擎） | `engine/src/onto_ui_engine/rules.py`：`RulePack/Rule` 白名单条件与效果、`effectivePriority` 分层、`evaluate` 单次确定性求值、`pack_hash`；拒绝脚本/布局/URL/SQL 类键 |
+| 默认规则包 | `build_default_pack(GOAL_PERSPECTIVES)` 精确复刻原 `detect_goal` 判断顺序与各 goal 视角集合；预算 `maxViews=12` 兼容异常分析 8 视角 |
+| 规划接线（引擎） | `planner.plan_application(..., rule_pack=...)`：规则先决定 goal/object/focus/候选视角，`setObject` 后重新派生能力并再求值一次；按 `PERSPECTIVE_ORDER` 排序、按预算裁剪、未知视角写诊断 |
+| 平台生成器 | `smartui/generators.py` `RuleGenerator`（`onto.smartui.generator.rule`）+ `builtin.py` 注册；`GenerationRequest.rule_pack` 传入 `compile_smart_ui` |
+| 生成模式 | `smartui/studio.py`：`mode=rule` 分支不取 provider，直接 `_rule_generation` → 同一 `_fallback` 编译路径；记录 `rule_pack_id/rule_pack_hash/rule_pack/rule_trace/clarify`，`fallback=false` |
+| 规则包治理 | `smartui/rules.py`：列表/详情/创建/更新/校验/dry-run/克隆/发布/回滚/归档/绑定；发布仅 `owner`；published 不可原地改；同工作空间仅一个 published；所有变更写审计 |
+| 工作空间绑定 | `smartui/packs.py`：`WorkspacePack.rulePack` + `set_workspace_rule_pack`/`workspace_rule_pack_id`；解析顺序 `请求 override → pack.rulePack → 工作空间 config → 内置默认` |
+| HTTP | `interfaces/api.py`：`GET/POST /smart-ui/rule-packs`、`GET/PUT /{id}`、`POST /validate`、`/{id}/publish|rollback|archive|clone|dry-run`、`POST /bind`；generation body 接受 `rule_pack_id/rulePackId` |
+| Studio UI | `frontend/src/views/SmartUIStudio.tsx`：生成方式三段选择、规则包下拉、`RuleTracePanel`（目标/对象/置信度/命中/候选/未采用/澄清建议）、右侧规则包 hash；`frontend/src/api.ts` 对应类型与 API |
+| 设计文档 | `docs/design/llm-smart-ui/rule-driven-generation.md`（§1–§17 设计与 §18 实施状态） |
+
+**行为边界**：规则只“提议”目标/对象/焦点/视角/标题/受控 options/权重/澄清；布局、样式、脚本、URL、SQL 均不可由规则产生；动作与数据范围仍由平台权限和 L4 裁决。生成记录保存规则包 id 与 hash，保证同输入可复现。
+
+**验证**：`tests/test_smart_ui_rules.py` 覆盖规则模式生成、规则包 CRUD/校验/dry-run/发布/绑定/归档、HTTP 契约；`engine/tests/test_rules.py` 覆盖默认包兼容、事实纯函数、哈希稳定、效果合并、非法 DSL 拒绝、预算裁剪、对象覆盖；全量后端 **500 passed**、引擎 **38 passed**、运行时 **19 passed**、前端 **46 passed**，`pnpm build` 通过。
+
+### 15.6 已知限制
 
 1. 本地 `127.0.0.1:8000` 的模型 id 可能带部署后缀（如 `deepseek/deepseek-v4-flash-…`）；工作空间/平台里保存的裸 `deepseek-v4-flash` 会 404。平台已把 404 归类为 `not_found` 并回退，部署侧应提供稳定别名或同步配置。
 2. 示例工作空间的本体把 `TollStation/Lane/Vehicle` 标为 `dimension`，只有 `TollTransaction` 是查询根；Studio 已做根解析并在裁决面板展示「维度对象 → 查询根」，不是静默替换。

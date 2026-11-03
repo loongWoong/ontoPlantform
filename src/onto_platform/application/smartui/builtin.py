@@ -21,7 +21,7 @@ from .contracts import (
     PERMISSION_VIEW_RENDER,
     PluginManifest,
 )
-from .generators import DeterministicGenerator, LLMGenerator
+from .generators import DeterministicGenerator, LLMGenerator, RuleGenerator
 from .host import PluginHost
 from .packs import BUILTIN_PACKS
 from .prompt import DefaultPromptPack
@@ -50,6 +50,12 @@ BUILTIN_MANIFESTS: tuple[PluginManifest, ...] = (
         id="onto.smartui.generator.deterministic",
         kind="generator",
         summary="确定性 L3 规划 + L4 编译，模型不可用时兜底",
+        permissions=(PERMISSION_PROPOSAL_GENERATE,),
+    ),
+    PluginManifest(
+        id="onto.smartui.generator.rule",
+        kind="generator",
+        summary="无模型规则引擎：本体事实 + 规则包决策后交由 L4 编译",
         permissions=(PERMISSION_PROPOSAL_GENERATE,),
     ),
     PluginManifest(
@@ -206,6 +212,7 @@ def build_default_host() -> PluginHost:
     implementations = {
         "onto.smartui.context.default": DefaultContextPack(),
         "onto.smartui.generator.deterministic": DeterministicGenerator(),
+        "onto.smartui.generator.rule": RuleGenerator(),
         "onto.smartui.generator.llm": LLMGenerator(),
         "onto.smartui.prompt.default": DefaultPromptPack(),
         "onto.smartui.adjudicator.sanitizer": SanitizerAdjudicator(),

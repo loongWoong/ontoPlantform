@@ -99,6 +99,20 @@ from ..errors import (
 from ..application.smartui.packs import (
     set_workspace_pack,
     workspace_pack_id,
+    workspace_rule_pack_id,
+)
+from ..application.smartui.rules import (
+    archive_rule_pack,
+    bind_rule_pack,
+    clone_rule_pack,
+    create_rule_pack,
+    dry_run_rule_pack,
+    get_rule_pack,
+    list_rule_packs,
+    publish_rule_pack,
+    rollback_rule_pack,
+    update_rule_pack,
+    validate_rule_pack,
 )
 from ..infrastructure.llm.echo import EchoLLMProvider
 from ..infrastructure.llm.openai_compat import OpenAICompatProvider
@@ -612,7 +626,12 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
                     "workspaceId": wid,
                     "packId": pack_id,
                     "pack": pack,
+                    "rulePackId": workspace_rule_pack_id(platform, wid, user),
                 })
+            if rest == ["smart-ui", "rule-packs"]:
+                return self._send(200, list_rule_packs(platform, wid, user))
+            if (len(rest) == 3 and rest[:2] == ["smart-ui", "rule-packs"]):
+                return self._send(200, get_rule_pack(platform, wid, user, rest[2]))
             if rest == ["smart-ui", "entities"]:
                 return self._send(200, smart_ui_focus_options(
                     platform, wid, user,
@@ -996,6 +1015,42 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
             if rest == ["smart-ui", "config"]:
                 return self._send(200, set_workspace_pack(
                     platform, wid, user, str(body.get("pack_id") or "")))
+            if rest == ["smart-ui", "rule-packs"]:
+                return self._send(201, create_rule_pack(
+                    platform, wid, user, body))
+            if rest == ["smart-ui", "rule-packs", "validate"]:
+                return self._send(200, validate_rule_pack(
+                    platform, wid, user,
+                    body.get("pack") if isinstance(body.get("pack"), dict)
+                    else body))
+            if rest == ["smart-ui", "rule-packs", "dry-run"]:
+                return self._send(200, dry_run_rule_pack(
+                    platform, wid, user, str(body.get("rule_pack_id") or ""),
+                    body))
+            if rest == ["smart-ui", "rule-packs", "bind"]:
+                return self._send(200, bind_rule_pack(
+                    platform, wid, user, str(body.get("rule_pack_id") or "")))
+            if (len(rest) == 4 and rest[:2] == ["smart-ui", "rule-packs"]
+                    and rest[3] in {"publish", "rollback", "archive",
+                                    "clone", "dry-run"}):
+                pack_id = rest[2]
+                action = rest[3]
+                if action == "publish":
+                    return self._send(200, publish_rule_pack(
+                        platform, wid, user, pack_id,
+                        note=str(body.get("note") or "")))
+                if action == "rollback":
+                    return self._send(200, rollback_rule_pack(
+                        platform, wid, user, pack_id))
+                if action == "archive":
+                    return self._send(200, archive_rule_pack(
+                        platform, wid, user, pack_id))
+                if action == "clone":
+                    return self._send(201, clone_rule_pack(
+                        platform, wid, user, pack_id,
+                        name=str(body.get("name") or "")))
+                return self._send(200, dry_run_rule_pack(
+                    platform, wid, user, pack_id, body))
             if rest == ["smart-ui", "generations"]:
                 if not studio_enabled():
                     raise NotFoundError("smart-UI Studio is disabled")
@@ -1006,7 +1061,9 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
                     mode=str(body.get("mode") or "auto"),
                     focus=body.get("focus") if isinstance(body.get("focus"), dict)
                     else None,
-                    pack_id=str(body.get("pack_id") or ""))
+                    pack_id=str(body.get("pack_id") or ""),
+                    rule_pack_id=str(body.get("rule_pack_id")
+                                     or body.get("rulePackId") or ""))
                 return self._send(202, generation)
             if (len(rest) == 4 and rest[0] == "smart-ui"
                     and rest[1] == "generations" and rest[3] == "cancel"):
@@ -1136,6 +1193,10 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
                     return self._send(200, update_draft(
                         platform, wid, user, rest[2],
                         str(body.get("name") or "")))
+                if len(rest) == 3 and rest[:2] == ["smart-ui", "rule-packs"]:
+                    user = self._actor(body=body, query=query)
+                    return self._send(200, update_rule_pack(
+                        platform, wid, user, rest[2], body))
                 raise ValidationError(
                     f"PUT is only supported for /api/workspaces/{{wid}}/llm-config; "
                     f"no route for {self.path}")

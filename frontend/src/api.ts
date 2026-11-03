@@ -177,6 +177,9 @@ export interface SmartUiMeta {
   packs?: SmartUiWorkspacePack[];
   /** Pack bound to this workspace, if any. */
   activePack?: SmartUiWorkspacePack | null;
+  /** Rule packs available for the no-model generation mode. */
+  rulePacks?: SmartUiRulePackSummary[];
+  boundRulePackId?: string;
   /** UI slot manifest from the UI contribution plus registered renderers. */
   ui?: SmartUiUIManifest;
   /** View descriptors registered by view plugins (perspective -> renderer). */
@@ -241,6 +244,8 @@ export interface SmartUiWorkspacePack {
   defaultQuestion: string;
   permissions?: string[];
   viewPresets?: { perspective: string; options: Record<string, unknown> }[];
+  /** Optional sub-binding to a rule pack. */
+  rulePack?: string;
   builtin: boolean;
 }
 
@@ -248,6 +253,92 @@ export interface SmartUiConfig {
   workspaceId: string;
   packId: string;
   pack: SmartUiWorkspacePack | null;
+  rulePackId?: string;
+}
+
+/** One rule a pack matched; the trace explains why a view was chosen. */
+export interface UiRuleTraceMatch {
+  ruleId: string;
+  priority: number;
+  reason: string;
+  effects: string[];
+  source?: string;
+}
+
+export interface UiRuleCandidate {
+  perspective: string;
+  weight: number;
+  title: string;
+  options: Record<string, unknown>;
+  reasons: string[];
+}
+
+export interface UiRuleClarifyOption {
+  id: string;
+  label: string;
+}
+
+export interface UiRuleClarify {
+  id: string;
+  question: string;
+  reason: string;
+  options: UiRuleClarifyOption[];
+}
+
+/** Structured trace of the pure rule engine (no model needed). */
+export interface UiRuleTrace {
+  pack?: { id?: string; version?: string; hash?: string };
+  goal?: string;
+  object?: string;
+  focus?: { key: string; value: string } | null;
+  confidence?: number;
+  maxViews?: number;
+  candidates?: UiRuleCandidate[];
+  matched?: UiRuleTraceMatch[];
+  skipped?: { ruleId: string; priority: number; reason: string }[];
+  pruned?: { kind: string; key: string; reason: string }[];
+  clarify?: UiRuleClarify[];
+  annotations?: string[];
+  facts?: Record<string, unknown>;
+}
+
+export interface SmartUiRulePackSummary {
+  id: string;
+  name: string;
+  version: string;
+  status: "builtin" | "draft" | "published" | "archived" | string;
+  description: string;
+  ontologyProfile: string;
+  hash: string;
+  ruleCount: number;
+  source: string;
+  builtin: boolean;
+  created_at: string | null;
+  updated_at: string | null;
+  published_at: string | null;
+  created_by: string | null;
+  published_by: string | null;
+}
+
+export interface SmartUiRulePack extends SmartUiRulePackSummary {
+  workspace_id: string | null;
+  rules: Record<string, unknown>[];
+  budget: { maxViews?: number; [key: string]: unknown };
+  parent_id: string | null;
+}
+
+export interface SmartUiRulePackList {
+  items: SmartUiRulePackSummary[];
+  total: number;
+  defaultRulePackId: string;
+  boundRulePackId: string;
+}
+
+export interface SmartUiRuleValidation {
+  ok: boolean;
+  issues: { code: string; ruleId: string; message: string }[];
+  hash: string;
+  pack: SmartUiRulePack | null;
 }
 
 export interface SmartUiModelStatus {
@@ -313,7 +404,7 @@ export interface LlmCheckResult {
 /** AI 生成台：一条生成记录（轮询到 succeeded/failed/cancelled/interrupted 为止）。 */
 export type UiGenerationStatus =
   | "queued" | "running" | "succeeded" | "failed" | "cancelled" | "interrupted";
-export type UiGenerationMode = "llm" | "fallback" | "deterministic";
+export type UiGenerationMode = "llm" | "rule" | "fallback" | "deterministic";
 
 export interface UiGenerationStep {
   key: "context" | "propose" | "adjudicate" | "compile" | "ready" | string;
@@ -356,8 +447,11 @@ export interface UiGenerationSummary {
   instruction: string;
   status: UiGenerationStatus;
   mode: UiGenerationMode;
-  /** 用户请求的模式：auto / llm / deterministic；mode 是平台最终的裁决结果。 */
+  /** 用户请求的模式：auto / llm / rule / deterministic；mode 是平台最终的裁决结果。 */
   requested_mode?: string | null;
+  /** 本次生成使用的规则包；规则模式/回退都记录，便于复现。 */
+  rule_pack_id?: string | null;
+  rule_pack_hash?: string | null;
   /** 真实模型调用的 token 用量；确定性回退时为 null。 */
   usage?: UiGenerationUsage | null;
   /** 按部署配置费率估算的成本；未配置费率时为 null（前端显示“未配置费率”）。 */
@@ -410,6 +504,10 @@ export interface UiGeneration extends UiGenerationSummary {
   } | null;
   context: Record<string, unknown>;
   budget: Record<string, number>;
+  /** 规则引擎决策轨迹（匹配/跳过/剪除/候选/澄清）。 */
+  ruleTrace?: UiRuleTrace | null;
+  /** 规则建议补充的澄清问题；前端可一键填入问题框。 */
+  clarify?: UiRuleClarify[];
 }
 
 /** GET /smart-ui/generations/{gid} 里的一条“相对上一版”变化。 */
@@ -1324,14 +1422,45 @@ export interface Api {
   smartUiConfig(wid: string): Promise<SmartUiConfig>;
   /** 绑定/清空工作空间默认 Pack；pack_id 为空字符串表示清空。 */
   smartUiSetPack(wid: string, packId: string): Promise<SmartUiConfig>;
+  /** 规则包列表（含内置默认包与当前绑定）。 */
+  smartUiRulePacks(wid: string): Promise<SmartUiRulePackList>;
+  /** 单个规则包完整内容（规则/预算）。 */
+  smartUiRulePack(wid: string, id: string): Promise<SmartUiRulePack>;
+  smartUiCreateRulePack(wid: string, body: {
+    name?: string; description?: string; baseId?: string;
+    rules?: Record<string, unknown>[]; budget?: Record<string, unknown>;
+    ontologyProfile?: string;
+  }): Promise<SmartUiRulePack>;
+  smartUiUpdateRulePack(wid: string, id: string, body: Record<string, unknown>): Promise<SmartUiRulePack>;
+  smartUiValidateRulePack(wid: string, body: Record<string, unknown>): Promise<SmartUiRuleValidation>;
+  smartUiDryRunRulePack(wid: string, id: string, body?: {
+    question?: string; roles?: string[]; focus?: SmartUiFocusRequest;
+    pack?: Record<string, unknown>;
+  }): Promise<{
+    ok: boolean;
+    issues: { code: string; ruleId: string; message: string }[];
+    hash: string;
+    pack?: SmartUiRulePack | null;
+    blueprint?: Record<string, unknown> | null;
+    ruleTrace?: UiRuleTrace | null;
+    clarify?: UiRuleClarify[];
+    requestedPerspectives?: string[];
+    finalPerspectives?: string[];
+    prunedPerspectives?: { kind: string; key: string; reason: string }[];
+  }>;
+  smartUiPublishRulePack(wid: string, id: string, note?: string): Promise<SmartUiRulePack>;
+  smartUiRollbackRulePack(wid: string, id: string): Promise<SmartUiRulePack>;
+  smartUiArchiveRulePack(wid: string, id: string): Promise<SmartUiRulePack>;
+  smartUiCloneRulePack(wid: string, id: string, name?: string): Promise<SmartUiRulePack>;
+  smartUiBindRulePack(wid: string, id: string): Promise<{ workspace_id: string; rulePackId: string }>;
   /** 可搜索的焦点实例：object 缺省时返回所有对象类型里的实例。 */
   smartUiEntities(wid: string, params?: {
     object?: string; q?: string; limit?: number;
   }): Promise<SmartUiEntityResult>;
   /** 202 + 后台生成；用 smartUiGeneration 轮询。focus 指定“这次只看某个实例”。 */
   smartUiGenerate(wid: string, body: {
-    question: string; roles: string[]; mode?: "auto" | "llm" | "deterministic";
-    focus?: SmartUiFocusRequest; pack_id?: string;
+    question: string; roles: string[]; mode?: "auto" | "llm" | "rule" | "deterministic";
+    focus?: SmartUiFocusRequest; pack_id?: string; rule_pack_id?: string;
   }): Promise<UiGeneration>;
   /** 分页 + 过滤（q/status/object）的生成列表；返回 total/offset/limit/all。 */
   smartUiGenerations(wid: string, params?: SmartUiGenerationListQuery): Promise<SmartUiGenerationListResult>;
@@ -1515,6 +1644,27 @@ export const api: Api = {
   smartUiConfig: wid => call(ws(wid, "/smart-ui/config")),
   smartUiSetPack: (wid, packId) =>
     post(ws(wid, "/smart-ui/config"), { pack_id: packId }),
+  smartUiRulePacks: wid => call(ws(wid, "/smart-ui/rule-packs")),
+  smartUiRulePack: (wid, id) =>
+    call(ws(wid, `/smart-ui/rule-packs/${encodeURIComponent(id)}`)),
+  smartUiCreateRulePack: (wid, body) =>
+    post(ws(wid, "/smart-ui/rule-packs"), body),
+  smartUiUpdateRulePack: (wid, id, body) =>
+    put(ws(wid, `/smart-ui/rule-packs/${encodeURIComponent(id)}`), body),
+  smartUiValidateRulePack: (wid, body) =>
+    post(ws(wid, "/smart-ui/rule-packs/validate"), body),
+  smartUiDryRunRulePack: (wid, id, body = {}) =>
+    post(ws(wid, `/smart-ui/rule-packs/${encodeURIComponent(id)}/dry-run`), body),
+  smartUiPublishRulePack: (wid, id, note = "") =>
+    post(ws(wid, `/smart-ui/rule-packs/${encodeURIComponent(id)}/publish`), { note }),
+  smartUiRollbackRulePack: (wid, id) =>
+    post(ws(wid, `/smart-ui/rule-packs/${encodeURIComponent(id)}/rollback`), {}),
+  smartUiArchiveRulePack: (wid, id) =>
+    post(ws(wid, `/smart-ui/rule-packs/${encodeURIComponent(id)}/archive`), {}),
+  smartUiCloneRulePack: (wid, id, name = "") =>
+    post(ws(wid, `/smart-ui/rule-packs/${encodeURIComponent(id)}/clone`), { name }),
+  smartUiBindRulePack: (wid, id) =>
+    post(ws(wid, "/smart-ui/rule-packs/bind"), { rule_pack_id: id }),
   smartUiEntities: (wid, params = {}) => {
     const search = new URLSearchParams();
     if (params.object) search.set("object", params.object);

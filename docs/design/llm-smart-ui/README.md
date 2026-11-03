@@ -1,6 +1,7 @@
 # Smart UI Studio 原型稿
 
 配套方案：[`docs/smart-ui-llm-generation.md`](../../smart-ui-llm-generation.md)（第 8 节界面方案）；
+无大模型场景见 [`rule-driven-generation.md`](rule-driven-generation.md)；
 插件化落地记录见 [`pluginization.md`](pluginization.md)。
 
 ## 文件

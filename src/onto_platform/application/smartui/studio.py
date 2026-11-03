@@ -66,6 +66,7 @@ from .generators import (
     PromptTooLarge,
 )
 from .packs import apply_view_presets, resolve_generation_pack
+from .rules import resolve_rule_pack
 from .prompt import DefaultPromptPack, PromptRequest
 from .publisher import DefaultPublisher, PublishRequest
 
@@ -279,6 +280,10 @@ def _summary(row: dict) -> dict[str, Any]:
         "pluginLock": row.get("plugin_lock") or trace.get("pluginLock"),
         "packId": row.get("pack_id"),
         "packName": (row.get("pack") or {}).get("name"),
+        "rule_pack_id": row.get("rule_pack_id"),
+        "rule_pack_hash": row.get("rule_pack_hash"),
+        "rulePackId": row.get("rule_pack_id"),
+        "rulePackHash": row.get("rule_pack_hash"),
         "error": row.get("error"),
         "draft_id": row.get("draft_id"),
         "published_application_id": row.get("published_application_id"),
@@ -296,6 +301,16 @@ def _full(row: dict) -> dict[str, Any]:
         "blueprint": row.get("blueprint"),
         "context": row.get("context") or {},
         "pack": row.get("pack"),
+        "rulePack": {
+            "id": row.get("rule_pack_id"),
+            "hash": row.get("rule_pack_hash"),
+            "name": (row.get("rule_pack") or {}).get("name"),
+        },
+        "ruleTrace": row.get("rule_trace") or (
+            (row.get("trace") or {}).get("ruleTrace") or {}),
+        "rule_trace": row.get("rule_trace") or (
+            (row.get("trace") or {}).get("ruleTrace") or {}),
+        "clarify": row.get("clarify") or [],
         "budget": row.get("budget") or {},
     }
 
@@ -495,7 +510,8 @@ def start_generation(platform, workspace_id: str, actor: str,
                      instruction: str = "",
                      mode: str = "auto",
                      focus: dict[str, Any] | None = None,
-                     pack_id: str = "") -> dict[str, Any]:
+                     pack_id: str = "",
+                     rule_pack_id: str = "") -> dict[str, Any]:
     if not studio_enabled():
         raise ValidationError("smart-UI Studio is disabled (ONTO_SMART_UI_STUDIO=off)")
     platform.ctx.require(actor, workspace_id, "editor")
@@ -505,7 +521,7 @@ def start_generation(platform, workspace_id: str, actor: str,
     if len(question) > MAX_QUESTION:
         raise ValidationError(f"question must be ≤ {MAX_QUESTION} characters")
     roles = _role_ok(platform, workspace_id, actor, roles)
-    if mode not in {"auto", "llm", "deterministic"}:
+    if mode not in {"auto", "llm", "rule", "deterministic"}:
         mode = "auto"
     requested_focus = _focus_request(focus)
 
@@ -518,10 +534,16 @@ def start_generation(platform, workspace_id: str, actor: str,
         version = int(parent.get("version") or 1) + 1
         if not pack_id:
             pack_id = str(parent.get("pack_id") or "")
+        if not rule_pack_id:
+            rule_pack_id = str(parent.get("rule_pack_id") or "")
 
     workspace_pack = resolve_generation_pack(
         platform, workspace_id, actor, pack_id)
     pack_id = workspace_pack.id if workspace_pack is not None else ""
+    rule_record = resolve_rule_pack(
+        platform, workspace_id, actor, rule_pack_id, workspace_pack)
+    rule_pack_id = str(rule_record.get("id") or "")
+    rule_pack_hash = str(rule_record.get("hash") or "")
 
     generation_id = _new_id("gen")
     row: dict[str, Any] = {
@@ -539,6 +561,11 @@ def start_generation(platform, workspace_id: str, actor: str,
         "version": version,
         "pack_id": pack_id,
         "pack": workspace_pack.as_dict() if workspace_pack is not None else None,
+        "rule_pack_id": rule_pack_id,
+        "rule_pack_hash": rule_pack_hash,
+        "rule_pack": rule_record,
+        "rule_trace": {},
+        "clarify": [],
         "created_at": _now(),
         "updated_at": _now(),
         "finished_at": None,
@@ -560,6 +587,7 @@ def start_generation(platform, workspace_id: str, actor: str,
     platform.ctx.audit_event(actor, workspace_id, "smart_ui.generate", generation_id, {
         "question": question, "roles": roles, "version": version,
         "parent_id": parent_id, "mode": mode, "pack_id": pack_id,
+        "rule_pack_id": rule_pack_id, "rule_pack_hash": rule_pack_hash,
     })
     _submit_generation(
         platform, workspace_id, generation_id, actor, roles, question,
@@ -569,10 +597,21 @@ def start_generation(platform, workspace_id: str, actor: str,
 
 def _fallback(platform, workspace_id: str, actor: str, row: dict,
               roles: list[str], question: str, reason: str,
-              started: float) -> None:
-    """Deterministic plan is the safety net: never show a blank page."""
+              started: float, *, force_mode: str | None = None,
+              rule_pack: dict[str, Any] | None = None) -> None:
+    """Deterministic plan is the safety net: never show a blank page.
+
+    ``force_mode='rule'`` reuses the same compile path for the explicit
+    no-model rule generator; the only differences are the plugin, the label
+    and the fact that a rule run is not a fallback.
+    """
     _ensure_live(platform, row["workspace_id"], row["id"])
-    _mark(row, "propose", "warn", f"模型未接续，改用确定性规划：{reason}", started)
+    _mark(row, "propose", "warn",
+          (f"规则引擎决策：{rule_pack.get('id')}" if force_mode == "rule"
+           else f"模型未接续，改用确定性规划：{reason}"), started)
+    if force_mode == "rule":
+        row["rule_pack_id"] = str((rule_pack or {}).get("id") or "")
+        row["rule_pack"] = rule_pack
     host = getattr(platform, "smartui", None)
     workspace_pack = None
     if host is not None and row.get("pack_id"):
@@ -581,10 +620,13 @@ def _fallback(platform, workspace_id: str, actor: str, row: dict,
         except Exception:
             workspace_pack = None
     generator = None
+    generator_id = (
+        "onto.smartui.generator.rule" if force_mode == "rule"
+        else "onto.smartui.generator.deterministic")
     if host is not None:
         try:
             generator = host.implementation(
-                "onto.smartui.generator.deterministic",
+                generator_id,
                 permission=PERMISSION_PROPOSAL_GENERATE)
         except Exception:
             generator = None
@@ -596,17 +638,18 @@ def _fallback(platform, workspace_id: str, actor: str, row: dict,
             question=question,
             roles=roles,
             focus=row.get("focus"),
-            mode="deterministic",
+            mode=force_mode or "deterministic",
+            rule_pack=rule_pack,
         ))
         compiled = candidate.compiled or {}
         blueprint = candidate.blueprint
         generator_id = candidate.source
     else:
         result = compile_smart_ui(
-            platform, workspace_id, actor, question, roles, focus=row.get("focus"))
+            platform, workspace_id, actor, question, roles,
+            focus=row.get("focus"), rule_pack=rule_pack)
         compiled = result["compiled"]
         blueprint = compiled.get("blueprint")
-        generator_id = "onto.smartui.generator.deterministic"
     if not blueprint:
         raise ValidationError("deterministic fallback produced no blueprint")
     blueprint = apply_view_presets(blueprint, workspace_pack)
@@ -618,7 +661,9 @@ def _fallback(platform, workspace_id: str, actor: str, row: dict,
         compiled = compile_smart_ui_blueprint(
             platform, workspace_id, actor, question, roles, blueprint,
             snapshot=snapshot)["compiled"]
-    row["mode"] = "deterministic" if row.get("requested_mode") == "deterministic" else "fallback"
+    row["mode"] = force_mode or (
+        "deterministic" if row.get("requested_mode") == "deterministic"
+        else "fallback")
     row["status"] = "succeeded"
     row["blueprint"] = blueprint
     row["program"] = compiled.get("program")
@@ -629,11 +674,22 @@ def _fallback(platform, workspace_id: str, actor: str, row: dict,
         artifact_meta["renderers"] = host.renderer_dicts()
     row["artifacts"] = artifact_meta
     row["view_count"] = len(blueprint.get("views") or [])
+    rule_trace = (artifact_meta.get("ruleTrace")
+                  or (candidate.trace.get("ruleTrace") if generator is not None
+                      else {})) or {}
+    row["rule_trace"] = rule_trace
+    row["clarify"] = (artifact_meta.get("clarify") or [])
     row["validation"] = {
         "ok": True,
         "checks": [
-            {"key": "schema", "label": "确定性规划器", "status": "warn",
-             "detail": "模型不可用，已用 L3 关键词规划 + L4 编译"},
+            {"key": "schema",
+             "label": "规则引擎" if force_mode == "rule" else "确定性规划器",
+             "status": "ok" if force_mode == "rule" else "warn",
+             "detail": (
+                 f"规则包 {rule_trace.get('pack', {}).get('id') or ''} "
+                 f"命中 {len(rule_trace.get('matched') or [])} 条规则"
+                 if force_mode == "rule"
+                 else "模型不可用，已用 L3 关键词规划 + L4 编译")},
             {"key": "object", "label": "对象存在且可查询", "status": "ok",
              "detail": str((blueprint.get("context") or {}).get("object") or "")},
             {"key": "whitelist", "label": "视角白名单", "status": "ok",
@@ -644,9 +700,10 @@ def _fallback(platform, workspace_id: str, actor: str, row: dict,
             {"key": "scope", "label": "数据范围", "status": "ok",
              "detail": "同一快照的 ontology + focus"},
         ],
-        "pruned": [],
-        "fallbackReason": reason,
+        "pruned": list(rule_trace.get("pruned") or []),
     }
+    if force_mode != "rule":
+        row["validation"]["fallbackReason"] = reason
     _mark(row, "adjudicate", "warn", "确定性回退：平台仍执行同一套校验", started)
     _mark(row, "compile", "ok",
           f"{row['view_count']} 个视角 · {len(compiled.get('program') or '')} 字符",
@@ -662,11 +719,23 @@ def _fallback(platform, workspace_id: str, actor: str, row: dict,
         "generatorPlugin": generator_id,
         "pluginLock": row.get("plugin_lock") or [],
         "workspacePack": row.get("pack"),
-        "fallback": True,
+        "fallback": force_mode != "rule",
+        "rulePackId": row.get("rule_pack_id"),
+        "ruleTrace": row.get("rule_trace") or {},
+        "clarify": row.get("clarify") or [],
     }
     row["finished_at"] = _now()
     _ensure_live(platform, row["workspace_id"], row["id"])
     _save(platform, row)
+
+
+def _rule_generation(platform, workspace_id: str, actor: str, row: dict,
+                     roles: list[str], question: str, started: float) -> None:
+    """Explicit no-model path: rule pack decides, then the same L4 compiles."""
+    _fallback(
+        platform, workspace_id, actor, row, roles, question,
+        "请求指定规则模式", started, force_mode="rule",
+        rule_pack=row.get("rule_pack") or {})
 
 
 def _run_generation(platform, workspace_id: str, generation_id: str,
@@ -714,17 +783,24 @@ def _run_generation(platform, workspace_id: str, generation_id: str,
         _save(platform, row)
 
         base_blueprint = (parent or {}).get("blueprint")
+        if mode == "rule":
+            _ensure_live(platform, workspace_id, generation_id)
+            _rule_generation(
+                platform, workspace_id, actor, row, roles, question, started)
+            return
         if mode == "deterministic":
             _ensure_live(platform, workspace_id, generation_id)
             _fallback(platform, workspace_id, actor, row, roles, question,
-                      "请求指定确定性模式", started)
+                      "请求指定确定性模式", started,
+                      rule_pack=row.get("rule_pack"))
             return
 
         provider = platform.ctx.llm_for(workspace_id)
         if provider is None:
             _ensure_live(platform, workspace_id, generation_id)
             _fallback(platform, workspace_id, actor, row, roles, question,
-                      "当前工作空间未配置模型", started)
+                      "当前工作空间未配置模型", started,
+                      rule_pack=row.get("rule_pack"))
             return
 
         host = getattr(platform, "smartui", None)
@@ -754,7 +830,7 @@ def _run_generation(platform, workspace_id: str, generation_id: str,
             _fallback(
                 platform, workspace_id, actor, row, roles, question,
                 f"上下文过大（{exc.prompt_bytes} > {MAX_PROMPT_BYTES} 字节）",
-                started)
+                started, rule_pack=row.get("rule_pack"))
             return
         except ModelUnavailable as exc:
             _ensure_live(platform, workspace_id, generation_id)
@@ -763,7 +839,8 @@ def _run_generation(platform, workspace_id: str, generation_id: str,
                 raise ValidationError(
                     f"模型调用失败，且当前为显式模型模式：{reason}") from exc
             _fallback(platform, workspace_id, actor, row, roles, question,
-                      f"模型不可用（{reason}）", started)
+                      f"模型不可用（{reason}）", started,
+                      rule_pack=row.get("rule_pack"))
             return
         except InvalidProposal as exc:
             row["trace"] = {**exc.trace,
@@ -858,7 +935,8 @@ def _run_generation(platform, workspace_id: str, generation_id: str,
                 try:
                     _fallback(
                         platform, workspace_id, actor, current, roles, question,
-                        f"模型或编译失败（{str(exc)[:180]}）", started)
+                        f"模型或编译失败（{str(exc)[:180]}）", started,
+                        rule_pack=current.get("rule_pack"))
                     return
                 except _GenerationCancelled:
                     return
@@ -1141,8 +1219,12 @@ def refine_generation(platform, workspace_id: str, actor: str,
         list(parent.get("roles") or []),
         parent_id=generation_id,
         instruction=prompt,
-        mode="auto",
+        mode=(str(parent.get("requested_mode") or "auto")
+              if str(parent.get("requested_mode") or "") in {"llm", "rule", "deterministic"}
+              else "auto"),
         focus=focus if isinstance(focus, dict) else parent.get("focus"),
+        pack_id=str(parent.get("pack_id") or ""),
+        rule_pack_id=str(parent.get("rule_pack_id") or ""),
     )
 
 

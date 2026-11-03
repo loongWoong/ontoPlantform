@@ -44,6 +44,7 @@ class WorkspacePack:
     perspectives: tuple[str, ...] = ()
     view_presets: tuple[dict[str, Any], ...] = ()
     default_question: str = ""
+    rule_pack: str = ""
     permissions: tuple[str, ...] = field(default=())
     builtin: bool = False
 
@@ -81,6 +82,7 @@ class WorkspacePack:
             "perspectives": list(self.perspectives),
             "viewPresets": [dict(item) for item in self.view_presets],
             "defaultQuestion": self.default_question,
+            "rulePack": self.rule_pack,
             "permissions": list(self.permissions),
             "builtin": self.builtin,
         }
@@ -104,6 +106,7 @@ class WorkspacePack:
                 or data.get("view_presets") or ()),
             default_question=str(data.get("defaultQuestion")
                                  or data.get("default_question") or ""),
+            rule_pack=str(data.get("rulePack") or data.get("rule_pack") or ""),
             permissions=tuple(str(item) for item in data.get("permissions") or ()),
         )
 
@@ -212,6 +215,35 @@ def workspace_pack_id(platform: Any, workspace_id: str, actor: str) -> str:
     return str((row or {}).get("pack_id") or "")
 
 
+def workspace_rule_pack_id(platform: Any, workspace_id: str, actor: str) -> str:
+    """Read the workspace-level rule pack binding (empty means builtin)."""
+    platform.ctx.require(actor, workspace_id, "viewer")
+    row = platform.ctx.repo.get(SMARTUI_CONFIG_KIND, workspace_id, _CONFIG_ID)
+    return str((row or {}).get("rule_pack_id") or "")
+
+
+def set_workspace_rule_pack(platform: Any, workspace_id: str, actor: str,
+                            rule_pack_id: str) -> dict[str, Any]:
+    """Bind (or clear) the workspace rule pack without touching the view pack."""
+    platform.ctx.require(actor, workspace_id, "editor")
+    row = platform.ctx.repo.get(
+        SMARTUI_CONFIG_KIND, workspace_id, _CONFIG_ID) or {}
+    row = {
+        **row,
+        "id": _CONFIG_ID,
+        "workspace_id": workspace_id,
+        "rule_pack_id": str(rule_pack_id or "").strip(),
+        "updated_by": actor,
+        "updated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    }
+    platform.ctx.repo.put(SMARTUI_CONFIG_KIND, workspace_id, _CONFIG_ID, row)
+    platform.ctx.audit_event(
+        actor, workspace_id, "smart_ui.rule_pack.bind",
+        row["rule_pack_id"], {"rule_pack_id": row["rule_pack_id"]})
+    return {"workspace_id": workspace_id,
+            "rulePackId": row["rule_pack_id"]}
+
+
 def resolve_generation_pack(platform: Any, workspace_id: str, actor: str,
                             requested_pack_id: str = "") -> WorkspacePack | None:
     """Resolve a request override, then the workspace default, then no pack."""
@@ -255,15 +287,18 @@ def set_workspace_pack(platform: Any, workspace_id: str, actor: str,
                 raise ValidationError(
                     f"pack {pack.id} prompt_pack {prompt_id!r} lacks "
                     f"{PERMISSION_PROMPT_RENDER!r}")
+    previous = platform.ctx.repo.get(
+        SMARTUI_CONFIG_KIND, workspace_id, _CONFIG_ID) or {}
     row = {
         "id": _CONFIG_ID,
         "workspace_id": workspace_id,
         "pack_id": pack.id if pack is not None else "",
+        # Preserve the independent rule-pack binding when only the view pack
+        # changes; the two governance knobs must not clobber each other.
+        "rule_pack_id": str(previous.get("rule_pack_id") or ""),
         "updated_by": actor,
         "updated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
     }
-    previous = platform.ctx.repo.get(
-        SMARTUI_CONFIG_KIND, workspace_id, _CONFIG_ID) or {}
     platform.ctx.repo.put(SMARTUI_CONFIG_KIND, workspace_id, _CONFIG_ID, row)
     platform.ctx.audit_event(actor, workspace_id, "smart_ui.pack.bind",
                              pack.id if pack is not None else "", {
