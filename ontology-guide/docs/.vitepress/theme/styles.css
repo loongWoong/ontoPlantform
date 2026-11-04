@@ -1,0 +1,439 @@
+/* ===== 本体指南右侧工具：速记 + LLM 助手 ===== */
+
+.og-aside {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--vp-c-divider);
+}
+
+.og-card {
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 10px;
+  background: var(--vp-c-bg-soft);
+  padding: 12px 12px 10px;
+}
+
+.og-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--vp-c-text-1);
+  margin-bottom: 8px;
+}
+
+.og-status {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--vp-c-text-3);
+  white-space: nowrap;
+}
+.og-status.ok {
+  color: var(--vp-c-brand-1);
+}
+
+.og-hint {
+  margin: 0 0 8px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--vp-c-text-3);
+}
+
+.og-note-input,
+.og-ai-input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 96px;
+  resize: vertical;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--vp-c-text-1);
+  background: var(--vp-c-bg);
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 8px;
+  padding: 8px 10px;
+  outline: none;
+}
+
+.og-aside .og-note-input {
+  min-height: 130px;
+  resize: none;
+}
+.og-note-input:focus,
+.og-ai-input:focus {
+  border-color: var(--vp-c-brand-1);
+}
+
+.og-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.og-btn {
+  font-size: 12px;
+  line-height: 1.4;
+  padding: 4px 9px;
+  border-radius: 7px;
+  border: 1px solid var(--vp-c-divider);
+  background: var(--vp-c-bg);
+  color: var(--vp-c-text-1);
+  cursor: pointer;
+  transition: border-color 0.2s, color 0.2s;
+}
+.og-btn:hover {
+  border-color: var(--vp-c-brand-1);
+  color: var(--vp-c-brand-1);
+}
+.og-btn.og-primary {
+  border-color: var(--vp-c-brand-1);
+  background: var(--vp-c-brand-1);
+  color: #fff;
+}
+.og-btn.og-primary:hover {
+  background: var(--vp-c-brand-2);
+  border-color: var(--vp-c-brand-2);
+  color: #fff;
+}
+.og-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.og-btn.og-block {
+  display: block;
+  width: 100%;
+  text-align: center;
+  margin-top: 6px;
+}
+
+.og-msg-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+.og-msg-actions .og-btn {
+  font-size: 11px;
+  padding: 2px 7px;
+}
+
+.og-flash {
+  font-size: 11px;
+  color: var(--vp-c-brand-1);
+  margin-top: 6px;
+}
+
+/* 浮动按钮（侧栏隐藏的窄屏下出现） */
+.og-launcher {
+  position: fixed;
+  right: 18px;
+  bottom: 22px;
+  z-index: 45;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--vp-c-brand-1);
+  background: var(--vp-c-brand-1);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+}
+.og-launcher:hover {
+  background: var(--vp-c-brand-2);
+}
+@media (min-width: 1280px) {
+  .og-launcher {
+    display: none;
+  }
+}
+
+/* 抽屉 */
+.og-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.og-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  width: min(960px, 96vw);
+  background: var(--vp-c-bg);
+  border-left: 1px solid var(--vp-c-divider);
+  box-shadow: -12px 0 32px rgba(0, 0, 0, 0.16);
+}
+
+.og-drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--vp-c-divider);
+}
+
+.og-tabs {
+  display: flex;
+  gap: 4px;
+}
+.og-tabs button {
+  font-size: 13px;
+  padding: 5px 12px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--vp-c-text-2);
+  cursor: pointer;
+}
+.og-tabs button.active {
+  background: var(--vp-c-brand-soft);
+  color: var(--vp-c-brand-1);
+  border-color: var(--vp-c-brand-1);
+}
+
+.og-close {
+  font-size: 20px;
+  line-height: 1;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  border: 1px solid var(--vp-c-divider);
+  background: var(--vp-c-bg);
+  color: var(--vp-c-text-2);
+  cursor: pointer;
+}
+
+.og-drawer-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 16px;
+  overflow-y: auto;
+}
+
+.og-config {
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 10px;
+  background: var(--vp-c-bg-soft);
+}
+.og-config-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 9px 11px;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  color: var(--vp-c-text-1);
+}
+.og-config-head span:last-child {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--vp-c-text-3);
+  max-width: 60%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.og-config-body {
+  padding: 0 11px 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.og-config-body label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11.5px;
+  color: var(--vp-c-text-2);
+}
+.og-config-body input {
+  box-sizing: border-box;
+  width: 100%;
+  font-family: inherit;
+  font-size: 12.5px;
+  color: var(--vp-c-text-1);
+  background: var(--vp-c-bg);
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 7px;
+  padding: 6px 8px;
+  outline: none;
+}
+.og-config-body input:focus {
+  border-color: var(--vp-c-brand-1);
+}
+.og-config-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 11px;
+  color: var(--vp-c-text-3);
+}
+
+.og-context {
+  font-size: 11.5px;
+  color: var(--vp-c-text-2);
+  padding: 6px 9px;
+  border-radius: 8px;
+  background: var(--vp-c-bg-soft);
+  border: 1px dashed var(--vp-c-divider);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.og-msgs {
+  flex: 1;
+  min-height: 140px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 2px;
+}
+.og-empty {
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--vp-c-text-3);
+  border: 1px dashed var(--vp-c-divider);
+  border-radius: 10px;
+  padding: 12px;
+}
+.og-msg {
+  max-width: 94%;
+  border-radius: 10px;
+  padding: 9px 12px;
+  font-size: 13.5px;
+  line-height: 1.8;
+}
+.og-msg.user {
+  align-self: flex-end;
+  background: var(--vp-c-brand-soft);
+  color: var(--vp-c-text-1);
+  border: 1px solid var(--vp-c-brand-1);
+}
+.og-msg.assistant {
+  align-self: flex-start;
+  background: var(--vp-c-bg-soft);
+  border: 1px solid var(--vp-c-divider);
+  color: var(--vp-c-text-1);
+}
+.og-msg.error {
+  border-color: var(--vp-c-danger-1, #e5484d);
+}
+.og-msg-body {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.og-quick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.og-input {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-top: 1px solid var(--vp-c-divider);
+  padding-top: 8px;
+}
+.og-ai-input {
+  min-height: 56px;
+}
+
+.og-notes-body textarea {
+  flex: 1;
+  min-height: 260px;
+  resize: none;
+}
+
+.og-drawer-footer {
+  font-size: 11px;
+  color: var(--vp-c-text-3);
+  padding: 6px 12px 12px;
+  line-height: 1.6;
+}
+
+/* 宽抽屉：配置区两列、输入区横排，利用加宽后的空间 */
+@media (min-width: 720px) {
+  .og-input {
+    flex-direction: row;
+    align-items: flex-end;
+  }
+  .og-input .og-ai-input {
+    flex: 1;
+    min-height: 68px;
+  }
+  .og-input .og-btn {
+    flex: 0 0 auto;
+    height: 38px;
+  }
+  .og-config-body {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    align-items: end;
+  }
+  .og-config-body label:nth-child(3) {
+    grid-column: 1 / -1;
+  }
+  .og-config-actions,
+  .og-config-body .og-hint {
+    grid-column: 1 / -1;
+  }
+}
+
+/* ===== 横向自适应布局：整页占视口宽 90%（大屏自适应），替换默认 1440px 固定宽度 ===== */
+:root {
+  --vp-layout-max-width: max(90vw, 1440px);
+}
+
+@media (min-width: 960px) {
+  :root .VPDoc .container {
+    max-width: 100%;
+  }
+  :root .VPDoc.has-aside .content-container {
+    max-width: 100%;
+  }
+  :root .VPDoc:not(.has-sidebar) .content {
+    max-width: 100%;
+  }
+}
+
+/* ===== 右侧栏（速记 / LLM 助手）：宽度加倍，随视口自适应 ===== */
+/* 默认右侧栏 256px；此处放宽到 256×2≈512px 内（内容区最大 448px，1920 屏倍宽） */
+@media (min-width: 1280px) {
+  :root .VPDoc .aside {
+    flex: 0 0 auto;
+    width: calc(clamp(300px, 26vw, 448px) + 32px);
+    max-width: none;
+  }
+  :root .VPDoc .aside-container {
+    width: clamp(300px, 26vw, 448px);
+  }
+  :root .VPDoc .content {
+    min-width: 0;
+  }
+}

@@ -4,6 +4,27 @@
 
 本目录是一个独立的 VitePress 站点，可单独构建与部署，也可作为 ontoPlantform 平台的文档子项目。
 
+## 页面增强功能
+
+- **右侧速记**：每个文档页右侧栏内嵌速记编辑框，可粘贴关键段落、关键词、自己的理解或待查问题；内容按页面自动保存到浏览器 `localStorage`（键 `ontology-guide:notes:v1:<path>`）。支持「收录选中」（把正文选中文字追加进来）、复制、清空，抽屉内还可导出 `.md`。窄屏侧栏隐藏时，通过右下角「速记 / AI」浮动按钮打开。右侧栏已加宽一倍：内容区由 224px 放宽到最大 448px（`clamp(300px, 26vw, 448px)` 随视口自适应），速记框与助手面板更易读。
+- **LLM 助手**：用大模型对本体概念做详细解释，入口为右侧栏「解释本页概念 / 解释选中内容」以及抽屉内的问答区；回答可一键「插入速记」或复制。抽屉宽度由 480px 加倍到 960px，模型配置区在宽抽屉下自动两列、提问框与发送按钮横排。
+  - 在抽屉「模型配置」中填写 OpenAI Chat Completions 兼容接口：API 地址（如 `https://api.deepseek.com/v1`）、模型名（如 `deepseek-chat`）、API Key。
+  - 配置只保存在本机浏览器 `localStorage`（键 `ontology-guide:llm:v1`），不会上传到本站。
+  - 浏览器直连常被 CORS 拦截（报 `Failed to fetch`）：用下面的内置代理即可，或改用允许跨域的服务（如本地 Ollama `http://localhost:11434/v1`、vLLM）。
+  - 请求超时 90 秒；失败时在对话中给出可读的错误原因与排查提示。
+- **本地代理 `pnpm docs:proxy`**（零依赖，Node 18+）：解决浏览器直连大模型 API 的 CORS 问题。
+  ```bash
+  pnpm docs:proxy
+  # 指向官方 API（默认）：
+  # LLM_UPSTREAM=https://api.deepseek.com/v1 LLM_API_KEY=sk-xxx pnpm docs:proxy
+  # 指向本机 OpenAI 兼容服务（例如 llmrouter、vLLM、Ollama）：
+  # PowerShell: $env:LLM_UPSTREAM='http://127.0.0.1:8000/v1'; pnpm docs:proxy
+  ```
+  启动后在「模型配置」里点**「填入本地代理」**（API 地址变为 `http://127.0.0.1:8788/v1`），模型名/Key 按上游要求填写即可。代理只监听 `127.0.0.1`；API Key 默认由页面请求头 `Authorization` 透传，也可用环境变量 `LLM_API_KEY` 兜底。若 8788 被占用，用 `PORT=8789 pnpm docs:proxy` 启动并相应修改地址。
+  - 本机示例：`R:\target\release\llmrouter.exe` 监听 `127.0.0.1:8000` 时，用 `$env:LLM_UPSTREAM='http://127.0.0.1:8000/v1'; pnpm docs:proxy`，页面配置 `http://127.0.0.1:8788/v1` + `deepseek-v4-flash`（Key 可填任意值，llmrouter 不校验）。
+- **思考型模型**：`max_tokens` 默认 4096，避免推理内容占满预算导致正式回答为空；若仍只返回推理过程，页面会显示提示与推理内容，可重试。
+- **横向自适应布局**：整页布局宽度改为 `max(90vw, 1440px)`——大屏按视口 90% 自适应铺开，替代默认 1440px 固定宽度；正文列不再限制在 688px，随窗口变宽而变宽。右侧栏同步加宽后，1920px 屏下正文约 833px、右栏工具区 448px。
+
 ## 目录结构
 
 ```
@@ -19,8 +40,15 @@ ontology-guide/
 │  ├─ application/             # 应用：知识图谱、语义检索与 RAG、数据治理等
 │  ├─ adoption/index.md         # 落地路线图
 │  ├─ examples/index.md         # 端到端案例（电商本体）
-│  └─ .vitepress/config.mts     # 站点配置（导航、侧边栏、语言）
+│  └─ .vitepress/
+│     ├─ config.mts             # 站点配置（导航、侧边栏、语言）
+│     └─ theme/                 # 自定义主题：右侧速记 + LLM 助手 + 布局宽度
+│        ├─ index.ts            # 继承默认主题并挂载 aside/drawer 组件
+│        ├─ styles.css          # 组件样式、右侧栏加宽与 90vw 横向自适应布局
+│        ├─ components/         # AsideTools / AssistantDrawer / LauncherButton
+│        └─ composables/        # useNotes、useAi、useSelection、useUi、pageContext
 ├─ package.json
+├─ pnpm-workspace.yaml
 └─ README.md
 ```
 
