@@ -1,0 +1,11 @@
+{
+  "texts": 111,
+  "rects": 45,
+  "canvas": {
+    "w": 1600,
+    "h": 1000
+  },
+  "min_font": 8.5,
+  "issues": [],
+  "clipped": []
+}

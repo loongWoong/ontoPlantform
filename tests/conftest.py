@@ -19,6 +19,15 @@ from http.server import ThreadingHTTPServer
 import pytest
 
 from onto_platform.bootstrap import PlatformConfig, build_platform
+from onto_platform.application.security import context as auth_context
+
+
+@pytest.fixture(autouse=True)
+def _reset_authorization_context():
+    """A decision belongs to one request/task, never to the next test."""
+    auth_context.clear()
+    yield
+    auth_context.clear()
 
 RECHARGE_SOURCE = """
 def execute(ctx):

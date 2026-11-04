@@ -17,6 +17,7 @@ that limitation is documented in the product docs.
 
 from __future__ import annotations
 
+import contextvars
 import threading
 from typing import Callable
 
@@ -32,20 +33,31 @@ class ExecutionRunner:
         self._lock = threading.Lock()
 
     def run(self, fn: Callable[[], object]) -> threading.Thread:
-        """Start ``fn`` on a daemon thread; raises RateLimitError when full."""
+        """Start ``fn`` on a daemon thread; raises RateLimitError when full.
+
+        The caller's context variables (authorization decision and tenant
+        scope) are copied into the worker.  Without this, a capability write
+        executed after the HTTP response would run with *no* scope and fall
+        back to system/raw semantics at the storage boundary.
+        """
         if not self._slots.acquire(blocking=False):
             raise RateLimitError(
                 "too many capability invocations in flight; retry later")
-        thread = threading.Thread(target=self._guarded, args=(fn,),
+        context = contextvars.copy_context()
+        thread = threading.Thread(target=self._guarded, args=(fn, context),
                                   name="onto-execution", daemon=True)
         with self._lock:
             self._threads.add(thread)
         thread.start()
         return thread
 
-    def _guarded(self, fn: Callable[[], object]) -> None:
+    def _guarded(self, fn: Callable[[], object],
+                 context: contextvars.Context | None = None) -> None:
         try:
-            fn()
+            if context is None:
+                fn()
+            else:
+                context.run(fn)
         except BaseException:  # pragma: no cover - defensive
             # the worker itself records failures; nothing may escape a daemon
             # thread and print a traceback after the request already returned

@@ -797,6 +797,205 @@ export interface ControllerCycle {
 export interface Member {
   workspace_id: string; user: string; role: "viewer" | "editor" | "owner";
 }
+
+/* ---------------- 权限内核（security kernel） ---------------- */
+export interface SecurityRole {
+  id: string;
+  displayName?: string;
+  description?: string;
+  inherits?: string[];
+  bindings?: number;
+}
+export interface SecurityRoleList {
+  roles: SecurityRole[];
+  policy_id: string;
+  policy_version: number;
+  can_manage?: boolean;
+  can_publish?: boolean;
+  principal?: {
+    id: string; kind?: string; roles: string[]; tenant_id?: string;
+    workspace_id?: string; attributes?: Record<string, unknown>;
+  };
+}
+export interface SecurityScopeRule {
+  all?: SecurityScopeRule[];
+  any?: SecurityScopeRule[];
+  not?: SecurityScopeRule;
+  field?: string;
+  op?: string;
+  value?: unknown;
+  valueFrom?: string;
+}
+export interface SecurityScopeList {
+  scopes: Record<string, { match?: SecurityScopeRule; filter?: SecurityScopeRule }>;
+  policy_id: string;
+  policy_version: number;
+}
+export interface SecurityPolicy {
+  id: string;
+  workspace_id: string;
+  tenant_id?: string;
+  version: number;
+  status: "draft" | "validated" | "approved" | "published" | "deprecated";
+  document: Record<string, unknown>;
+  hash: string;
+  created_by: string;
+  created_at: string;
+  approved_by?: string;
+  approved_at?: string;
+  published_at?: string;
+  note?: string;
+  parent_id?: string;
+  approvals?: SecurityApproval[];
+  approval_progress?: SecurityApprovalProgress;
+  validation?: { valid?: boolean; errors?: string[]; warnings?: string[] };
+}
+export interface SecurityPolicyList {
+  policies: SecurityPolicy[];
+  active: SecurityPolicy;
+  builtin?: boolean;
+}
+export interface SecurityPolicyDiff {
+  policy: string;
+  against: string;
+  actionsAdded: [string, string][];
+  actionsRemoved: [string, string][];
+  rolesAdded: string[];
+  rolesRemoved: string[];
+  scopesAdded: string[];
+  scopesRemoved: string[];
+}
+export interface SecurityDryRunResult {
+  policy_id: string;
+  policy_version: number;
+  subject: string;
+  decision: SecurityDecision;
+  validation?: { valid?: boolean; errors?: string[]; warnings?: string[] };
+}
+export interface SecurityDecision {
+  decision_id: string;
+  effect?: "allow" | "deny";
+  allow: boolean;
+  reason: string;
+  reason_code?: string;
+  action: string;
+  principal_id: string;
+  tenant_id: string;
+  workspace_id: string;
+  resource_type: string;
+  resource_id: string;
+  policy_id: string;
+  policy_version: number;
+  obligations: {
+    kind: string; value?: Record<string, unknown>; enforced?: boolean;
+  }[];
+  scope?: SecurityScopeRule | null;
+  created_at: string;
+  duration_ms?: number;
+}
+export interface SecurityAuthorizeResult {
+  decision: SecurityDecision;
+  principal: {
+    id: string; kind: string; roles: string[]; tenant_id: string;
+    workspace_id: string; authn_method?: string; active?: boolean;
+    attributes?: Record<string, unknown>;
+  };
+  tenant: { tenant_id: string; workspace_id: string; boundary: string };
+}
+export interface SecurityBinding {
+  id: string;
+  subject_type: "user" | "group" | "service";
+  subject_id: string;
+  role: string;
+  tenant_id?: string;
+  workspace_id: string;
+  scope_type: "workspace" | "tenant" | "resource";
+  scope_id: string;
+  conditions?: SecurityScopeRule | Record<string, unknown>;
+  created_at?: string;
+}
+export interface SecurityRelation {
+  resource_type: string;
+  resource_id: string;
+  relation: string;
+  subject_type: string;
+  subject_id: string;
+  workspace_id: string;
+  created_at?: string;
+}
+export interface SecurityDecisionList {
+  decisions: SecurityDecision[];
+  total?: number;
+}
+export interface SecurityApprovalProgress {
+  required: number;
+  received: number;
+  remaining: number;
+  approvers: string[];
+  satisfied: boolean;
+}
+export interface SecurityApproval {
+  actor: string;
+  comment?: string;
+  at?: string;
+}
+export interface SecurityGroup {
+  id: string;
+  name: string;
+  members: string[];
+  workspace_id?: string;
+  created_at?: string;
+}
+export interface OrgUnit {
+  id: string;
+  name: string;
+  parent_id?: string | null;
+  path: string;
+  members: string[];
+  children?: OrgUnit[];
+  depth?: number;
+  workspace_id?: string;
+}
+export interface OrgTree { units: OrgUnit[]; count: number; tree?: OrgUnit[] }
+export interface SecurityIdentityUser {
+  id?: string;
+  user_name: string;
+  display_name?: string;
+  emails?: string[];
+  groups?: string[];
+  active?: boolean;
+  provider?: string;
+  external_id?: string;
+}
+export interface WebhookSubscription {
+  id: string;
+  url: string;
+  event_types: string[];
+  secret?: string;
+  active: boolean;
+  last_delivery_at?: string | null;
+  last_error?: string | null;
+  delivery_count?: number;
+  created_at?: string;
+}
+export interface AsyncTask {
+  id: string;
+  one_shot: boolean;
+  delay_seconds: number;
+  next_run_at?: string;
+  runs: number;
+  failures: number;
+  last_error?: string | null;
+  authorization_bound: boolean;
+}
+export interface PolicyDraftResult {
+  document: Record<string, unknown>;
+  validation: { valid?: boolean; errors?: string[]; warnings?: string[] };
+  source: string;
+  stored: boolean;
+  published: boolean;
+  next: string[];
+}
 export interface OntologyLint {
   ok: boolean; warnings: { code: string; subject: string; message: string }[];
   ontology_id: string; version: number;
@@ -1565,7 +1764,51 @@ export interface Api {
 
   members(wid: string): Promise<Member[]>;
   addMember(wid: string, member: string, role: string): Promise<Member>;
+  removeMember(wid: string, member: string): Promise<{ removed: boolean }>;
   workspace(wid: string): Promise<Workspace & { members?: Record<string, string> }>;
+
+  securityPolicies(wid: string): Promise<SecurityPolicyList>;
+  securityPolicy(wid: string, pid: string): Promise<SecurityPolicy>;
+  securityPolicyDiff(wid: string, pid: string): Promise<SecurityPolicyDiff>;
+  securityDryRun(wid: string, pid: string, body: {
+    action: string; resource_type?: string; resource_id?: string;
+    attributes?: Record<string, unknown>; subject?: string;
+  }): Promise<SecurityDryRunResult>;
+  securityCreatePolicy(wid: string, body: { document?: Record<string, unknown>; note?: string }): Promise<SecurityPolicy>;
+  securityUpdatePolicy(wid: string, pid: string, body: { document: Record<string, unknown>; note?: string; expected_version?: number }): Promise<SecurityPolicy>;
+  securityApprovePolicy(wid: string, pid: string, comment?: string): Promise<SecurityPolicy>;
+  securityPublishPolicy(wid: string, pid: string, expectedVersion?: number): Promise<SecurityPolicy>;
+  securityRollbackPolicy(wid: string, pid: string, expectedVersion?: number): Promise<SecurityPolicy>;
+  securityValidatePolicy(wid: string, pid: string): Promise<SecurityPolicy>;
+  securityAuthorize(wid: string, body: { action: string; resource_type?: string; resource_id?: string; attributes?: Record<string, unknown>; subject?: string }, record?: boolean): Promise<SecurityAuthorizeResult>;
+  securityRoles(wid: string): Promise<SecurityRoleList>;
+  securityScopes(wid: string): Promise<SecurityScopeList>;
+  securityBindings(wid: string): Promise<SecurityBinding[]>;
+  securityCreateBinding(wid: string, body: { subject_type?: string; subject_id: string; role: string; scope_type?: string; scope_id?: string }): Promise<SecurityBinding>;
+  securityDeleteBinding(wid: string, bid: string): Promise<{ deleted: boolean }>;
+  securityRelations(wid: string): Promise<SecurityRelation[]>;
+  securityCreateRelation(wid: string, body: { resource_type: string; resource_id: string; relation: string; subject_type?: string; subject_id: string }): Promise<SecurityRelation>;
+  securityDeleteRelation(wid: string, body: { resource_type: string; resource_id: string; relation: string; subject_type?: string; subject_id: string }): Promise<{ deleted: boolean }>;
+  securityGroups(wid: string): Promise<SecurityGroup[]>;
+  securityCreateGroup(wid: string, body: { name: string; members?: string[] }): Promise<SecurityGroup>;
+  securityUpdateGroup(wid: string, gid: string, body: { name?: string; members?: string[] }): Promise<SecurityGroup>;
+  securityDeleteGroup(wid: string, gid: string): Promise<{ deleted: boolean }>;
+  securityOrgTree(wid: string): Promise<OrgTree>;
+  securityCreateOrgUnit(wid: string, body: { name: string; parent_id?: string }): Promise<OrgUnit>;
+  securityDeleteOrgUnit(wid: string, uid: string, cascade?: boolean): Promise<{ deleted: boolean }>;
+  securitySetOrgMembers(wid: string, uid: string, members: string[]): Promise<OrgUnit>;
+  securityIdentityUsers(wid: string): Promise<{ users: SecurityIdentityUser[] }>;
+  securityUpsertIdentityUser(wid: string, body: SecurityIdentityUser): Promise<SecurityIdentityUser>;
+  securityDeleteIdentityUser(wid: string, uid: string): Promise<{ deleted: boolean }>;
+  securityWebhooks(wid: string): Promise<WebhookSubscription[]>;
+  securityCreateWebhook(wid: string, body: { url: string; event_types: string[]; secret?: string }): Promise<WebhookSubscription>;
+  securityUpdateWebhook(wid: string, hid: string, body: { url?: string; event_types?: string[]; secret?: string; active?: boolean }): Promise<WebhookSubscription>;
+  securityDeleteWebhook(wid: string, hid: string): Promise<{ deleted: boolean }>;
+  securityAsyncTasks(wid: string): Promise<{ tasks: AsyncTask[] }>;
+  securityEnqueueAsync(wid: string, body: { function: string; target?: string; args?: Record<string, unknown>; delay_seconds?: number }): Promise<Record<string, unknown>>;
+  securityDraftPolicy(wid: string, body: { prompt: string; mode?: string }): Promise<PolicyDraftResult>;
+  securityDecisions(wid: string, limit?: number): Promise<SecurityDecision[]>;
+  downloadSecurityExport(wid: string, kind: "decisions" | "objects", fmt?: string, objectType?: string): Promise<void>;
 
   find(wid: string, type: string, filters: Record<string, string>): Promise<Obj[]>;
   get(wid: string, ref: string): Promise<Obj | null>;
@@ -1829,7 +2072,93 @@ export const api: Api = {
 
   members: wid => call(ws(wid, "/members")),
   addMember: (wid, member, role) => post(ws(wid, "/members"), { member, role }),
+  removeMember: (wid, member) =>
+    del(ws(wid, `/members/${encodeURIComponent(member)}`)),
   workspace: wid => call(`/api/workspaces/${encodeURIComponent(wid)}`),
+
+  securityPolicies: wid => call(ws(wid, "/security/policies")),
+  securityPolicy: (wid, pid) => call(ws(wid, `/security/policies/${encodeURIComponent(pid)}`)),
+  securityPolicyDiff: (wid, pid) =>
+    call(ws(wid, `/security/policies/${encodeURIComponent(pid)}/diff`)),
+  securityDryRun: (wid, pid, body) =>
+    post(ws(wid, `/security/policies/${encodeURIComponent(pid)}/dry-run`), body),
+  securityCreatePolicy: (wid, body) => post(ws(wid, "/security/policies"), body),
+  securityUpdatePolicy: (wid, pid, body) =>
+    call(ws(wid, `/security/policies/${encodeURIComponent(pid)}`), {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  securityApprovePolicy: (wid, pid, comment = "") =>
+    post(ws(wid, `/security/policies/${encodeURIComponent(pid)}/approve`), { comment }),
+  securityPublishPolicy: (wid, pid, expectedVersion) =>
+    post(ws(wid, `/security/policies/${encodeURIComponent(pid)}/publish`),
+      expectedVersion === undefined ? {} : { expected_version: expectedVersion }),
+  securityRollbackPolicy: (wid, pid, expectedVersion) =>
+    post(ws(wid, `/security/policies/${encodeURIComponent(pid)}/rollback`),
+      expectedVersion === undefined ? {} : { expected_version: expectedVersion }),
+  securityValidatePolicy: (wid, pid) =>
+    post(ws(wid, `/security/policies/${encodeURIComponent(pid)}/validate`), {}),
+  securityAuthorize: (wid, body, record = true) =>
+    post(ws(wid, record ? "/security/authorize" : "/security/authorize/preview"), body),
+  securityRoles: wid => call(ws(wid, "/security/roles")),
+  securityScopes: wid => call(ws(wid, "/security/scopes")),
+  securityBindings: wid => call(ws(wid, "/security/bindings")),
+  securityCreateBinding: (wid, body) => post(ws(wid, "/security/bindings"), body),
+  securityDeleteBinding: (wid, bid) =>
+    del(ws(wid, `/security/bindings/${encodeURIComponent(bid)}`)),
+  securityRelations: wid => call(ws(wid, "/security/relations")),
+  securityCreateRelation: (wid, body) => post(ws(wid, "/security/relations"), body),
+  securityDeleteRelation: (wid, body) => post(ws(wid, "/security/relations/delete"), body),
+  securityGroups: wid => call(ws(wid, "/security/groups")),
+  securityCreateGroup: (wid, body) => post(ws(wid, "/security/groups"), body),
+  securityUpdateGroup: (wid, gid, body) =>
+    post(ws(wid, `/security/groups/${encodeURIComponent(gid)}`), body),
+  securityDeleteGroup: (wid, gid) =>
+    del(ws(wid, `/security/groups/${encodeURIComponent(gid)}`)),
+  securityOrgTree: wid => call(ws(wid, "/security/org/tree")),
+  securityCreateOrgUnit: (wid, body) => post(ws(wid, "/security/org/units"), body),
+  securityDeleteOrgUnit: (wid, uid, cascade = false) =>
+    del(ws(wid, `/security/org/units/${encodeURIComponent(uid)}${cascade ? "?cascade=true" : ""}`)),
+  securitySetOrgMembers: (wid, uid, members) =>
+    post(ws(wid, `/security/org/units/${encodeURIComponent(uid)}/members`), { members }),
+  securityIdentityUsers: wid => call(ws(wid, "/security/identity/users")),
+  securityUpsertIdentityUser: (wid, body) =>
+    post(ws(wid, "/security/identity/users"), body),
+  securityDeleteIdentityUser: (wid, uid) =>
+    del(ws(wid, `/security/identity/users/${encodeURIComponent(uid)}`)),
+  securityWebhooks: wid => call(ws(wid, "/security/webhooks")),
+  securityCreateWebhook: (wid, body) => post(ws(wid, "/security/webhooks"), body),
+  securityUpdateWebhook: (wid, hid, body) =>
+    post(ws(wid, `/security/webhooks/${encodeURIComponent(hid)}`), body),
+  securityDeleteWebhook: (wid, hid) =>
+    del(ws(wid, `/security/webhooks/${encodeURIComponent(hid)}`)),
+  securityAsyncTasks: wid => call(ws(wid, "/security/async/tasks")),
+  securityEnqueueAsync: (wid, body) => post(ws(wid, "/security/async/tasks"), body),
+  securityDraftPolicy: (wid, body) =>
+    post(ws(wid, "/security/policies/draft"), body, LLM_TIMEOUT),
+  securityDecisions: (wid, limit = 50) =>
+    call(ws(wid, `/security/decisions?limit=${limit}`)),
+  downloadSecurityExport: async (wid: string, kind: "decisions" | "objects",
+                                 fmt = "csv", objectType = "") => {
+    const query = new URLSearchParams({ fmt });
+    if (kind === "objects" && objectType) query.set("type", objectType);
+    const path = kind === "decisions"
+      ? ws(wid, `/security/decisions/export?${query}`)
+      : ws(wid, `/state/export?${query}`);
+    const headers = new Headers();
+    const token = getApiToken();
+    if (token) headers.set("Authorization", `Bearer ${token}`);
+    const res = await fetch(path, { headers });
+    if (!res.ok) throw new ApiError(friendly(`HTTP ${res.status}`), res.status, "");
+    const blob = await res.blob();
+    const name = `${kind}-${wid}.${fmt === "jsonl" ? "jsonl" : "csv"}`;
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url; link.download = name;
+    document.body.appendChild(link); link.click(); link.remove();
+    URL.revokeObjectURL(url);
+  },
 
   ask: (wid, question) => post(ws(wid, "/ask"), { question }),
   agent: (wid, goal, maxSteps, llm) => post(ws(wid, "/agent"), { goal, max_steps: maxSteps, ...(llm ? { llm } : {}) }),

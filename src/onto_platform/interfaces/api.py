@@ -71,7 +71,48 @@ use cases the CLI uses - no domain logic here.
     GET  /api/workspaces/{wid}/smart-ui/meta
     POST /api/workspaces/{wid}/smart-ui/compile {question, roles}
     POST /api/workspaces/{wid}/smart-ui/actions/{action_id}
+    GET  /api/workspaces/{wid}/security/policies
+    POST /api/workspaces/{wid}/security/policies
+    PUT  /api/workspaces/{wid}/security/policies/{id}
+    GET  /api/workspaces/{wid}/security/policies/{id}
+    GET  /api/workspaces/{wid}/security/policies/{id}/diff
+    POST /api/workspaces/{wid}/security/policies/{id}/validate
+    POST /api/workspaces/{wid}/security/policies/{id}/dry-run
+    POST /api/workspaces/{wid}/security/policies/{id}/approve
+    POST /api/workspaces/{wid}/security/policies/{id}/publish
+    POST /api/workspaces/{wid}/security/policies/{id}/rollback
+    POST /api/workspaces/{wid}/security/authorize
+    POST /api/workspaces/{wid}/security/authorize/preview
+    POST /api/workspaces/{wid}/security/blueprint/validate
+    GET  /api/workspaces/{wid}/security/roles
+    GET  /api/workspaces/{wid}/security/scopes
+    GET  /api/workspaces/{wid}/security/bindings
+    POST /api/workspaces/{wid}/security/bindings
+    DELETE /api/workspaces/{wid}/security/bindings/{id}
+    GET  /api/workspaces/{wid}/security/groups
+    POST /api/workspaces/{wid}/security/groups
+    GET  /api/workspaces/{wid}/security/relations
+    POST /api/workspaces/{wid}/security/relations
+    POST /api/workspaces/{wid}/security/relations/delete
+    GET  /api/workspaces/{wid}/security/decisions?limit=
+    GET  /api/workspaces/{wid}/security/decisions/{id}
+    GET  /api/workspaces/{wid}/security/decisions/export?fmt=jsonl
+    POST /api/workspaces/{wid}/security/policies/draft   {prompt, mode}
+    GET  /api/workspaces/{wid}/security/org/tree
+    POST /api/workspaces/{wid}/security/org/units
+    POST /api/workspaces/{wid}/security/org/units/{id}/members
+    GET  /api/workspaces/{wid}/security/identity/users
+    POST /api/workspaces/{wid}/security/identity/users
+    POST /api/workspaces/{wid}/security/identity/login/oidc  {id_token}
+    POST /api/workspaces/{wid}/security/identity/login/ldap  {username,password}
+    GET  /api/workspaces/{wid}/security/identity/session     (Bearer session)
+    GET  /api/workspaces/{wid}/security/webhooks
+    POST /api/workspaces/{wid}/security/webhooks
+    POST /api/workspaces/{wid}/security/async/tasks
+    GET  /api/workspaces/{wid}/security/async/tasks
+    GET  /api/workspaces/{wid}/state/export?type=X&fmt=json|csv
     GET  /api/workspaces/{wid}/audit
+    GET|POST /scim/v2/Users                              (SCIM bearer token)
     GET  /smart-ui/                             (separate OpenUI runtime build)
 """
 
@@ -83,6 +124,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
 from ..bootstrap import Platform, PlatformConfig, build_platform
+from ..application.security import context as auth_context
 from .. import __version__
 from ..errors import (
     AccessDeniedError,
@@ -255,6 +297,19 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
             self.end_headers()
             self.wfile.write(body)
 
+        def _send_bytes(self, status: int, content_type: str, body: bytes,
+                        filename: str = "") -> None:
+            self.send_response(status)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(body)))
+            if filename:
+                self.send_header(
+                    "Content-Disposition",
+                    f'attachment; filename="{filename}"')
+            self._cors()
+            self.end_headers()
+            self.wfile.write(body)
+
         def _error(self, exc: Exception) -> None:
             details = classify(exc)
             body = json.dumps({
@@ -287,24 +342,58 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
                 raise ValidationError("request body must be a JSON object")
             return data
 
+        def _bearer(self) -> str:
+            header = (self.headers.get("Authorization") or "").strip()
+            if header.lower().startswith("bearer "):
+                return header[7:].strip()
+            return ""
+
+        def _session_actor(self, token: str) -> str:
+            """Map a signed OIDC/LDAP session token to a directory user.
+
+            Session tokens are only minted after a successful OIDC/LDAP login
+            and are signed with ``ONTO_SESSION_SECRET``; an invalid, expired or
+            unknown token yields an empty string so the caller can return the
+            normal 401 instead of leaking which check failed.
+            """
+            identity = getattr(platform, "identity", None)
+            if identity is None or not token:
+                return ""
+            try:
+                user = identity.resolve_session(token)
+            except AccessDeniedError:
+                return ""
+            if not user.get("active", True):
+                return ""
+            return str(user.get("user_name") or user.get("id") or "")
+
         def _actor(self, body: dict | None = None, query: dict | None = None) -> str:
             """Resolve the actor of one request.
 
-            When ``ONTO_API_TOKEN`` is set the only accepted identity is the
-            bearer token - a ``user`` field/param in the body or query string
-            can no longer impersonate anyone (v0.8).  The token is mapped to
-            an actor name by ``ONTO_API_TOKEN_ACTOR`` (default "api-client").
+            Accepted credentials, in order:
 
-            Without a configured token the adapter runs in local single-user
-            mode and keeps accepting the declared ``user`` for back-compat.
+            1. the configured ``ONTO_API_TOKEN`` bearer token (machine token),
+            2. a signed session token issued by ``/identity/login/oidc`` or
+               ``/identity/login/ldap``, resolved through the identity
+               directory (deactivated users fail closed),
+            3. loopback local mode without any bearer token, where the declared
+               ``user`` is accepted for developer ergonomics.
+
+            A supplied but invalid bearer token is always rejected; it never
+            silently falls back to the local admin identity.
             """
             expected = os.environ.get("ONTO_API_TOKEN")
+            token = self._bearer()
+            if token:
+                if expected and hmac.compare_digest(token, expected):
+                    return os.environ.get("ONTO_API_TOKEN_ACTOR",
+                                          "api-client")
+                session_actor = self._session_actor(token)
+                if session_actor:
+                    return session_actor
+                raise AccessDeniedError("invalid or expired bearer token")
             if expected:
-                header = (self.headers.get("Authorization") or "").strip()
-                token = header[7:].strip() if header.lower().startswith("bearer ") else ""
-                if not token or not hmac.compare_digest(token, expected):
-                    raise AccessDeniedError("invalid or missing bearer token")
-                return os.environ.get("ONTO_API_TOKEN_ACTOR", "api-client")
+                raise AccessDeniedError("invalid or missing bearer token")
             # local single-user mode: loopback only.  The declared user is
             # accepted for developer ergonomics on this machine, never for a
             # remote client (P1-13).
@@ -334,6 +423,20 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
                 raise ValidationError(
                     f"expected_version must be an integer, got {value!r}"
                 ) from None
+
+        def _required_version(self, body: dict) -> int:
+            """Mutating policy routes must carry an optimistic-lock token.
+
+            Service-level callers may omit it, but the HTTP contract does not:
+            two operators publishing the same draft must not overwrite each
+            other silently.
+            """
+            value = self._expected_version(body)
+            if value is None:
+                raise ValidationError(
+                    "expected_version or If-Match is required for this policy "
+                    "mutation")
+            return value
 
         @staticmethod
         def _query_int(query: dict, key: str, default: int) -> int:
@@ -375,6 +478,7 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
         # ------------------------------------------------------------ DELETE
 
         def do_DELETE(self) -> None:
+            auth_context.clear()
             parsed = urlparse(self.path)
             parts = [unquote(p) for p in parsed.path.split("/") if p]
             query = {k: _parse_scalar(v[-1]) for k, v in parse_qs(parsed.query).items()}
@@ -397,6 +501,42 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
             user = self._actor(query=query)
             if wid is None:
                 raise ValidationError("workspace id is required")
+            if len(rest) == 3 and rest[0] == "security" \
+                    and rest[1] == "bindings":
+                return self._send(200, platform.security.delete_binding(
+                    wid, user, rest[2]))
+            if len(rest) == 3 and rest[0] == "security" \
+                    and rest[1] == "groups":
+                return self._send(200, platform.security.delete_group(
+                    wid, user, rest[2]))
+            if len(rest) == 3 and rest[0] == "security" \
+                    and rest[1] == "org" and rest[2] == "units":
+                raise ValidationError("organization unit id is required")
+            if len(rest) == 4 and rest[0] == "security" \
+                    and rest[1] == "org" and rest[2] == "units":
+                return self._send(200, platform.organization.delete_unit(
+                    wid, user, rest[3],
+                    cascade=str(query.get("cascade") or "") in
+                    {"1", "true", "yes"}))
+            if len(rest) == 3 and rest[0] == "security" \
+                    and rest[1] == "identity" and rest[2] == "users":
+                raise ValidationError("identity user id is required")
+            if len(rest) == 4 and rest[0] == "security" \
+                    and rest[1] == "identity" and rest[2] == "users":
+                platform.ctx.require_action(user, wid, "security.manage")
+                return self._send(200, platform.identity_directory.delete_user(
+                    rest[3], actor=user))
+            if len(rest) == 3 and rest[0] == "security" \
+                    and rest[1] == "webhooks":
+                return self._send(200, platform.webhooks.delete_webhook(
+                    wid, user, rest[2]))
+            if len(rest) == 4 and rest[0] == "security" \
+                    and rest[1] == "webhooks" and rest[3] == "delete":
+                return self._send(200, platform.webhooks.delete_webhook(
+                    wid, user, rest[2]))
+            if len(rest) == 2 and rest[0] == "members":
+                return self._send(200, platform.workspaces.remove_member(
+                    wid, rest[1], actor=user))
             if len(rest) == 3 and rest[0] == "ontology" and rest[1] == "objects":
                 return self._send(200, platform.ontologies.remove_object(
                     wid, user, rest[2]))
@@ -456,6 +596,7 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
         # ------------------------------------------------------------ GET
 
         def do_GET(self) -> None:
+            auth_context.clear()
             parsed = urlparse(self.path)
             parts = [unquote(p) for p in parsed.path.split("/") if p]
             query = {k: _parse_scalar(v[-1]) for k, v in parse_qs(parsed.query).items()}
@@ -465,7 +606,7 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
                 # (opaque origin -> ``Origin: null``) can load its module graph.
                 # API calls stay behind the origin allowlist below; the iframe
                 # reaches them through the console bridge, never directly.
-                if not parts or parts[0] != "api":
+                if not parts or parts[0] not in ("api", "scim"):
                     return self._serve_web(parts)
                 self._check_origin()
                 if parts == ["api", "health"]:
@@ -491,13 +632,20 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
                         "console": "react" if (DIST_DIR / "index.html").is_file() else "legacy",
                         "api_version": 3,
                         "auth_mode": (
-                            "token" if os.environ.get("ONTO_API_TOKEN")
+                            "token+session"
+                            if os.environ.get("ONTO_API_TOKEN")
+                            and os.environ.get("ONTO_SESSION_SECRET")
+                            else "token" if os.environ.get("ONTO_API_TOKEN")
+                            else "session"
+                            if os.environ.get("ONTO_SESSION_SECRET")
                             else "local"),
                         "smart_ui": {
                             "engine": engine_ready,
                             "runtime": runtime_ready,
                         },
                         "features": [
+                            "identity.session", "identity.oidc",
+                            "identity.ldap", "identity.scim",
                             "ontology.draft", "ontology.lint", "ontology.revision",
                             "releases", "canary.isolated", "events", "metrics",
                             "slo", "slo.windowed", "verify", "reconcile",
@@ -511,6 +659,14 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
                     scheduler = platform.scheduler
                     return self._send(200, scheduler.status() if scheduler
                                       else {"running": False, "tasks": []})
+                if parts[:2] == ["scim", "v2"]:
+                    platform.scim.authenticate(
+                        self.headers.get("Authorization") or "")
+                    if parts[2:3] == ["Users"]:
+                        if len(parts) == 3:
+                            return self._send(200, platform.scim.users())
+                        return self._send(200, platform.scim.user(parts[3]))
+                    raise ValidationError(f"no SCIM route for {self.path}")
                 if parts[:2] != ["api", "workspaces"]:
                     raise ValidationError(f"no route for {self.path}")
                 wid = parts[2] if len(parts) > 2 else None
@@ -582,6 +738,102 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
             self.end_headers()
             self.wfile.write(body)
 
+        def _get_security(self, wid: str, rest: list[str], query: dict,
+                          user: str) -> None:
+            """Read the permission console's policy/evidence views."""
+            if rest == ["policies"]:
+                return self._send(200, platform.security.policies(wid, user))
+            if len(rest) == 2 and rest[0] == "policies":
+                return self._send(200,
+                                  platform.security.policy(wid, user, rest[1]))
+            if len(rest) == 3 and rest[0] == "policies" and rest[2] == "diff":
+                return self._send(200,
+                                  platform.security.diff_policy(wid, user,
+                                                                rest[1]))
+            if rest == ["bindings"]:
+                return self._send(200, platform.security.bindings(wid, user))
+            if rest == ["roles"]:
+                return self._send(200, platform.security.roles(wid, user))
+            if rest == ["scopes"]:
+                return self._send(200, platform.security.scopes(wid, user))
+            if rest == ["groups"]:
+                return self._send(200, platform.security.groups(wid, user))
+            if rest == ["relations"]:
+                return self._send(200, platform.security.relations(wid, user))
+            if rest == ["decisions"]:
+                limit = int(query.get("limit") or 50)
+                return self._send(200, platform.security.decisions(
+                    wid, user, limit=limit))
+            if rest == ["decisions", "export"]:
+                fmt = str(query.get("fmt") or "jsonl").lower()
+                limit = int(query.get("limit") or 1000)
+                result = platform.exports.export_decisions(
+                    wid, user, limit=limit, fmt=fmt)
+                return self._send_bytes(200, result["content_type"],
+                                        result["body"],
+                                        result.get("filename", ""))
+            if len(rest) == 2 and rest[0] == "decisions":
+                return self._send(200, platform.security.decision(
+                    wid, user, rest[1]))
+            if rest == ["org", "tree"]:
+                platform.ctx.require_action(user, wid, "security.read")
+                return self._send(200, platform.organization.tree(wid))
+            if rest == ["org", "units"]:
+                platform.ctx.require_action(user, wid, "security.read")
+                return self._send(200, {
+                    "units": platform.organization.list_units(wid)})
+            if rest == ["org", "attributes"]:
+                platform.ctx.require_action(user, wid, "security.read")
+                who = str(query.get("actor") or user)
+                return self._send(200, platform.organization.attributes_for(
+                    who, wid))
+            if rest == ["identity", "users"]:
+                platform.ctx.require_action(user, wid, "security.read")
+                manager = False
+                try:
+                    platform.ctx.security.check_action(
+                        user, wid, "security.manage",
+                        record_denials=False, record=False,
+                        bind_context=False)
+                    manager = True
+                except AccessDeniedError:
+                    pass
+                users = platform.identity_directory.list_users()
+                if not manager:
+                    # The directory is platform-wide (one IdP can serve many
+                    # workspaces).  A plain reader may only see identities
+                    # that belong to this workspace, never every tenant's
+                    # user names/emails/groups.
+                    members = {
+                        m["user"]
+                        for m in platform.ctx.repo.list("membership", wid)
+                    }
+                    members.add(user)
+                    users = [row for row in users
+                             if row.get("user_name") in members]
+                return self._send(200, {"users": users})
+            if rest == ["identity", "session"]:
+                header = (self.headers.get("Authorization") or "").strip()
+                token = header[7:].strip() if header.lower().startswith(
+                    "bearer ") else ""
+                if not token:
+                    raise AccessDeniedError("missing session token")
+                return self._send(200, {
+                    "user": platform.identity.resolve_session(token)})
+            if rest == ["webhooks"]:
+                rows = platform.webhooks.list_webhooks(wid, actor=user)
+                return self._send(200, [{**row, "secret": "***"}
+                                        for row in rows])
+            if rest == ["async", "tasks"]:
+                platform.ctx.require_action(user, wid, "security.read")
+                return self._send(200, {"tasks":
+                                        platform.async_tasks.list_tasks()})
+            if len(rest) == 2 and rest[0] == "webhooks":
+                hook = platform.webhooks.get_webhook(wid, rest[1],
+                                                    actor=user)
+                return self._send(200, {**hook, "secret": "***"})
+            raise ValidationError("no security route")
+
         def _get(self, wid: str | None, rest: list[str], query: dict,
                  raw_query: str = "") -> None:
             user = self._actor(query=query)
@@ -594,6 +846,8 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
             if rest == ["members"]:
                 return self._send(200, platform.workspaces.list_members(
                     wid, actor=user))
+            if rest[:1] == ["security"]:
+                return self._get_security(wid, rest[1:], query, user)
             if rest == ["llm-config"]:
                 return self._send(200, platform.llm_config.get(wid, user))
             if rest == ["ontology"]:
@@ -676,10 +930,12 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
                     wid, user,
                     window_seconds=self._window_seconds(query)))
             if rest == ["events"]:
+                platform.ctx.require(user, wid, "viewer")
                 return self._send(200, platform.events.list(
                     wid, limit=self._query_int(query, "limit", 200),
                     event_type=query.get("type")))
             if rest == ["events", "dead-letters"]:
+                platform.ctx.require(user, wid, "viewer")
                 return self._send(200, platform.events.dead_letters(wid))
             if rest == ["executions"]:
                 from ..application.execution_ledger import ExecutionLedger
@@ -752,6 +1008,19 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
             if rest == ["todos"]:
                 return self._send(200, platform.objectives.list_todos(
                     wid, user, status=query.get("status", "open")))
+            if rest == ["state", "export"]:
+                object_type = query.get("type")
+                if not object_type:
+                    raise ValidationError("query param 'type' is required")
+                raw = gateway_of(platform, wid).find_objects(str(object_type))
+                rows = raw.get("objects") if isinstance(raw, dict) else raw
+                result = platform.exports.export_objects(
+                    wid, user, list(rows or []),
+                    fmt=str(query.get("fmt") or "json").lower(),
+                    resource_type=str(object_type))
+                return self._send_bytes(200, result["content_type"],
+                                        result["body"],
+                                        result.get("filename", ""))
             if rest == ["state", "find"]:
                 object_type = query.get("type")
                 if not object_type:
@@ -782,6 +1051,17 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
                         filters[k] = v
                 result = gateway_of(platform, wid).find_objects(
                     object_type, filters, report=report)
+                # Authorization is applied after the kernel query so the
+                # response, pagination and total all reflect the caller's row
+                # scope/field masks (not just the query filters).
+                if isinstance(result, dict):
+                    result = {**result,
+                              "objects": platform.security.filter_objects(
+                                  wid, user, result.get("objects") or [],
+                                  resource_type=str(object_type))}
+                else:
+                    result = platform.security.filter_objects(
+                        wid, user, result, resource_type=str(object_type))
                 # pagination (plan-v2 1.9): the kernel returns the full page;
                 # the API exposes stable limit/offset slicing plus totals
                 if isinstance(result, dict):
@@ -801,11 +1081,30 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
                     })
                 return self._send(200, result)
             if rest == ["state", "get"]:
-                return self._send(200, gateway_of(platform, wid).get_object(query.get("ref", "")))
+                ref = query.get("ref", "")
+                obj = gateway_of(platform, wid).get_object(ref)
+                if obj is None:
+                    return self._send(200, None)
+                visible = platform.security.filter_objects(
+                    wid, user, [obj],
+                    resource_type=str(ref).partition("/")[0] or "object")
+                return self._send(200, visible[0] if visible else None)
             if rest == ["state", "related"]:
-                return self._send(200, gateway_of(platform, wid).related(
+                refs = gateway_of(platform, wid).related(
                     query.get("ref", ""), query.get("relation", ""),
-                    direction=query.get("direction", "out")))
+                    direction=query.get("direction", "out"))
+                visible = []
+                for target in refs:
+                    obj = gateway_of(platform, wid).get_object(target)
+                    if obj is None:
+                        continue
+                    kept = platform.security.filter_objects(
+                        wid, user, [obj],
+                        resource_type=str(target).partition("/")[0]
+                        or "object")
+                    if kept:
+                        visible.append(target)
+                return self._send(200, visible)
             if rest == ["state", "history"]:
                 return self._send(200, platform.history.changes_for(
                     wid, user, query.get("ref", ""),
@@ -824,11 +1123,13 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
                 return self._send(200, platform.history.object_as_of(
                     wid, user, ref, seq))
             if rest == ["changes"]:
+                platform.ctx.require(user, wid, "viewer")
                 changes = gateway_of(platform, wid).observe_changes(
                     self._query_int(query, "after", 0))
                 limit = self._query_int(query, "limit", 0)
                 return self._send(200, changes[-limit:] if limit else changes)
             if rest == ["audit"]:
+                platform.ctx.require_action(user, wid, "security.read")
                 return self._send(200, platform.ctx.audit.list(
                     wid, limit=self._query_int(query, "limit", 50)))
             raise ValidationError(f"no route for {self.path}")
@@ -836,6 +1137,7 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
         # ------------------------------------------------------------ POST
 
         def do_POST(self) -> None:
+            auth_context.clear()
             parsed = urlparse(self.path)
             parts = [unquote(p) for p in parsed.path.split("/") if p]
             try:
@@ -843,6 +1145,16 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
                 body = self._body()
                 if parts == ["api", "llm"]:
                     return self._post_llm(body)
+                if parts[:2] == ["scim", "v2"]:
+                    platform.scim.authenticate(
+                        self.headers.get("Authorization") or "")
+                    if parts[2:3] == ["Users"]:
+                        if len(parts) == 3:
+                            return self._send(201, platform.scim.create_user(body))
+                        if len(parts) == 4:
+                            return self._send(200, platform.scim.patch_user(
+                                parts[3], body))
+                    raise ValidationError(f"no SCIM route for {self.path}")
                 if parts[:2] != ["api", "workspaces"]:
                     raise ValidationError(f"no route for {self.path}")
                 wid = parts[2] if len(parts) > 2 else None
@@ -875,6 +1187,162 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
                 "llm_provider": type(provider).__name__,
             })
 
+        def _post_security(self, wid: str, rest: list[str], body: dict,
+                           user: str) -> None:
+            if rest == ["authorize"]:
+                return self._send(200, platform.security.authorize(
+                    wid, user, str(body.get("action") or ""),
+                    resource_type=str(body.get("resource_type")
+                                      or body.get("type") or "workspace"),
+                    resource_id=str(body.get("resource_id")
+                                    or body.get("id") or ""),
+                    attributes=body.get("attributes") or {},
+                    subject=str(body.get("subject") or "") or None))
+            if rest == ["authorize", "preview"]:
+                return self._send(200, platform.security.authorize(
+                    wid, user, str(body.get("action") or ""),
+                    resource_type=str((body.get("resource") or {}).get("type")
+                                      or body.get("resource_type")
+                                      or body.get("type") or "workspace"),
+                    resource_id=str((body.get("resource") or {}).get("id")
+                                    or body.get("resource_id")
+                                    or body.get("id") or ""),
+                    attributes=(body.get("resource") or {}).get("attributes")
+                    or body.get("attributes") or {},
+                    subject=str(body.get("subject") or "") or None,
+                    record=False))
+            if rest == ["blueprint", "validate"]:
+                return self._send(200, platform.security.validate_blueprint(
+                    wid, user, body.get("blueprint") or {},
+                    known_objects=body.get("known_objects"),
+                    known_actions=body.get("known_actions"),
+                    known_fields=body.get("known_fields")))
+            if rest == ["policies", "draft"]:
+                return self._send(200, platform.policy_drafts.draft(
+                    wid, user, str(body.get("prompt") or ""),
+                    mode=str(body.get("mode") or "auto")))
+            if rest == ["policies"]:
+                return self._send(200, platform.security.create_policy(
+                    wid, user, document=body.get("document"),
+                    note=str(body.get("note") or "")))
+            if len(rest) == 2 and rest[0] == "policies":
+                # PUT-shaped update over POST keeps the stdlib handler small;
+                # the lifecycle routes below remain explicit.
+                return self._send(200, platform.security.update_policy(
+                    wid, user, rest[1], body.get("document") or {},
+                    note=str(body.get("note") or ""),
+                    expected_version=self._required_version(body)))
+            if len(rest) == 3 and rest[0] == "policies" \
+                    and rest[2] == "validate":
+                return self._send(200, platform.security.validate_policy(
+                    wid, user, rest[1]))
+            if len(rest) == 3 and rest[0] == "policies" \
+                    and rest[2] == "dry-run":
+                return self._send(200, platform.security.dry_run(
+                    wid, user, rest[1], action=str(body.get("action") or ""),
+                    resource_type=str(body.get("resource_type")
+                                      or body.get("type") or "workspace"),
+                    resource_id=str(body.get("resource_id")
+                                    or body.get("id") or ""),
+                    attributes=body.get("attributes") or {},
+                    subject=(str(body.get("subject") or body.get("user") or "")
+                             or None)))
+            if len(rest) == 3 and rest[0] == "policies" \
+                    and rest[2] == "approve":
+                return self._send(200, platform.security.approve_policy(
+                    wid, user, rest[1], comment=str(body.get("comment") or "")))
+            if len(rest) == 3 and rest[0] == "policies" \
+                    and rest[2] == "publish":
+                return self._send(200, platform.security.publish_policy(
+                    wid, user, rest[1],
+                    expected_version=self._required_version(body)))
+            if len(rest) == 3 and rest[0] == "policies" \
+                    and rest[2] == "rollback":
+                return self._send(200, platform.security.rollback_policy(
+                    wid, user, rest[1],
+                    expected_version=self._required_version(body)))
+            if rest == ["bindings"]:
+                return self._send(200, platform.security.create_binding(
+                    wid, user, body))
+            if rest == ["groups"]:
+                return self._send(200, platform.security.create_group(
+                    wid, user, body))
+            if len(rest) == 2 and rest[0] == "groups":
+                return self._send(200, platform.security.update_group(
+                    wid, user, rest[1], body))
+            if rest == ["relations"]:
+                return self._send(200, platform.security.create_relation(
+                    wid, user, body))
+            if rest == ["relations", "delete"]:
+                return self._send(200, platform.security.delete_relation(
+                    wid, user, body))
+            if rest == ["org", "units"]:
+                return self._send(200, platform.organization.create_unit(
+                    wid, user, str(body.get("name") or ""),
+                    parent_id=str(body.get("parent_id") or "")))
+            if len(rest) == 3 and rest[:2] == ["org", "units"] \
+                    and rest[2] == "members":
+                return self._send(200, platform.organization.set_members(
+                    wid, user, str(body.get("unit_id") or ""),
+                    body.get("members") or []))
+            if len(rest) >= 3 and rest[:2] == ["org", "units"] \
+                    and rest[-1] == "members":
+                return self._send(200, platform.organization.set_members(
+                    wid, user, rest[2], body.get("members") or []))
+            if len(rest) == 3 and rest[:2] == ["org", "units"] \
+                    and rest[2] == "delete":
+                return self._send(200, platform.organization.delete_unit(
+                    wid, user, str(body.get("unit_id") or ""),
+                    cascade=body.get("cascade") is True))
+            if len(rest) == 4 and rest[:2] == ["org", "units"] \
+                    and rest[3] == "delete":
+                return self._send(200, platform.organization.delete_unit(
+                    wid, user, rest[2], cascade=body.get("cascade") is True))
+            if rest == ["identity", "users"]:
+                platform.ctx.require_action(user, wid, "security.manage")
+                return self._send(200, platform.identity_directory.upsert_user(
+                    str(body.get("user_name") or ""),
+                    display_name=body.get("display_name"),
+                    emails=body.get("emails"), groups=body.get("groups"),
+                    active=body.get("active"),
+                    external_id=body.get("external_id"),
+                    provider=body.get("provider"), actor=user))
+            if rest == ["identity", "login", "oidc"]:
+                return self._send(200, platform.identity.oidc_login(
+                    str(body.get("id_token") or "")))
+            if rest == ["identity", "login", "ldap"]:
+                return self._send(200, platform.identity.ldap_login(
+                    str(body.get("username") or ""),
+                    str(body.get("password") or "")))
+            if rest == ["webhooks"]:
+                hook = platform.webhooks.create_webhook(
+                    wid, user, str(body.get("url") or ""),
+                    body.get("event_types") or [],
+                    secret=str(body.get("secret") or ""))
+                return self._send(200, {**hook, "secret": "***"})
+            if len(rest) == 2 and rest[0] == "webhooks":
+                hook = platform.webhooks.update_webhook(
+                    wid, user, rest[1], url=body.get("url"),
+                    event_types=body.get("event_types"),
+                    secret=body.get("secret"), active=body.get("active"))
+                return self._send(200, {**hook, "secret": "***"})
+            if len(rest) == 3 and rest[0] == "webhooks" \
+                    and rest[2] == "delete":
+                return self._send(200, platform.webhooks.delete_webhook(
+                    wid, user, rest[1]))
+            if rest == ["async", "tasks"]:
+                return self._send(200, platform.async_tasks.enqueue(
+                    wid, user, str(body.get("function") or ""),
+                    target=body.get("target"),
+                    args=body.get("args") or {},
+                    delay_seconds=float(body.get("delay_seconds") or 0)))
+            if len(rest) == 3 and rest[0] == "async" \
+                    and rest[1] == "tasks" and rest[2] == "run":
+                platform.ctx.require_action(user, wid, "security.manage")
+                return self._send(200, platform.async_tasks.run_now(
+                    str(body.get("task_id") or "")))
+            raise ValidationError("no security route")
+
         def _post(self, wid: str | None, rest: list[str], body: dict) -> None:
             user = self._actor(body=body)
             if wid is None:
@@ -894,6 +1362,8 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
                 return self._send(200, platform.workspaces.add_member(
                     wid, body.get("member") or body["user_id"], body["role"],
                     actor=user))
+            if rest[:1] == ["security"]:
+                return self._post_security(wid, rest[1:], body, user)
             if rest == ["llm-config"]:
                 return self._send(200, platform.llm_config.put(wid, user, body))
             if rest == ["llm-config", "check"]:
@@ -1173,6 +1643,7 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
         # ------------------------------------------------------------ PUT
 
         def do_PUT(self) -> None:
+            auth_context.clear()
             parsed = urlparse(self.path)
             parts = [unquote(p) for p in parsed.path.split("/") if p]
             query = {k: _parse_scalar(v[-1]) for k, v in parse_qs(parsed.query).items()}
@@ -1197,6 +1668,13 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
                     user = self._actor(body=body, query=query)
                     return self._send(200, update_rule_pack(
                         platform, wid, user, rest[2], body))
+                if len(rest) == 3 and rest[0] == "security" \
+                        and rest[1] == "policies":
+                    user = self._actor(body=body, query=query)
+                    return self._send(200, platform.security.update_policy(
+                        wid, user, rest[2], body.get("document") or {},
+                        note=str(body.get("note") or ""),
+                        expected_version=self._required_version(body)))
                 raise ValidationError(
                     f"PUT is only supported for /api/workspaces/{{wid}}/llm-config; "
                     f"no route for {self.path}")
@@ -1210,6 +1688,7 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
         # ------------------------------------------------------------ PATCH
 
         def do_PATCH(self) -> None:
+            auth_context.clear()
             parsed = urlparse(self.path)
             parts = [unquote(p) for p in parsed.path.split("/") if p]
             query = {k: _parse_scalar(v[-1]) for k, v in parse_qs(parsed.query).items()}

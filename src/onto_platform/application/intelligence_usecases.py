@@ -82,6 +82,32 @@ class AskOntology:
                             {"from": ref, "relation": relation.name, "object": target}
                         )
 
+        answer = ""  # composed after the PEP has masked both result sets
+        # The result of a natural-language read is an API/LLM payload, not a
+        # raw kernel dump: row scopes and field masks apply exactly as they do
+        # to GET /state/find.
+        security = getattr(self._ctx, "security", None)
+        if security is not None:
+            grouped: dict[str, list[dict]] = {}
+            for obj in found:
+                grouped.setdefault(str(obj.get("type") or "object"),
+                                   []).append(obj)
+            masked: list[dict] = []
+            for object_type, rows in grouped.items():
+                masked.extend(security.filter_objects(
+                    workspace_id, actor, rows, resource_type=object_type))
+            found = masked
+            masked_related = []
+            for item in related_objects:
+                target = item.get("object") or {}
+                rows = security.filter_objects(
+                    workspace_id, actor, [target],
+                    resource_type=str(target.get("type") or "object"))
+                if rows:
+                    masked_related.append({**item, "object": rows[0]})
+            related_objects = masked_related
+        # Compose only from the masked rows: the deterministic answer is a
+        # user/LLM-facing sink too, not an internal audit view.
         answer = _compose_answer(question, hits, found, related_objects)
         self._ctx.audit_event(actor, workspace_id, "intelligence.ask", "ask",
                               {"question": question, "concepts": [h["term"] for h in hits]})
@@ -115,11 +141,33 @@ class RunAgent:
         gateway = self._ctx.gateway_for(workspace_id)
         from .agent_runner import make_audited_invoker
 
+        security = getattr(self._ctx, "security", None)
+
+        def masker(value, object_type=None):
+            if security is None or value is None:
+                return value
+            rows = value if isinstance(value, list) else [value]
+            dicts = [row for row in rows if isinstance(row, dict)]
+            if not dicts:
+                return value
+            try:
+                masked = security.filter_objects(
+                    workspace_id, actor, dicts,
+                    resource_type=str(object_type or "object"))
+            except Exception:
+                # An agent observation must fail closed: a policy error is
+                # not permission to paste an unmasked business row into the
+                # model prompt.
+                return {"redacted": True, "reason": "not authorized"}
+            return masked if isinstance(value, list) else (masked[0] if masked
+                                                           else None)
+
         run = AgentRunner(
             gateway, effective, context_text, max_steps=max_steps,
             # agent actions are governed like any other capability invocation
             invoker=make_audited_invoker(self._ctx, workspace_id, gateway,
                                           actor=actor),
+            masker=masker,
         ).run(goal)
         run_dict = run.to_dict()
         run_dict.update({"id": run.run_id, "workspace_id": workspace_id,

@@ -1,0 +1,326 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1600.00" height="1000.00" viewBox="0 0 1600.00 1000.00">
+  <rect x="0.00" y="0.00" width="1600.00" height="1000.00" rx="0.00" fill="#f7f6f3" />
+  <rect x="0.00" y="0.00" width="236.00" height="1000.00" rx="0.00" fill="#f2f0ea" />
+  <path d="M236 0V1000" fill="none" stroke="#dfdbd1" stroke-width="1" />
+  <text x="24.00" y="38.00" fill="#1a1814" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="20" font-weight="700" letter-spacing="2.4" text-anchor="start">ONTO</text>
+  <text x="25.00" y="53.00" fill="#6b665c" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="8.5" font-weight="600" letter-spacing="1.8" text-anchor="start">SECURITY</text>
+  <rect x="16.00" y="70.00" width="204.00" height="58.00" rx="8.00" fill="#ffffff" stroke="#e6e2d9" stroke-width="1" />
+  <g data-shape="icon" fill="none" stroke="#4b473f" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.1">
+    <path d="M 36.50 91.10 h 0.01" />
+    <path d="M 36.50 93.90 h 0.01" />
+    <path d="M 36.50 88.30 h 0.01" />
+    <path d="M 39.30 91.10 h 0.01" />
+    <path d="M 39.30 93.90 h 0.01" />
+    <path d="M 39.30 88.30 h 0.01" />
+    <path d="M 33.70 91.10 h 0.01" />
+    <path d="M 33.70 93.90 h 0.01" />
+    <path d="M 33.70 88.30 h 0.01" />
+    <path d="M 34.40 99.60 v -2.13 a 0.71 0.71 0.00 0 1 0.71 -0.71 h 2.83 a 0.71 0.71 0.00 0 1 0.71 0.71 v 2.13" />
+    <rect x="30.80" y="85.40" width="11.30" height="14.20" rx="1.40" />
+  </g>
+  <text x="52.00" y="90.00" fill="#1a1814" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="12.5" font-weight="600" text-anchor="start">A省高速集团</text>
+  <text x="52.00" y="108.00" fill="#6b665c" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="9.5" font-weight="400" text-anchor="start">租户 · 运营一公司</text>
+  <text x="24.00" y="160.00" fill="#a49e92" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="8.5" font-weight="600" letter-spacing="1.4" text-anchor="start">安全治理</text>
+  <g data-shape="icon" fill="none" stroke="#6b665c" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.1">
+    <rect x="26.00" y="182.00" width="4.70" height="6.00" rx="0.70" />
+    <rect x="33.30" y="182.00" width="4.70" height="3.30" rx="0.70" />
+    <rect x="33.30" y="188.00" width="4.70" height="6.00" rx="0.70" />
+    <rect x="26.00" y="190.70" width="4.70" height="3.30" rx="0.70" />
+  </g>
+  <text x="48.00" y="193.00" fill="#4b473f" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="11.5" font-weight="400" text-anchor="start">概览</text>
+  <g data-shape="icon" fill="none" stroke="#6b665c" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.1">
+    <path d="M 34.70 230.00 v -1.33 a 2.67 2.67 0.00 0 0 -2.67 -2.67 H 28.00 a 2.67 2.67 0.00 0 0 -2.67 2.67 v 1.33" />
+    <path d="M 34.70 218.10 a 2.67 2.67 0.00 0 1 0.00 5.16" />
+    <path d="M 38.70 230.00 v -1.33 a 2.67 2.67 0.00 0 0 -2.00 -2.58" />
+    <circle cx="30.00" cy="220.70" r="2.70" />
+  </g>
+  <text x="48.00" y="229.00" fill="#4b473f" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="11.5" font-weight="400" text-anchor="start">成员与组织</text>
+  <rect x="12.00" y="244.00" width="212.00" height="32.00" rx="6.00" fill="#ffffff" stroke="#e6e2d9" stroke-width="1" />
+  <rect x="12.00" y="251.00" width="3.00" height="18.00" rx="1.50" fill="#1a1814" />
+  <g data-shape="icon" fill="none" stroke="#1a1814" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.1">
+    <path d="M 37.30 260.70 c 0.00 3.33 -2.33 5.00 -5.11 5.97 a 0.67 0.67 0.00 0 1 -0.45 -0.01 C 29.00 265.70 26.70 264.00 26.70 260.70 V 256.00 a 0.67 0.67 0.00 0 1 0.67 -0.67 c 1.33 0.00 3.00 -0.80 4.16 -1.81 a 0.78 0.78 0.00 0 1 1.01 0.00 C 33.70 254.50 35.30 255.30 36.70 255.30 a 0.67 0.67 0.00 0 1 0.67 0.67 z" />
+    <path d="m 30.00 260.00 1.33 1.33 2.67 -2.67" />
+  </g>
+  <text x="48.00" y="265.00" fill="#1a1814" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="11.5" font-weight="600" text-anchor="start">角色与策略</text>
+  <g data-shape="icon" fill="none" stroke="#6b665c" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.1">
+    <path d="M 26.00 291.30 A 6.00 2.00 0 1 0 38.00 291.30 A 6.00 2.00 0 1 0 26.00 291.30 Z" />
+    <path d="M 26.00 291.30 V 300.70 A 6.00 2.00 0.00 0 0 38.00 300.70 V 291.30" />
+    <path d="M 26.00 296.00 A 6.00 2.00 0.00 0 0 38.00 296.00" />
+  </g>
+  <text x="48.00" y="301.00" fill="#4b473f" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="11.5" font-weight="400" text-anchor="start">数据范围</text>
+  <g data-shape="icon" fill="none" stroke="#6b665c" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.1">
+    <path d="M 25.40 332.20 a 0.67 0.67 0.00 0 1 0.00 -0.46 7.17 7.17 0.00 0 1 13.25 0.00 0.67 0.67 0.00 0 1 0.00 0.46 7.17 7.17 0.00 0 1 -13.25 0.00" />
+    <circle cx="32.00" cy="332.00" r="2.00" />
+  </g>
+  <text x="48.00" y="337.00" fill="#4b473f" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="11.5" font-weight="400" text-anchor="start">字段保护</text>
+  <g data-shape="icon" fill="none" stroke="#6b665c" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.1">
+    <circle cx="32.00" cy="368.00" r="6.70" />
+    <path d="M 32.00 364.00 v 4.00 l 2.67 1.33" />
+  </g>
+  <text x="48.00" y="373.00" fill="#4b473f" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="11.5" font-weight="400" text-anchor="start">审计追踪</text>
+  <path d="M16 390H220" fill="none" stroke="#dfdbd1" stroke-width="1" />
+  <text x="24.00" y="414.00" fill="#a49e92" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="8.5" font-weight="600" letter-spacing="1.4" text-anchor="start">应用与生成</text>
+  <g data-shape="icon" fill="none" stroke="#6b665c" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.1">
+    <path d="M 31.30 435.90 a 0.67 0.67 0.00 0 1 1.31 0.00 l 0.70 3.71 a 1.33 1.33 0.00 0 0 1.06 1.06 l 3.71 0.70 a 0.67 0.67 0.00 0 1 0.00 1.31 l -3.71 0.70 a 1.33 1.33 0.00 0 0 -1.06 1.06 l -0.70 3.71 a 0.67 0.67 0.00 0 1 -1.31 0.00 l -0.70 -3.71 a 1.33 1.33 0.00 0 0 -1.06 -1.06 l -3.71 -0.70 a 0.67 0.67 0.00 0 1 0.00 -1.31 l 3.71 -0.70 a 1.33 1.33 0.00 0 0 1.06 -1.06 z" />
+    <path d="M 37.30 435.30 v 2.67" />
+    <path d="M 38.70 436.70 h -2.67" />
+    <circle cx="26.70" cy="447.30" r="1.30" />
+  </g>
+  <text x="48.00" y="447.00" fill="#4b473f" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="11.5" font-weight="400" text-anchor="start">生成工作台</text>
+  <g data-shape="icon" fill="none" stroke="#6b665c" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.1">
+    <rect x="26.00" y="472.00" width="5.30" height="5.30" rx="1.30" />
+    <path d="M 28.70 477.30 v 2.67 a 1.33 1.33 0.00 0 0 1.33 1.33 h 2.67" />
+    <rect x="32.70" y="478.70" width="5.30" height="5.30" rx="1.30" />
+  </g>
+  <text x="48.00" y="483.00" fill="#4b473f" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="11.5" font-weight="400" text-anchor="start">发布与回滚</text>
+  <rect x="16.00" y="782.00" width="204.00" height="132.00" rx="8.00" fill="#ffffff" stroke="#e6e2d9" stroke-width="1" />
+  <text x="28.00" y="804.00" fill="#a49e92" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="9" font-weight="600" letter-spacing="1.2" text-anchor="start">策略运行时</text>
+  <circle cx="30.00" cy="824.00" r="3.50" fill="#3d6744" />
+  <text x="40.00" y="827.00" fill="#3d6744" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="10.5" font-weight="600" text-anchor="start">正常</text>
+  <text x="28.00" y="852.00" fill="#4b473f" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="10" font-weight="400" text-anchor="start">24h 决策 1,284</text>
+  <text x="28.00" y="869.00" fill="#6b665c" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="9.5" font-weight="400" text-anchor="start">拒绝 37 · p95 5ms</text>
+  <text x="28.00" y="886.00" fill="#6b665c" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="9.5" font-weight="400" text-anchor="start">策略 v12 · 已发布</text>
+  <text x="28.00" y="903.00" fill="#6b665c" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="9.5" font-weight="400" text-anchor="start">PDP 3.2ms 平均</text>
+  <g data-shape="icon" fill="none" stroke="#4b473f" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.1">
+    <circle cx="36.50" cy="943.70" r="3.50" />
+    <path d="M 42.20 952.90 a 5.67 5.67 0.00 0 0 -11.33 0.00" />
+  </g>
+  <text x="52.00" y="942.00" fill="#1a1814" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="10.5" font-weight="600" text-anchor="start">林岚</text>
+  <text x="52.00" y="960.00" fill="#6b665c" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="9" font-weight="400" text-anchor="start">安全管理员</text>
+  <rect x="236.00" y="0.00" width="1364.00" height="58.00" rx="0.00" fill="#fbfaf8" />
+  <path d="M236 58H1600" fill="none" stroke="#e6e2d9" stroke-width="1" />
+  <text x="268.00" y="35.00" fill="#6b665c" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="11" font-weight="400" text-anchor="start">安全治理</text>
+  <text x="334.00" y="35.00" fill="#a49e92" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="11" font-weight="400" text-anchor="start">/</text>
+  <text x="348.00" y="35.00" fill="#1a1814" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="11" font-weight="600" text-anchor="start">角色与策略</text>
+  <rect x="1180.00" y="15.00" width="146.00" height="28.00" rx="14.00" fill="#edf2ea" />
+  <text x="1253.00" y="33.00" fill="#3d6744" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="10" font-weight="600" text-anchor="middle">策略 v12 · 已发布</text>
+  <rect x="1340.00" y="12.00" width="112.00" height="32.00" rx="7.00" fill="#1a1814" />
+  <text x="1396.00" y="33.00" fill="#ffffff" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="11.5" font-weight="600" text-anchor="middle">发布变更</text>
+  <circle cx="1472.00" cy="29.00" r="12.00" fill="#1a1814" />
+  <text x="1472.00" y="33.00" fill="#ffffff" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="10" font-weight="600" text-anchor="middle">林</text>
+  <text x="1490.00" y="33.00" fill="#1a1814" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="10.5" font-weight="600" text-anchor="start">林岚</text>
+  <text x="1518.00" y="33.00" fill="#6b665c" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="9" font-weight="400" text-anchor="start">安全管理员</text>
+  <g data-shape="icon" fill="none" stroke="#6b665c" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.8">
+    <path d="m 1575.00 26.50 3.00 3.00 3.00 -3.00" />
+  </g>
+  <text x="268.00" y="112.00" fill="#1a1814" font-family="Georgia, &#39;Songti SC&#39;, &#39;Noto Serif SC&#39;, serif" font-size="27" font-weight="600" text-anchor="start">权限策略</text>
+  <text x="268.00" y="137.00" fill="#6b665c" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="11.5" font-weight="400" text-anchor="start">统一安全边界，按应用复杂度逐步开放授权颗粒度。</text>
+  <rect x="1118.00" y="88.00" width="414.00" height="36.00" rx="8.00" fill="#ffffff" stroke="#e6e2d9" stroke-width="1" />
+  <g data-shape="icon" fill="none" stroke="#6b665c" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.1">
+    <path d="M 1140.50 105.10 h 0.01" />
+    <path d="M 1140.50 107.90 h 0.01" />
+    <path d="M 1140.50 102.30 h 0.01" />
+    <path d="M 1143.30 105.10 h 0.01" />
+    <path d="M 1143.30 107.90 h 0.01" />
+    <path d="M 1143.30 102.30 h 0.01" />
+    <path d="M 1137.70 105.10 h 0.01" />
+    <path d="M 1137.70 107.90 h 0.01" />
+    <path d="M 1137.70 102.30 h 0.01" />
+    <path d="M 1138.40 113.60 v -2.13 a 0.71 0.71 0.00 0 1 0.71 -0.71 h 2.83 a 0.71 0.71 0.00 0 1 0.71 0.71 v 2.13" />
+    <rect x="1134.80" y="99.40" width="11.30" height="14.20" rx="1.40" />
+  </g>
+  <text x="1156.00" y="111.00" fill="#4b473f" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="10.5" font-weight="500" text-anchor="start">A省高速集团 / 运营一公司</text>
+  <rect x="1424.00" y="96.00" width="92.00" height="20.00" rx="10.00" fill="#eaf1f4" />
+  <text x="1470.00" y="110.00" fill="#2d657d" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="9" font-weight="600" text-anchor="middle">租户隔离</text>
+  <rect x="268.00" y="154.00" width="304.00" height="86.00" rx="8.00" fill="#ffffff" stroke="#e6e2d9" stroke-width="1" />
+  <text x="288.00" y="176.00" fill="#6b665c" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="10" font-weight="500" text-anchor="start">角色</text>
+  <text x="288.00" y="216.00" fill="#1a1814" font-family="Georgia, &#39;Songti SC&#39;, &#39;Noto Serif SC&#39;, serif" font-size="24" font-weight="600" text-anchor="start">12</text>
+  <text x="288.00" y="232.00" fill="#6b665c" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="9.5" font-weight="400" text-anchor="start">3 个系统角色 · 9 个业务角色</text>
+  <rect x="588.00" y="154.00" width="304.00" height="86.00" rx="8.00" fill="#ffffff" stroke="#e6e2d9" stroke-width="1" />
+  <text x="608.00" y="176.00" fill="#6b665c" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="10" font-weight="500" text-anchor="start">策略</text>
+  <text x="608.00" y="216.00" fill="#86610f" font-family="Georgia, &#39;Songti SC&#39;, &#39;Noto Serif SC&#39;, serif" font-size="24" font-weight="600" text-anchor="start">38</text>
+  <text x="608.00" y="232.00" fill="#6b665c" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="9.5" font-weight="400" text-anchor="start">2 条待审批 · 1 条冲突</text>
+  <rect x="908.00" y="154.00" width="304.00" height="86.00" rx="8.00" fill="#ffffff" stroke="#e6e2d9" stroke-width="1" />
+  <text x="928.00" y="176.00" fill="#6b665c" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="10" font-weight="500" text-anchor="start">受保护对象</text>
+  <text x="928.00" y="216.00" fill="#1a1814" font-family="Georgia, &#39;Songti SC&#39;, &#39;Noto Serif SC&#39;, serif" font-size="24" font-weight="600" text-anchor="start">9</text>
+  <text x="928.00" y="232.00" fill="#6b665c" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="9.5" font-weight="400" text-anchor="start">对象 · 字段 · 业务行为</text>
+  <rect x="1228.00" y="154.00" width="304.00" height="86.00" rx="8.00" fill="#ffffff" stroke="#e6e2d9" stroke-width="1" />
+  <text x="1248.00" y="176.00" fill="#6b665c" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="10" font-weight="500" text-anchor="start">24h 决策</text>
+  <text x="1248.00" y="216.00" fill="#1a1814" font-family="Georgia, &#39;Songti SC&#39;, &#39;Noto Serif SC&#39;, serif" font-size="24" font-weight="600" text-anchor="start">1,284</text>
+  <text x="1248.00" y="232.00" fill="#6b665c" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="9.5" font-weight="400" text-anchor="start">拒绝 37 · 平均 3.2ms</text>
+  <rect x="268.00" y="260.00" width="820.00" height="560.00" rx="10.00" fill="#ffffff" stroke="#e6e2d9" stroke-width="1" />
+  <text x="292.00" y="291.00" fill="#1a1814" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="16" font-weight="600" text-anchor="start">授权矩阵</text>
+  <text x="292.00" y="311.00" fill="#6b665c" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="9.5" font-weight="400" text-anchor="start">角色 × 对象行为 · 行内为数据范围</text>
+  <circle cx="856.00" cy="288.00" r="5.00" fill="#3d6744" />
+  <text x="868.00" y="292.00" fill="#6b665c" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="9" font-weight="400" text-anchor="start">允许</text>
+  <circle cx="920.00" cy="288.00" r="5.00" fill="#fff" stroke="#86610f" stroke-width="1.2" />
+  <path d="M920 283.2A4.8 4.8 0 0 0 920 292.8Z" fill="#86610f" />
+  <text x="932.00" y="292.00" fill="#6b665c" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="9" font-weight="400" text-anchor="start">条件</text>
+  <circle cx="984.00" cy="288.00" r="4.50" fill="none" stroke="#d5d0c4" stroke-width="1.2" />
+  <text x="996.00" y="292.00" fill="#6b665c" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="9" font-weight="400" text-anchor="start">拒绝</text>
+  <path d="M292 328H1064" fill="none" stroke="#e6e2d9" stroke-width="1" />
+  <text x="312.00" y="350.00" fill="#6b665c" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="9" font-weight="600" text-anchor="start">角色 / 范围</text>
+  <text x="540.00" y="350.00" fill="#6b665c" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="9" font-weight="600" text-anchor="middle">记录查看</text>
+  <text x="635.00" y="350.00" fill="#6b665c" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="9" font-weight="600" text-anchor="middle">复核</text>
+  <text x="731.00" y="350.00" fill="#6b665c" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="9" font-weight="600" text-anchor="middle">修改</text>
+  <text x="826.00" y="350.00" fill="#6b665c" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="9" font-weight="600" text-anchor="middle">用户管理</text>
+  <text x="921.00" y="350.00" fill="#6b665c" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="9" font-weight="600" text-anchor="middle">审计</text>
+  <text x="1016.00" y="350.00" fill="#6b665c" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="9" font-weight="600" text-anchor="middle">敏感字段</text>
+  <path d="M292 364H1064" fill="none" stroke="#e6e2d9" stroke-width="1" />
+  <rect x="292.00" y="364.00" width="772.00" height="48.00" rx="4.00" fill="#f8f1dc" />
+  <rect x="292.00" y="372.00" width="3.00" height="32.00" rx="1.50" fill="#86610f" />
+  <text x="312.00" y="386.00" fill="#1a1814" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="11.5" font-weight="600" text-anchor="start">收费站站长</text>
+  <text x="312.00" y="401.00" fill="#86610f" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="9" font-weight="400" text-anchor="start">station · ST-01</text>
+  <circle cx="540.00" cy="388.00" r="5.00" fill="#3d6744" />
+  <circle cx="635.00" cy="388.00" r="5.00" fill="#fff" stroke="#86610f" stroke-width="1.2" />
+  <path d="M635 383.2A4.8 4.8 0 0 0 635 392.8Z" fill="#86610f" />
+  <circle cx="731.00" cy="388.00" r="4.50" fill="none" stroke="#d5d0c4" stroke-width="1.2" />
+  <circle cx="826.00" cy="388.00" r="4.50" fill="none" stroke="#d5d0c4" stroke-width="1.2" />
+  <circle cx="921.00" cy="388.00" r="4.50" fill="none" stroke="#d5d0c4" stroke-width="1.2" />
+  <circle cx="1016.00" cy="388.00" r="4.50" fill="none" stroke="#d5d0c4" stroke-width="1.2" />
+  <path d="M292 412H1064" fill="none" stroke="#efede6" stroke-width="1" />
+  <text x="312.00" y="434.00" fill="#1a1814" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="11.5" font-weight="500" text-anchor="start">稽核员</text>
+  <text x="312.00" y="449.00" fill="#6b665c" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="9" font-weight="400" text-anchor="start">tenant · A省</text>
+  <circle cx="540.00" cy="436.00" r="5.00" fill="#3d6744" />
+  <circle cx="635.00" cy="436.00" r="5.00" fill="#3d6744" />
+  <circle cx="731.00" cy="436.00" r="5.00" fill="#fff" stroke="#86610f" stroke-width="1.2" />
+  <path d="M731 431.2A4.8 4.8 0 0 0 731 440.8Z" fill="#86610f" />
+  <circle cx="826.00" cy="436.00" r="4.50" fill="none" stroke="#d5d0c4" stroke-width="1.2" />
+  <circle cx="921.00" cy="436.00" r="5.00" fill="#fff" stroke="#86610f" stroke-width="1.2" />
+  <path d="M921 431.2A4.8 4.8 0 0 0 921 440.8Z" fill="#86610f" />
+  <circle cx="1016.00" cy="436.00" r="5.00" fill="#fff" stroke="#86610f" stroke-width="1.2" />
+  <path d="M1016 431.2A4.8 4.8 0 0 0 1016 440.8Z" fill="#86610f" />
+  <path d="M292 460H1064" fill="none" stroke="#efede6" stroke-width="1" />
+  <text x="312.00" y="482.00" fill="#1a1814" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="11.5" font-weight="500" text-anchor="start">运营公司管理员</text>
+  <text x="312.00" y="497.00" fill="#6b665c" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="9" font-weight="400" text-anchor="start">org · 运营一公司</text>
+  <circle cx="540.00" cy="484.00" r="5.00" fill="#3d6744" />
+  <circle cx="635.00" cy="484.00" r="5.00" fill="#3d6744" />
+  <circle cx="731.00" cy="484.00" r="5.00" fill="#3d6744" />
+  <circle cx="826.00" cy="484.00" r="5.00" fill="#fff" stroke="#86610f" stroke-width="1.2" />
+  <path d="M826 479.2A4.8 4.8 0 0 0 826 488.8Z" fill="#86610f" />
+  <circle cx="921.00" cy="484.00" r="5.00" fill="#fff" stroke="#86610f" stroke-width="1.2" />
+  <path d="M921 479.2A4.8 4.8 0 0 0 921 488.8Z" fill="#86610f" />
+  <circle cx="1016.00" cy="484.00" r="5.00" fill="#fff" stroke="#86610f" stroke-width="1.2" />
+  <path d="M1016 479.2A4.8 4.8 0 0 0 1016 488.8Z" fill="#86610f" />
+  <path d="M292 508H1064" fill="none" stroke="#efede6" stroke-width="1" />
+  <text x="312.00" y="530.00" fill="#1a1814" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="11.5" font-weight="500" text-anchor="start">省级管理员</text>
+  <text x="312.00" y="545.00" fill="#6b665c" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="9" font-weight="400" text-anchor="start">tenant · A省</text>
+  <circle cx="540.00" cy="532.00" r="5.00" fill="#3d6744" />
+  <circle cx="635.00" cy="532.00" r="5.00" fill="#3d6744" />
+  <circle cx="731.00" cy="532.00" r="5.00" fill="#3d6744" />
+  <circle cx="826.00" cy="532.00" r="5.00" fill="#3d6744" />
+  <circle cx="921.00" cy="532.00" r="5.00" fill="#3d6744" />
+  <circle cx="1016.00" cy="532.00" r="5.00" fill="#fff" stroke="#86610f" stroke-width="1.2" />
+  <path d="M1016 527.2A4.8 4.8 0 0 0 1016 536.8Z" fill="#86610f" />
+  <path d="M292 556H1064" fill="none" stroke="#efede6" stroke-width="1" />
+  <text x="312.00" y="578.00" fill="#1a1814" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="11.5" font-weight="500" text-anchor="start">运维</text>
+  <text x="312.00" y="593.00" fill="#6b665c" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="9" font-weight="400" text-anchor="start">platform · 只读</text>
+  <circle cx="540.00" cy="580.00" r="4.50" fill="none" stroke="#d5d0c4" stroke-width="1.2" />
+  <circle cx="635.00" cy="580.00" r="4.50" fill="none" stroke="#d5d0c4" stroke-width="1.2" />
+  <circle cx="731.00" cy="580.00" r="4.50" fill="none" stroke="#d5d0c4" stroke-width="1.2" />
+  <circle cx="826.00" cy="580.00" r="4.50" fill="none" stroke="#d5d0c4" stroke-width="1.2" />
+  <circle cx="921.00" cy="580.00" r="5.00" fill="#3d6744" />
+  <circle cx="1016.00" cy="580.00" r="4.50" fill="none" stroke="#d5d0c4" stroke-width="1.2" />
+  <path d="M292 604H1064" fill="none" stroke="#e6e2d9" stroke-width="1" />
+  <text x="292.00" y="651.00" fill="#6b665c" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="9" font-weight="600" letter-spacing="0.6" text-anchor="start">数据范围编译</text>
+  <rect x="292.00" y="662.00" width="184.00" height="26.00" rx="5.00" fill="#fbfaf8" stroke="#e6e2d9" stroke-width="1" />
+  <text x="384.00" y="679.00" fill="#4b473f" font-family="&#39;Cascadia Code&#39;, &#39;SF Mono&#39;, Consolas, monospace" font-size="9" font-weight="500" text-anchor="middle">station_id = user.station</text>
+  <rect x="488.00" y="662.00" width="194.00" height="26.00" rx="5.00" fill="#fbfaf8" stroke="#e6e2d9" stroke-width="1" />
+  <text x="585.00" y="679.00" fill="#4b473f" font-family="&#39;Cascadia Code&#39;, &#39;SF Mono&#39;, Consolas, monospace" font-size="9" font-weight="500" text-anchor="middle">org_path ∈ user.org_path</text>
+  <rect x="694.00" y="662.00" width="208.00" height="26.00" rx="5.00" fill="#fbfaf8" stroke="#e6e2d9" stroke-width="1" />
+  <text x="798.00" y="679.00" fill="#4b473f" font-family="&#39;Cascadia Code&#39;, &#39;SF Mono&#39;, Consolas, monospace" font-size="9" font-weight="500" text-anchor="middle">tenant_id = principal.tenant</text>
+  <text x="292.00" y="713.00" fill="#6b665c" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="9" font-weight="600" letter-spacing="0.6" text-anchor="start">字段义务</text>
+  <rect x="292.00" y="724.00" width="170.00" height="26.00" rx="5.00" fill="#fbfaf8" stroke="#e6e2d9" stroke-width="1" />
+  <text x="377.00" y="741.00" fill="#4b473f" font-family="&#39;Cascadia Code&#39;, &#39;SF Mono&#39;, Consolas, monospace" font-size="9" font-weight="500" text-anchor="middle">plate_number → mask</text>
+  <rect x="474.00" y="724.00" width="160.00" height="26.00" rx="5.00" fill="#fbfaf8" stroke="#e6e2d9" stroke-width="1" />
+  <text x="554.00" y="741.00" fill="#4b473f" font-family="&#39;Cascadia Code&#39;, &#39;SF Mono&#39;, Consolas, monospace" font-size="9" font-weight="500" text-anchor="middle">amount → role_based</text>
+  <rect x="646.00" y="724.00" width="124.00" height="26.00" rx="5.00" fill="#fbfaf8" stroke="#e6e2d9" stroke-width="1" />
+  <text x="708.00" y="741.00" fill="#4b473f" font-family="&#39;Cascadia Code&#39;, &#39;SF Mono&#39;, Consolas, monospace" font-size="9" font-weight="500" text-anchor="middle">export → forbid</text>
+  <text x="292.00" y="773.00" fill="#6b665c" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="9.5" font-weight="400" text-anchor="start">数据范围在查询层强制注入；字段义务在序列化层执行，规则不进入业务代码。</text>
+  <rect x="1104.00" y="260.00" width="464.00" height="560.00" rx="10.00" fill="#ffffff" stroke="#e6e2d9" stroke-width="1" />
+  <text x="1128.00" y="291.00" fill="#1a1814" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="16" font-weight="600" text-anchor="start">决策预览</text>
+  <text x="1128.00" y="310.00" fill="#6b665c" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="9.5" font-weight="400" text-anchor="start">PEP 拦截 → PDP 决策 → 义务执行</text>
+  <rect x="1468.00" y="274.00" width="72.00" height="22.00" rx="11.00" fill="#edf2ea" />
+  <text x="1504.00" y="289.00" fill="#3d6744" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="9" font-weight="600" text-anchor="middle">实时</text>
+  <rect x="1128.00" y="326.00" width="416.00" height="76.00" rx="8.00" fill="#fbfaf8" stroke="#e6e2d9" stroke-width="1" />
+  <circle cx="1150.00" cy="350.00" r="13.00" fill="#f1efe9" />
+  <text x="1150.00" y="354.00" fill="#4b473f" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="10" font-weight="600" text-anchor="middle">王</text>
+  <text x="1172.00" y="346.00" fill="#1a1814" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="12" font-weight="600" text-anchor="start">王敏 · 收费站站长</text>
+  <text x="1172.00" y="364.00" fill="#6b665c" font-family="&#39;Cascadia Code&#39;, &#39;SF Mono&#39;, Consolas, monospace" font-size="9.5" font-weight="400" text-anchor="start">查看 VehiclePassRecord#10086</text>
+  <text x="1172.00" y="381.00" fill="#a49e92" font-family="&#39;Cascadia Code&#39;, &#39;SF Mono&#39;, Consolas, monospace" font-size="8.5" font-weight="400" text-anchor="start">token: local · session 2h</text>
+  <circle cx="1140.00" cy="418.00" r="8.00" fill="#edf2ea" />
+  <g data-shape="icon" fill="none" stroke="#3d6744" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.5">
+    <path d="M 1142.70 416.00 1139.00 419.70 l -1.67 -1.67" />
+  </g>
+  <text x="1158.00" y="422.00" fill="#4b473f" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="10.5" font-weight="500" text-anchor="start">身份与会话</text>
+  <text x="1532.00" y="422.00" fill="#3d6744" font-family="&#39;Cascadia Code&#39;, &#39;SF Mono&#39;, Consolas, monospace" font-size="9.5" font-weight="400" text-anchor="end">王敏 / 已登录</text>
+  <path d="M1128 435H1544" fill="none" stroke="#efede6" stroke-width="1" />
+  <circle cx="1140.00" cy="452.00" r="8.00" fill="#edf2ea" />
+  <g data-shape="icon" fill="none" stroke="#3d6744" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.5">
+    <path d="M 1142.70 450.00 1139.00 453.70 l -1.67 -1.67" />
+  </g>
+  <text x="1158.00" y="456.00" fill="#4b473f" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="10.5" font-weight="500" text-anchor="start">租户边界</text>
+  <text x="1532.00" y="456.00" fill="#3d6744" font-family="&#39;Cascadia Code&#39;, &#39;SF Mono&#39;, Consolas, monospace" font-size="9.5" font-weight="400" text-anchor="end">A省高速集团 → 运营一公司</text>
+  <path d="M1128 469H1544" fill="none" stroke="#efede6" stroke-width="1" />
+  <circle cx="1140.00" cy="486.00" r="8.00" fill="#edf2ea" />
+  <g data-shape="icon" fill="none" stroke="#3d6744" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.5">
+    <path d="M 1142.70 484.00 1139.00 487.70 l -1.67 -1.67" />
+  </g>
+  <text x="1158.00" y="490.00" fill="#4b473f" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="10.5" font-weight="500" text-anchor="start">动作授权</text>
+  <text x="1532.00" y="490.00" fill="#3d6744" font-family="&#39;Cascadia Code&#39;, &#39;SF Mono&#39;, Consolas, monospace" font-size="9.5" font-weight="400" text-anchor="end">pass_record.read</text>
+  <path d="M1128 503H1544" fill="none" stroke="#efede6" stroke-width="1" />
+  <circle cx="1140.00" cy="520.00" r="8.00" fill="#edf2ea" />
+  <g data-shape="icon" fill="none" stroke="#3d6744" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.5">
+    <path d="M 1142.70 518.00 1139.00 521.70 l -1.67 -1.67" />
+  </g>
+  <text x="1158.00" y="524.00" fill="#4b473f" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="10.5" font-weight="500" text-anchor="start">数据范围</text>
+  <text x="1532.00" y="524.00" fill="#3d6744" font-family="&#39;Cascadia Code&#39;, &#39;SF Mono&#39;, Consolas, monospace" font-size="9.5" font-weight="400" text-anchor="end">station = ST-01</text>
+  <path d="M1128 537H1544" fill="none" stroke="#efede6" stroke-width="1" />
+  <circle cx="1140.00" cy="554.00" r="8.00" fill="#f8f1dc" />
+  <g data-shape="icon" fill="none" stroke="#86610f" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.5">
+    <path d="M 1136.70 554.10 a 0.33 0.33 0.00 0 1 0.00 -0.23 3.58 3.58 0.00 0 1 6.63 0.00 0.33 0.33 0.00 0 1 0.00 0.23 3.58 3.58 0.00 0 1 -6.63 0.00" />
+    <circle cx="1140.00" cy="554.00" r="1.00" />
+  </g>
+  <text x="1158.00" y="558.00" fill="#4b473f" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="10.5" font-weight="500" text-anchor="start">字段脱敏</text>
+  <text x="1532.00" y="558.00" fill="#86610f" font-family="&#39;Cascadia Code&#39;, &#39;SF Mono&#39;, Consolas, monospace" font-size="9.5" font-weight="400" text-anchor="end">plate_number → ***</text>
+  <rect x="1128.00" y="596.00" width="416.00" height="86.00" rx="8.00" fill="#edf2ea" />
+  <text x="1148.00" y="628.00" fill="#3d6744" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="19" font-weight="700" letter-spacing="1" text-anchor="start">ALLOW</text>
+  <text x="1148.00" y="650.00" fill="#3d6744" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="9.5" font-weight="500" text-anchor="start">义务：隐藏车牌号、交易金额；写入审计</text>
+  <text x="1148.00" y="668.00" fill="#3d6744" font-family="&#39;Cascadia Code&#39;, &#39;SF Mono&#39;, Consolas, monospace" font-size="8.5" font-weight="400" text-anchor="start">decision 3.2ms · policy v12 · 1 obligation</text>
+  <text x="1128.00" y="704.00" fill="#6b665c" font-family="&#39;Cascadia Code&#39;, &#39;SF Mono&#39;, Consolas, monospace" font-size="9" font-weight="400" text-anchor="start">policy v12 · sha256 8f3a…c21d</text>
+  <rect x="1128.00" y="718.00" width="416.00" height="90.00" rx="8.00" fill="#fbfaf8" stroke="#e6e2d9" stroke-width="1" />
+  <g data-shape="icon" fill="none" stroke="#86610f" stroke-linecap="round" stroke-linejoin="round" stroke-width="1">
+    <path d="M 1150.90 733.80 a 0.63 0.63 0.00 0 1 1.23 0.00 l 0.66 3.47 a 1.25 1.25 0.00 0 0 1.00 1.00 l 3.47 0.66 a 0.63 0.63 0.00 0 1 0.00 1.23 l -3.47 0.66 a 1.25 1.25 0.00 0 0 -1.00 1.00 l -0.66 3.47 a 0.63 0.63 0.00 0 1 -1.23 0.00 l -0.66 -3.47 a 1.25 1.25 0.00 0 0 -1.00 -1.00 l -3.47 -0.66 a 0.63 0.63 0.00 0 1 0.00 -1.23 l 3.47 -0.66 a 1.25 1.25 0.00 0 0 1.00 -1.00 z" />
+    <path d="M 1156.50 733.30 v 2.50" />
+    <path d="M 1157.80 734.50 h -2.50" />
+    <circle cx="1146.50" cy="744.50" r="1.30" />
+  </g>
+  <text x="1166.00" y="744.00" fill="#1a1814" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="11" font-weight="600" text-anchor="start">AI 配置助手</text>
+  <text x="1144.00" y="766.00" fill="#4b473f" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="10" font-weight="400" text-anchor="start">“让华东区域负责人只能看华东数据”</text>
+  <text x="1144.00" y="784.00" fill="#86610f" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="9" font-weight="500" text-anchor="start">已生成 dataScope.region = user.region · 待审批</text>
+  <text x="1144.00" y="801.00" fill="#2d657d" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="9" font-weight="600" text-anchor="start">查看 diff</text>
+  <rect x="1452.00" y="786.00" width="76.00" height="22.00" rx="5.00" fill="#1a1814" />
+  <text x="1490.00" y="801.00" fill="#ffffff" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="9" font-weight="600" text-anchor="middle">提交审批</text>
+  <rect x="268.00" y="842.00" width="1300.00" height="128.00" rx="10.00" fill="#ffffff" stroke="#e6e2d9" stroke-width="1" />
+  <text x="292.00" y="870.00" fill="#1a1814" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="12" font-weight="600" text-anchor="start">策略发布流水线</text>
+  <text x="1544.00" y="870.00" fill="#6b665c" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="9.5" font-weight="400" text-anchor="end">AI 只生成草案；发布与回滚均需审批并与版本哈希绑定</text>
+  <rect x="292.00" y="890.00" width="176.00" height="38.00" rx="7.00" fill="#fbfaf8" stroke="#e6e2d9" stroke-width="1" />
+  <circle cx="309.00" cy="909.00" r="8.00" fill="#edf2ea" />
+  <g data-shape="icon" fill="none" stroke="#3d6744" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.5">
+    <path d="M 311.70 907.00 308.00 910.70 l -1.67 -1.67" />
+  </g>
+  <text x="324.00" y="914.00" fill="#4b473f" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="10.5" font-weight="500" text-anchor="start">01 草案</text>
+  <rect x="484.00" y="890.00" width="176.00" height="38.00" rx="7.00" fill="#fbfaf8" stroke="#e6e2d9" stroke-width="1" />
+  <circle cx="501.00" cy="909.00" r="8.00" fill="#edf2ea" />
+  <g data-shape="icon" fill="none" stroke="#3d6744" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.5">
+    <path d="M 503.70 907.00 500.00 910.70 l -1.67 -1.67" />
+  </g>
+  <text x="516.00" y="914.00" fill="#4b473f" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="10.5" font-weight="500" text-anchor="start">02 校验</text>
+  <rect x="676.00" y="890.00" width="176.00" height="38.00" rx="7.00" fill="#fbfaf8" stroke="#e6e2d9" stroke-width="1" />
+  <circle cx="693.00" cy="909.00" r="8.00" fill="#edf2ea" />
+  <g data-shape="icon" fill="none" stroke="#3d6744" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.5">
+    <path d="M 695.70 907.00 692.00 910.70 l -1.67 -1.67" />
+  </g>
+  <text x="708.00" y="914.00" fill="#4b473f" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="10.5" font-weight="500" text-anchor="start">03 dry-run</text>
+  <rect x="868.00" y="890.00" width="176.00" height="38.00" rx="7.00" fill="#f8f1dc" stroke="#86610f" stroke-width="1" />
+  <circle cx="885.00" cy="909.00" r="8.00" fill="#86610f" />
+  <circle cx="885.00" cy="909.00" r="2.60" fill="#f8f1dc" />
+  <text x="900.00" y="914.00" fill="#86610f" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="10.5" font-weight="600" text-anchor="start">04 人工审批</text>
+  <rect x="1060.00" y="890.00" width="176.00" height="38.00" rx="7.00" fill="#fbfaf8" stroke="#e6e2d9" stroke-width="1" />
+  <circle cx="1077.00" cy="909.00" r="8.00" fill="none" stroke="#d5d0c4" stroke-width="1.2" />
+  <text x="1092.00" y="914.00" fill="#4b473f" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="10.5" font-weight="500" text-anchor="start">05 发布</text>
+  <rect x="1252.00" y="890.00" width="176.00" height="38.00" rx="7.00" fill="#fbfaf8" stroke="#e6e2d9" stroke-width="1" />
+  <circle cx="1269.00" cy="909.00" r="8.00" fill="none" stroke="#d5d0c4" stroke-width="1.2" />
+  <text x="1284.00" y="914.00" fill="#4b473f" font-family="&#39;Segoe UI&#39;, &#39;Microsoft YaHei&#39;, &#39;PingFang SC&#39;, sans-serif" font-size="10.5" font-weight="500" text-anchor="start">06 回滚</text>
+</svg>

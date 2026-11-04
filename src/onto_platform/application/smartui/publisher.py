@@ -61,4 +61,16 @@ class DefaultPublisher:
         }
         if not artifact["blueprint"]:
             raise ValidationError("published draft has no blueprint")
+        # A published artifact carries the security intent the human approved.
+        # Re-validate it here so a hand-edited/imported draft cannot bypass the
+        # blueprint validator (design §6.2).
+        from ..security.blueprint import validate_blueprint_security
+
+        security_report = validate_blueprint_security(artifact["blueprint"])
+        if security_report["present"]:
+            if not security_report["valid"]:
+                raise ValidationError(
+                    "published blueprint security is invalid: "
+                    + "; ".join(security_report["errors"][:5]))
+            artifact["security"] = security_report["document"]
         return artifact

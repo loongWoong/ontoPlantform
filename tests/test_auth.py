@@ -87,7 +87,8 @@ def test_actor_comes_from_token_not_body(token_server):
 def test_open_mode_keeps_declared_user(open_server):
     status, ws = post(open_server, "/api/workspaces", {"name": "dev", "user": "alice"})
     assert status == 200
-    status, events = get(open_server, f"/api/workspaces/{ws['id']}/audit?limit=10")
+    status, events = get(
+        open_server, f"/api/workspaces/{ws['id']}/audit?limit=10&user=alice")
     created = [e for e in events if e["action"] == "workspace.create"]
     assert created and created[0]["actor"] == "alice"
 

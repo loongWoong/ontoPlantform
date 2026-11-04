@@ -92,6 +92,21 @@ from .application.ontology_usecases import (
     ValidateOntology,
 )
 from .application.releases import ReleaseUseCases
+from .application.security import SecurityService, SecurityUseCases
+from .application.security import context as auth_context
+from .application.security import (
+    AsyncTaskService,
+    ExportService,
+    IdentityDirectory,
+    IdentityService,
+    LDAPAuthenticator,
+    OIDCVerifier,
+    OrganizationService,
+    PolicyDraftService,
+    SCIMService,
+    SessionIssuer,
+    WebhookService,
+)
 from .application.smartui.builtin import build_default_host
 from .application.smartui.host import PluginHost
 from .application.state_usecases import StateUseCases
@@ -112,6 +127,7 @@ from .application.workspace_usecases import (
 )
 from .infrastructure.persistence.file_code_store import FileCodeStore
 from .infrastructure.persistence.memory_repo import InMemoryAuditLog, InMemoryRepository
+from .infrastructure.persistence.scoped_repo import GovernedRepository
 from .infrastructure.persistence.sqlite_repo import SqliteAuditLog, SqliteRepository
 from .infrastructure.runtime.provider import WorkspaceGatewayProvider
 from .ports.llm import LLMProvider
@@ -139,6 +155,8 @@ class Platform:
 
     config: PlatformConfig
     ctx: ApplicationContext
+    #: unified permission kernel + policy lifecycle use cases (V0.1 security)
+    security: "SecurityUseCases"
 
     def configure_llm(self, provider: "LLMProvider") -> None:
         """Attach (or replace) the default LLM provider at runtime.
@@ -171,18 +189,38 @@ class Platform:
     #: long-running slow loop; started explicitly by the HTTP adapter (or a
     #: test) so building a Platform never opens a background thread
     scheduler: Scheduler | None = None
+    #: org tree (materialized path -> principal.org_path), identity directory +
+    #: OIDC/session/SCIM, and the export/webhook distribution surfaces
+    organization: "OrganizationService | None" = None
+    identity_directory: "IdentityDirectory | None" = None
+    identity: "IdentityService | None" = None
+    scim: "SCIMService | None" = None
+    exports: "ExportService | None" = None
+    webhooks: "WebhookService | None" = None
+    policy_drafts: "PolicyDraftService | None" = None
+    async_tasks: "AsyncTaskService | None" = None
 
     def start_scheduler(self, poll_seconds: float = 1.0) -> Scheduler:
         if self.scheduler is None:
             self.scheduler = Scheduler(self.ctx)
             self.scheduler.every("outbox.dispatch", 5.0,
                                  lambda: self.dispatcher.dispatch())
+            # Webhook delivery is independent of the transactional outbox:
+            # an event can be marked dispatched for in-process subscribers
+            # while still owing a signed, masked delivery to external hooks.
+            self.scheduler.every("webhooks.deliver", 5.0,
+                                 self._dispatch_webhooks)
             self.scheduler.every("objectives.evaluate", 30.0,
                                  self._evaluate_objectives)
             self.scheduler.every("controller.cycle", 60.0,
                                  self._controller_tick)
         self.scheduler.start(poll_seconds=poll_seconds)
         return self.scheduler
+
+    def _dispatch_webhooks(self) -> dict:
+        if self.webhooks is None:
+            return {"delivered": 0, "failed": 0, "skipped": 0, "errors": []}
+        return self.webhooks.dispatch_webhooks()
 
     def stop_scheduler(self) -> None:
         if self.scheduler is not None:
@@ -362,6 +400,11 @@ def build_platform(config: PlatformConfig | None = None) -> Platform:
     else:
         raise ValidationError(f"unknown platform store: {config.store!r}")
 
+    # Every repository call made under an authorization context is pinned to
+    # that decision's workspace and row scope.  System/migration code has no
+    # context and keeps using the raw storage semantics.
+    repo = GovernedRepository(repo, scope_provider=auth_context.current_scope)
+
     # kernel state follows the platform store unless pinned explicitly:
     # a persistent platform must not lose semantic state between processes
     if config.runtime_store is None:
@@ -405,10 +448,22 @@ def build_platform(config: PlatformConfig | None = None) -> Platform:
                   os.environ.get("ONTO_PLATFORM_ADMINS", "").split(",")
                   if a.strip()]
     ctx.platform_admins = frozenset(admins or [])
+    # One authorization kernel owns membership/binding/group/policy reads and
+    # every ALLOW/DENY decision.  It is installed before any use case can run.
+    security_service = SecurityService(
+        repo=repo,
+        audit=audit,
+        legacy_policy=ctx.policy,
+        clock=ctx.clock,
+        id_factory=lambda prefix="sec": ctx.id_factory(),
+        platform_admins=ctx.platform_admins,
+    )
+    ctx.security = security_service
     publisher = SchemaPublisher(ctx)
     platform = Platform(
         config=config,
         ctx=ctx,
+        security=SecurityUseCases(ctx, security_service),
         workspaces=WorkspaceUseCases(ctx),
         ontologies=OntologyUseCases(ctx, publisher),
         data=DataUseCases(ctx),
@@ -432,6 +487,28 @@ def build_platform(config: PlatformConfig | None = None) -> Platform:
     platform.dispatcher.subscribe("todo.opened", _notification_handler(ctx))
     platform.dispatcher.subscribe("application.objective_breached",
                                   _notification_handler(ctx))
+
+    # Organization and identity are composed after the facade so the tools see
+    # the same platform.security facade the API does.
+    platform.organization = OrganizationService(
+        repo, ctx.clock, ctx.id_factory, security_service, ctx=ctx)
+    platform.identity_directory = IdentityDirectory(ctx, security_service)
+    platform.identity = IdentityService(
+        platform.identity_directory, OIDCVerifier(), SessionIssuer(),
+        LDAPAuthenticator())
+    platform.scim = SCIMService(
+        platform.identity_directory,
+        bearer_token=os.environ.get("ONTO_SCIM_BEARER_TOKEN", ""),
+        allow_anonymous=(
+            os.environ.get("ONTO_SCIM_ALLOW_ANONYMOUS", "") == "1"),
+    )
+    platform.exports = ExportService(ctx, platform.security)
+    platform.webhooks = WebhookService(ctx, platform.security,
+                                       dispatcher=platform.dispatcher)
+    platform.policy_drafts = PolicyDraftService(ctx, security_service)
+    platform.async_tasks = AsyncTaskService(
+        ctx, security_service, scheduler=lambda: platform.scheduler,
+        invoke=platform.capabilities.invoke)
     # an execution that was running when the previous process died is
     # unknown, never silently retried (P0-2)
     try:

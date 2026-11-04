@@ -104,7 +104,7 @@ Reply with STRICT JSON only, no markdown, no prose:
 class AgentRunner:
     def __init__(self, gateway: RuntimeGateway, provider: LLMProvider,
                  ontology_context: str, max_steps: int = 8,
-                 forbidden_functions=(), invoker=None) -> None:
+                 forbidden_functions=(), invoker=None, masker=None) -> None:
         self._gateway = gateway
         self._provider = provider
         self._ontology_context = ontology_context
@@ -119,6 +119,10 @@ class AgentRunner:
         # agent write actions go through the audited capability use case
         # (governance + execution record), not straight to the kernel
         self._invoker = invoker
+        # The LLM context is a data sink: every row/property observation is
+        # passed through the caller's row/field masker before it can become
+        # prompt text.  ``None`` keeps the raw behaviour for direct/test use.
+        self._masker = masker
 
     @property
     def max_steps(self) -> int:
@@ -264,6 +268,11 @@ class AgentRunner:
             return {"error": "runtime not published"}
         return _hide_functions(described, self._forbidden)
 
+    def _mask(self, value, object_type: str | None = None):
+        if self._masker is None:
+            return value
+        return self._masker(value, object_type)
+
     def _execute_tool(self, action: dict) -> str:
         tool = action.get("tool")
         args = action.get("args") or {}
@@ -276,16 +285,17 @@ class AgentRunner:
                 objects = self._gateway.find_objects(
                     args["object_type"], args.get("filter") or {}
                 )
+                objects = self._mask(objects, args["object_type"])
                 return _dump(objects[:20])
             if tool == "related":
-                return _dump(
-                    self._gateway.related(
-                        args["ref"], args["relation"],
-                        direction=args.get("direction", "out"),
-                    )
+                rows = self._gateway.related(
+                    args["ref"], args["relation"],
+                    direction=args.get("direction", "out"),
                 )
+                return _dump(self._mask(rows))
             if tool == "get":
-                return _dump(self._gateway.get_object(args["ref"]))
+                return _dump(self._mask(
+                    self._gateway.get_object(args["ref"])))
             if tool == "invoke_capability":
                 function = args["function"]
                 if function in self._forbidden:
@@ -309,8 +319,9 @@ class AgentRunner:
                         "ok": result.ok,
                         "status": result.status,
                         "error": result.error,
-                        "output": result.output,
-                        "changes": list(result.changes),
+                        "output": self._mask(
+                            result.output, args.get("target_type")),
+                        "changes": self._mask(list(result.changes)),
                     }
                 )
             return f"unknown tool {tool!r}; available: describe_ontology, " \
@@ -372,9 +383,48 @@ def _parse_json(text: str) -> dict | None:
 # ----------------------------------------------------------------------
 
 
+def make_observation_masker(ctx, workspace_id: str, gateway, actor: str | None = None):
+    """Fail-closed masker for rows an agent may paste into the model prompt.
+
+    The acting user is resolved at observation time (not runner construction):
+    an agent capability can be invoked synchronously by a user, from the
+    scheduler, or nested inside another agent, and in every case the row/field
+    scope of the *current caller* applies.  With no caller identity - or if
+    the PEP itself errors - the observation is replaced with a redacted marker
+    instead of leaking raw data.
+    """
+
+    security = getattr(ctx, "security", None)
+
+    def masker(value, object_type: str | None = None):
+        acting = actor
+        if not acting and hasattr(gateway, "execution_actor"):
+            try:
+                acting = gateway.execution_actor()
+            except Exception:
+                acting = None
+        if security is None or not acting or value is None:
+            return {"redacted": True, "reason": "no authorized caller"}
+        rows = value if isinstance(value, list) else [value]
+        dicts = [row for row in rows if isinstance(row, dict)]
+        if not dicts:
+            return value
+        try:
+            masked = security.filter_objects(
+                workspace_id, acting, dicts,
+                resource_type=str(object_type or "object"))
+        except Exception:
+            return {"redacted": True, "reason": "not authorized"}
+        return masked if isinstance(value, list) else (masked[0] if masked
+                                                       else None)
+
+    return masker
+
+
 def make_agent_runner(gateway: RuntimeGateway, provider_resolver,
                       ontology_context: str, goal: str, max_steps: int = 8,
-                      function_name: str | None = None, invoker=None):
+                      function_name: str | None = None, invoker=None,
+                      masker=None):
     """Build the platform-side runner for one agent-kind capability.
 
     The returned callable is registered on the gateway (see
@@ -388,7 +438,8 @@ def make_agent_runner(gateway: RuntimeGateway, provider_resolver,
     configuration and process restarts pick up the configured provider.
     ``{target}`` / ``{arg_name}`` placeholders in the goal are substituted
     before the loop starts.  A missing provider surfaces as an invocation
-    error (the kernel never lets executor exceptions escape).
+    error (the kernel never lets executor exceptions escape).  ``masker`` is
+    applied to every tool observation before it enters the prompt.
     """
 
     def run(target: str | None, args: dict) -> dict:
@@ -406,7 +457,7 @@ def make_agent_runner(gateway: RuntimeGateway, provider_resolver,
         agent_run = AgentRunner(
             gateway, provider, ontology_context, max_steps=max_steps,
             forbidden_functions=(function_name,) if function_name else (),
-            invoker=invoker,
+            invoker=invoker, masker=masker,
         ).run(text)
         return {
             "ok": agent_run.ok,
@@ -432,6 +483,27 @@ def make_audited_invoker(ctx, workspace_id: str, gateway,
         if hasattr(gateway, "execution_actor"):
             acting = gateway.execution_actor()
         acting = acting or actor or "agent"
+        # The agent is a delegate, not a new principal: resolve it from the
+        # caller's roles (never a superset) and re-authorize every tool call
+        # before the capability write path runs.  A scheduled/async invocation
+        # with no caller context therefore fails closed.
+        if getattr(ctx, "security", None) is not None:
+            agent = ctx.security.agent_principal(
+                acting, workspace_id, agent_id=function or "agent")
+            tenant = ctx.security.tenant_context(workspace_id)
+            from ..domain.security.model import Resource
+
+            decision = ctx.security.decision_for(
+                agent, tenant, "capability.invoke",
+                Resource(type="capability", id=function or "",
+                         tenant_id=tenant.tenant_id,
+                         workspace_id=workspace_id))
+            if not decision.allow:
+                from ..errors import AccessDeniedError
+
+                raise AccessDeniedError(
+                    f"agent tool {function!r} denied for caller {acting!r}: "
+                    f"{decision.reason}")
         result = InvokeCapability(ctx)(
             workspace_id, acting, function,
             target=target, args=args or {},

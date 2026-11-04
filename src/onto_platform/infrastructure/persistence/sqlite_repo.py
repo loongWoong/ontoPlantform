@@ -18,6 +18,7 @@ _SCHEMA = """
 CREATE TABLE IF NOT EXISTS documents (
     kind         TEXT NOT NULL,
     workspace_id TEXT,
+    tenant_id    TEXT,
     entity_id    TEXT NOT NULL,
     data         TEXT NOT NULL,
     version      INTEGER NOT NULL DEFAULT 0,
@@ -28,6 +29,7 @@ CREATE TABLE IF NOT EXISTS audit_log (
     ts     TEXT NOT NULL,
     actor  TEXT NOT NULL,
     workspace_id TEXT,
+    tenant_id TEXT,
     action TEXT NOT NULL,
     target TEXT NOT NULL,
     detail TEXT NOT NULL
@@ -36,12 +38,30 @@ CREATE TABLE IF NOT EXISTS audit_log (
 
 
 def _migrate_documents(conn: sqlite3.Connection) -> None:
-    """Add the ``version`` column to databases created before v0.2."""
+    """Add columns introduced after v0.2 without losing old rows."""
     columns = {row[1] for row in conn.execute("PRAGMA table_info(documents)")}
     if "version" not in columns:
         conn.execute(
             "ALTER TABLE documents ADD COLUMN version INTEGER NOT NULL DEFAULT 0"
         )
+    if "tenant_id" not in columns:
+        conn.execute("ALTER TABLE documents ADD COLUMN tenant_id TEXT")
+    # V0.1 tenant boundary is the workspace: backfill old rows so a
+    # tenant-scoped query can never see a row with a NULL tenant.
+    conn.execute(
+        "UPDATE documents SET tenant_id = workspace_id "
+        "WHERE tenant_id IS NULL AND workspace_id IS NOT NULL"
+    )
+
+
+def _migrate_audit(conn: sqlite3.Connection) -> None:
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(audit_log)")}
+    if "tenant_id" not in columns:
+        conn.execute("ALTER TABLE audit_log ADD COLUMN tenant_id TEXT")
+    conn.execute(
+        "UPDATE audit_log SET tenant_id = workspace_id "
+        "WHERE tenant_id IS NULL AND workspace_id IS NOT NULL"
+    )
 
 
 class SqliteRepository:
@@ -51,6 +71,7 @@ class SqliteRepository:
         self._conn = sqlite3.connect(path, check_same_thread=False)
         self._conn.executescript(_SCHEMA)
         _migrate_documents(self._conn)
+        _migrate_audit(self._conn)
         self._conn.commit()
 
     def close(self) -> None:
@@ -70,6 +91,7 @@ class SqliteRepository:
             entry.get("ts", ""),
             entry.get("actor", ""),
             entry.get("workspace_id"),
+            entry.get("tenant_id") or entry.get("workspace_id"),
             entry.get("action", ""),
             entry.get("target") or "",
             json.dumps(entry.get("detail", {}), ensure_ascii=False),
@@ -78,14 +100,14 @@ class SqliteRepository:
             with self._lock:
                 self._conn.execute(
                     "INSERT INTO audit_log "
-                    "(ts, actor, workspace_id, action, target, detail) "
-                    "VALUES (?, ?, ?, ?, ?, ?)", params)
+                    "(ts, actor, workspace_id, tenant_id, action, target, detail) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?)", params)
         else:
             with self._lock, self._conn:
                 self._conn.execute(
                     "INSERT INTO audit_log "
-                    "(ts, actor, workspace_id, action, target, detail) "
-                    "VALUES (?, ?, ?, ?, ?, ?)", params)
+                    "(ts, actor, workspace_id, tenant_id, action, target, detail) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?)", params)
 
     # ---- transactions ----
 
@@ -260,16 +282,18 @@ class SqliteRepository:
         version: int,
     ) -> None:
         payload = json.dumps(data, ensure_ascii=False)
+        tenant_id = data.get("tenant_id") or workspace_id
         updated = self._conn.execute(
-            "UPDATE documents SET data = ?, version = ? WHERE kind = ? "
-            "AND workspace_id IS ? AND entity_id = ?",
-            (payload, version, kind, workspace_id, entity_id),
+            "UPDATE documents SET data = ?, version = ?, tenant_id = ? "
+            "WHERE kind = ? AND workspace_id IS ? AND entity_id = ?",
+            (payload, version, tenant_id, kind, workspace_id, entity_id),
         ).rowcount
         if not updated:
             self._conn.execute(
-                "INSERT INTO documents (kind, workspace_id, entity_id, data, version) "
-                "VALUES (?, ?, ?, ?, ?)",
-                (kind, workspace_id, entity_id, payload, version),
+                "INSERT INTO documents "
+                "(kind, workspace_id, tenant_id, entity_id, data, version) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (kind, workspace_id, tenant_id, entity_id, payload, version),
             )
 
 
@@ -305,6 +329,7 @@ class SqliteAuditLog:
             self._conn = sqlite3.connect(path, check_same_thread=False)
             self._conn.executescript(_SCHEMA)
             _migrate_documents(self._conn)
+            _migrate_audit(self._conn)
             self._conn.commit()
 
     def close(self) -> None:
@@ -319,12 +344,14 @@ class SqliteAuditLog:
             return
         with self._lock, self._conn:
             self._conn.execute(
-                "INSERT INTO audit_log (ts, actor, workspace_id, action, target, detail) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
+                "INSERT INTO audit_log "
+                "(ts, actor, workspace_id, tenant_id, action, target, detail) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
                 (
                     entry.get("ts", ""),
                     entry.get("actor", ""),
                     entry.get("workspace_id"),
+                    entry.get("tenant_id") or entry.get("workspace_id"),
                     entry.get("action", ""),
                     entry.get("target", ""),
                     json.dumps(entry.get("detail", {}), ensure_ascii=False),
@@ -336,20 +363,21 @@ class SqliteAuditLog:
         with lock:
             if workspace_id is None:
                 rows = self._conn.execute(
-                    "SELECT ts, actor, workspace_id, action, target, detail "
+                    "SELECT ts, actor, workspace_id, tenant_id, action, target, detail "
                     "FROM audit_log ORDER BY seq DESC LIMIT ?",
                     (limit,),
                 ).fetchall()
             else:
                 rows = self._conn.execute(
-                    "SELECT ts, actor, workspace_id, action, target, detail "
+                    "SELECT ts, actor, workspace_id, tenant_id, action, target, detail "
                     "FROM audit_log WHERE workspace_id IS ? ORDER BY seq DESC LIMIT ?",
                     (workspace_id, limit),
                 ).fetchall()
         return [
             {
                 "ts": r[0], "actor": r[1], "workspace_id": r[2],
-                "action": r[3], "target": r[4], "detail": json.loads(r[5]),
+                "tenant_id": r[3], "action": r[4], "target": r[5],
+                "detail": json.loads(r[6]),
             }
             for r in rows
         ]

@@ -2249,3 +2249,32 @@ dl.kv > dd { margin: 0 0 2px; font-size: 12.5px; }
   .studio-right { grid-column: auto; }
   .segmented-hint { display: none; }
 }
+
+/* 权限控制台：决策证据与判定条 */
+.security-decision-row {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  gap: 4px 10px;
+  align-items: baseline;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--line);
+}
+.security-decision-row:last-child { border-bottom: 0; }
+.security-decision-row .mono { overflow: hidden; text-overflow: ellipsis; }
+.security-verdict {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin-bottom: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+}
+.security-verdict.ok { border-color: color-mix(in srgb, var(--green-ink) 36%, var(--line)); }
+.security-verdict.err { border-color: color-mix(in srgb, var(--red-ink) 36%, var(--line)); }
+.security-verdict b { font-size: 13px; letter-spacing: .08em; }
+.security-verdict.ok b { color: var(--green-ink); }
+.security-verdict.err b { color: var(--red-ink); }
+.security-verdict span:last-child { margin-left: auto; }

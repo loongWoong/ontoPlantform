@@ -90,6 +90,16 @@ class AccessPolicy:
         "settings.manage": ("owner", "workspace"),
         "projection.run": ("editor", "projection"),
         "agent.run": ("viewer", "agent"),
+        # V0.1 security kernel: read the policy/decision view, author drafts,
+        # publish an approved version.  Publishing is intentionally separate
+        # from authoring so separation of duties can be enforced.
+        "security.read": ("viewer", "security"),
+        "security.manage": ("owner", "security"),
+        "security.publish": ("owner", "security"),
+        # Querying business objects is a read; row/field policy is applied by
+        # the PEP from the same decision (design §7).
+        "object.read": ("viewer", "*"),
+        "capability.invoke": ("editor", "capability"),
     }
 
     def required_role(self, action: str) -> str:

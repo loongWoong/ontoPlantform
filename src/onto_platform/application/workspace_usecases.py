@@ -5,13 +5,14 @@ from __future__ import annotations
 from ..domain.workspace.model import Workspace
 from ..errors import AccessDeniedError, NotFoundError, ValidationError
 from .common import ApplicationContext
+from .security import context as auth_context
 
 #: Documents that do not make a workspace "non-empty".  Membership and model
 #: settings are workspace plumbing; controller state and the outbox log are
 #: derived/replayed infrastructure rather than definitions or business state.
 NON_CONTENT_KINDS = frozenset({
     "workspace", "membership", "llm_config", "smartui_config",
-    "controller_state", "event",
+    "controller_state", "event", "authorization_decision",
 })
 
 #: A reset keeps the container, its people and its model configuration; every
@@ -40,6 +41,9 @@ class CreateWorkspace:
     def __call__(self, name: str, actor: str, description: str = "") -> dict:
         if not name.strip():
             raise ValidationError("workspace name must not be empty")
+        # Creating a new tenant is a platform-level act: never inherit the
+        # previous workspace's decision/row scope from a reused worker thread.
+        auth_context.clear()
         from .limits import check_workspace_quota
 
         check_workspace_quota(self._ctx.max_workspaces,
@@ -51,6 +55,9 @@ class CreateWorkspace:
             created_at=self._ctx.clock(),
             runtime_config=dict(self._ctx.default_runtime_config),
         )
+        # V0.1: one workspace is one tenant (design §4).  Write it explicitly so
+        # no later decision has to infer the boundary.
+        workspace.tenant_id = workspace.id
         self._ctx.repo.put("workspace", None, workspace.id, workspace.to_dict())
         # the creator becomes the workspace owner (design.txt §29 Access)
         self._ctx.repo.put(

@@ -15,6 +15,10 @@ class Workspace:
     name: str
     description: str = ""
     created_at: str = ""
+    #: security boundary this workspace belongs to.  V0.1 uses one tenant per
+    #: workspace (``tenant_id == workspace_id``); storing it explicitly lets a
+    #: later version group workspaces without changing the decision contract.
+    tenant_id: str = ""
     # runtime configuration for this workspace's kernel instance:
     # {"store": "memory"|"sqlite", "db_path": str|None}
     runtime_config: dict = field(default_factory=dict)
@@ -25,6 +29,7 @@ class Workspace:
             "name": self.name,
             "description": self.description,
             "created_at": self.created_at,
+            "tenant_id": self.tenant_id or self.id,
             "runtime_config": dict(self.runtime_config),
         }
 
@@ -35,5 +40,6 @@ class Workspace:
             name=data["name"],
             description=data.get("description", ""),
             created_at=data.get("created_at", ""),
+            tenant_id=data.get("tenant_id", ""),
             runtime_config=dict(data.get("runtime_config", {})),
         )

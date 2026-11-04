@@ -827,7 +827,11 @@ class SchemaPublisher:
                                 ontology: Ontology | None = None) -> None:
         """Agent-kind capabilities need a live runner (goal + LLM provider);
         it cannot live in the compiled payload, so it is attached here."""
-        from .agent_runner import make_agent_runner, make_audited_invoker
+        from .agent_runner import (
+            make_agent_runner,
+            make_audited_invoker,
+            make_observation_masker,
+        )
         from ..domain.intelligence.model import SemanticIndex
 
         if ontology is None:
@@ -848,6 +852,8 @@ class SchemaPublisher:
                     impl.get("goal", ""),
                     function_name=function_name,
                     invoker=make_audited_invoker(self._ctx, workspace_id, gateway),
+                    masker=make_observation_masker(
+                        self._ctx, workspace_id, gateway),
                 ),
             )
 

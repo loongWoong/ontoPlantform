@@ -22,6 +22,8 @@ from ..ports.llm import LLMProvider
 from ..ports.runtime import GatewayProvider
 from ..ports.storage import AuditLog, CodeStore, Repository
 from .limits import LeaseManager, RateLimiter
+from .security.service import SecurityService
+from .security import context as auth_context
 
 
 def _now() -> str:
@@ -91,6 +93,10 @@ class ApplicationContext:
     #: platform-level read-only auditors (2.4): may read every workspace,
     #: never write one
     platform_admins: frozenset[str] = frozenset()
+    #: unified authorization kernel (PIP/PAP/PDP/PEP).  ``None`` keeps the
+    #: legacy membership-only path for isolated unit tests; the composition
+    #: root always installs one.
+    security: SecurityService | None = None
 
     # ---- governance helpers ----
 
@@ -127,6 +133,9 @@ class ApplicationContext:
         return self.llm
 
     def require(self, actor: str, workspace_id: str, role: str = "editor") -> None:
+        if self.security is not None:
+            self.security.check_role(actor, workspace_id, role)
+            return
         if role == "viewer" and actor in self.platform_admins:
             return  # cross-workspace read-only access (auditor)
         memberships = [
@@ -136,7 +145,16 @@ class ApplicationContext:
         self.policy.check(memberships, actor, workspace_id, role)
 
     def require_action(self, actor: str, workspace_id: str, action: str) -> None:
-        """Authorize a named action through the action/role matrix."""
+        """Authorize a named action through the action/role matrix.
+
+        V0.1 routes every check through the unified PDP; the legacy matrix is
+        compiled into the built-in policy, so existing call sites do not
+        change.  The returned decision is available via
+        ``security.decision_for`` when a use case needs obligations.
+        """
+        if self.security is not None:
+            self.security.check_action(actor, workspace_id, action)
+            return
         memberships = [
             Membership.from_dict(m)
             for m in self.repo.list("membership", workspace_id)
@@ -145,14 +163,18 @@ class ApplicationContext:
 
     def audit_event(self, actor: str, workspace_id: str, action: str,
                     target: str, detail: dict | None = None) -> None:
+        decision_id = auth_context.current_decision_id()
         self.audit.append(
             {
                 "ts": self.clock(),
                 "actor": actor,
                 "workspace_id": workspace_id,
+                "tenant_id": workspace_id,
                 "action": action,
                 "target": target,
-                "detail": detail or {},
+                "detail": {**(detail or {}),
+                           **({"decision_id": decision_id}
+                              if decision_id else {})},
             }
         )
 
@@ -304,7 +326,11 @@ class ApplicationContext:
             return
 
     def _reattach_agent_runners(self, workspace_id: str, gateway) -> None:
-        from .agent_runner import make_agent_runner, make_audited_invoker
+        from .agent_runner import (
+            make_agent_runner,
+            make_audited_invoker,
+            make_observation_masker,
+        )
         from ..domain.intelligence.model import SemanticIndex
         from ..domain.ontology.model import Ontology
 
@@ -326,5 +352,6 @@ class ApplicationContext:
                     impl.get("goal", ""),
                     function_name=f"{data['target_type']}.{data['key']}",
                     invoker=make_audited_invoker(self, workspace_id, gateway),
+                    masker=make_observation_masker(self, workspace_id, gateway),
                 ),
             )

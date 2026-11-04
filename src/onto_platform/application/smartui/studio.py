@@ -66,6 +66,7 @@ from .generators import (
     PromptTooLarge,
 )
 from .packs import apply_view_presets, resolve_generation_pack
+from ..security import context as auth_context
 from .rules import resolve_rule_pack
 from .prompt import DefaultPromptPack, PromptRequest
 from .publisher import DefaultPublisher, PublishRequest
@@ -387,7 +388,24 @@ def _recover_stale(platform, workspace_id: str) -> None:
 def _submit_generation(platform, workspace_id: str, generation_id: str,
                        actor: str, roles: list[str], question: str,
                        instruction: str, parent: dict | None, mode: str) -> None:
+    authorization = auth_context.snapshot()
+
     def run() -> None:
+        # The executor reuses threads: without an explicit restore/clear a
+        # stale request scope from a previous job could pin this workspace to
+        # another tenant.  Generation is an async PEP and revalidates.
+        auth_context.clear()
+        try:
+            if authorization:
+                with auth_context.activated_verified(
+                        platform.ctx.security, authorization):
+                    _work()
+            else:
+                _work()
+        finally:
+            auth_context.clear()
+
+    def _work() -> None:
         with _workspace_slot(workspace_id):
             if _cancelled(platform, workspace_id, generation_id):
                 return

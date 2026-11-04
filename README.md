@@ -386,3 +386,17 @@ src/onto_platform/
 frontend/                      # React + TS + Vite 控制台源码（构建产物提交进包内，运行期零 Node）
 examples/traffic/demo.py       # design.txt §48 完整业务实例
 ```
+
+## 本体建模指南文档
+
+`ontology-guide/` 是一套独立构建的中文本体建模与应用指南（VitePress，44 页），覆盖总览、语义网与本体历史、标准与语言（RDF/OWL/SKOS/SHACL/SPARQL）、建模方法论与本体元素、实现架构与技术栈、应用场景、落地路线图与端到端案例：
+
+```bash
+cd ontology-guide
+pnpm install
+pnpm docs:dev      # 本地预览 http://localhost:5173/
+pnpm docs:build    # 构建到 ontology-guide/docs/.vitepress/dist
+```
+
+内容速览与部署说明见 [ontology-guide/README.md](ontology-guide/README.md)。
+

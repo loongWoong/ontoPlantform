@@ -20,6 +20,7 @@ import { AIView } from "./views/AIView";
 import { OperationsView } from "./views/Operations";
 import { AssistantView } from "./views/Assistant";
 import { SettingsView } from "./views/Settings";
+import { SecurityView } from "./views/Security";
 
 const VIEWS: Record<string, () => ReactElement> = {
   workbench: Workbench,
@@ -33,6 +34,7 @@ const VIEWS: Record<string, () => ReactElement> = {
   operations: OperationsView,
   assistant: AssistantView,
   settings: SettingsView,
+  security: SecurityView,
 };
 
 export default function App() {

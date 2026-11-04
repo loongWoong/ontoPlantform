@@ -138,10 +138,24 @@ def _rows(value: Any) -> list[dict]:
     return []
 
 
-def _find(platform: "Platform", workspace_id: str, object_type: str) -> list[dict]:
+def _find(platform: "Platform", workspace_id: str, object_type: str,
+          actor: str | None = None) -> list[dict]:
     gateway = platform.ctx.gateway_for(workspace_id)
     try:
-        return _rows(gateway.find_objects(object_type))
+        rows = _rows(gateway.find_objects(object_type))
+    except Exception:
+        return []
+    if not actor:
+        return []
+    security = getattr(platform.ctx, "security", None)
+    filter_objects = getattr(security, "filter_objects", None)
+    if not callable(filter_objects):
+        return []
+    try:
+        # The focus selector and generation prompts are another data sink:
+        # apply the same row scope and field masks as every other read.
+        return filter_objects(workspace_id, actor, rows,
+                              resource_type=object_type)
     except Exception:
         return []
 
@@ -649,7 +663,8 @@ def _focus_score(spec: dict, records: list[dict], relations: list[dict]) -> floa
 
 
 def _select_focus(platform: "Platform", workspace_id: str, ontology: dict,
-                  focus: dict[str, Any] | None = None) -> dict[str, Any]:
+                  focus: dict[str, Any] | None = None,
+                  actor: str | None = None) -> dict[str, Any]:
     """Choose a focus object for *any* published ontology.
 
     Selection is deterministic: a fact/record-like object with real instances
@@ -666,7 +681,7 @@ def _select_focus(platform: "Platform", workspace_id: str, ontology: dict,
         name = str(spec.get("name") or "")
         if not name:
             continue
-        records = _find(platform, workspace_id, name)
+        records = _find(platform, workspace_id, name, actor)
         records_by_type[name] = records
         counts[name] = len(records)
         if records:
@@ -919,7 +934,8 @@ def build_engine_ontology(platform: "Platform", workspace_id: str, actor: str,
     modules = _engine()
     models = modules["models"]
     ontology_data = ontology_data or _ontology_of(platform, workspace_id, actor)
-    context = context or _select_focus(platform, workspace_id, ontology_data)
+    context = context or _select_focus(platform, workspace_id, ontology_data,
+                                       actor=actor)
     if not context.get("ready"):
         raise ValidationError(
             "当前工作空间没有可用的对象实例；先连接数据源并运行投影，"
@@ -1586,7 +1602,8 @@ def build_bundle(platform: "Platform", workspace_id: str, actor: str,
                  ontology_data: dict, bridge: dict, question: str,
                  context: dict[str, Any] | None = None,
                  blueprint: dict[str, Any] | None = None) -> dict[str, Any]:
-    context = context or _select_focus(platform, workspace_id, ontology_data)
+    context = context or _select_focus(platform, workspace_id, ontology_data,
+                                       actor=actor)
     if not context.get("ready"):
         raise ValidationError(
             "当前工作空间没有可用的对象实例；先连接数据源并运行投影，"
@@ -2048,7 +2065,7 @@ def smart_ui_focus_options(platform: "Platform", workspace_id: str, actor: str,
         name = str(spec.get("name") or "")
         if not name or (wanted and name != wanted):
             continue
-        records = _find(platform, workspace_id, name)
+        records = _find(platform, workspace_id, name, actor)
         if not records:
             continue
         keys = _semantic_keys(spec, records)
@@ -2084,7 +2101,7 @@ def smart_ui_focus_options(platform: "Platform", workspace_id: str, actor: str,
 def smart_ui_meta(platform: "Platform", workspace_id: str, actor: str) -> dict[str, Any]:
     ontology = _ontology_of(platform, workspace_id, actor)
     specs = _object_specs(ontology)
-    context = _select_focus(platform, workspace_id, ontology)
+    context = _select_focus(platform, workspace_id, ontology, actor=actor)
     workspace = platform.workspaces.get(workspace_id, actor)
     caps = _capabilities_of(platform, workspace_id, actor)
     executable = _executable_capabilities(platform, workspace_id, actor)
@@ -2229,7 +2246,8 @@ def compile_smart_ui(platform: "Platform", workspace_id: str, actor: str,
     # bundle cannot disagree if a concurrent writer changes the workspace
     # between the two builders.
     ontology_data = _ontology_of(platform, workspace_id, actor)
-    context = _select_focus(platform, workspace_id, ontology_data, focus=focus)
+    context = _select_focus(platform, workspace_id, ontology_data, focus=focus,
+                            actor=actor)
     ontology, bridge = build_engine_ontology(
         platform, workspace_id, actor,
         ontology_data=ontology_data, context=context,
@@ -2334,7 +2352,8 @@ def smart_ui_snapshot(platform: "Platform", workspace_id: str,
     deterministic choice when it cannot be resolved.
     """
     ontology_data = _ontology_of(platform, workspace_id, actor)
-    context = _select_focus(platform, workspace_id, ontology_data, focus=focus)
+    context = _select_focus(platform, workspace_id, ontology_data, focus=focus,
+                            actor=actor)
     ontology, bridge = build_engine_ontology(
         platform, workspace_id, actor,
         ontology_data=ontology_data, context=context,
@@ -2380,6 +2399,19 @@ def compile_smart_ui_blueprint(
 
     if not isinstance(blueprint, dict):
         raise ValidationError("blueprint must be an object")
+    # Permission is part of the blueprint contract (design §6).  Validate the
+    # proposed block deterministically before the engine sees it; the engine's
+    # v1.0 schema does not know ``security`` yet, so strip it from the compiler
+    # input and keep the normalized document in the published artifacts.
+    from ..security.blueprint import validate_blueprint_security
+
+    security_report = validate_blueprint_security(blueprint)
+    if security_report["present"] and not security_report["valid"]:
+        raise ValidationError(
+            "blueprint.security rejected: "
+            + "; ".join(security_report["errors"][:5]))
+    compiler_blueprint = dict(blueprint)
+    compiler_blueprint.pop("security", None)
     context_spec = blueprint.get("context") or {}
     focus_spec = context_spec.get("focus") or {}
     snapshot = snapshot or smart_ui_snapshot(platform, workspace_id, actor)
@@ -2399,7 +2431,7 @@ def compile_smart_ui_blueprint(
     ontology_data = snapshot["ontologyData"]
 
     compiled = compiler.compile_blueprint(
-        blueprint,
+        compiler_blueprint,
         ontology,
         tuple(roles),
         base_diagnostics=tuple(base_diagnostics),
@@ -2445,6 +2477,7 @@ def compile_smart_ui_blueprint(
         ],
         "programBytes": len(compiled.program.encode("utf-8")),
         "programLines": len(compiled.program.splitlines()),
+        "security": security_report,
         "toolClosure": {
             "programTools": sorted(
                 modules["models"].extract_program_tool_names(compiled.program)
@@ -2599,6 +2632,42 @@ def _action_args(cap: dict, supplied: Any) -> dict[str, Any]:
     }
 
 
+def _authorize_smart_action(platform: "Platform", workspace_id: str,
+                            actor: str, role: str, action_id: str) -> None:
+    """Authorize a smart-UI action through the unified PDP when installed.
+
+    The requested perspective role is the subject for this check: a viewer
+    cannot execute an editor action, even if the real actor is an owner.  The
+    legacy role table remains only as a fallback for a bare ApplicationContext
+    (tests and embedders that have not composed the security service).
+    """
+    security = getattr(platform.ctx, "security", None)
+    if security is None:
+        if role not in _action_roles(action_id):
+            raise AccessDeniedError(
+                f"role {role!r} is not allowed to execute {action_id!r}; "
+                f"required: {list(_action_roles(action_id))}"
+            )
+        return
+    from dataclasses import replace
+
+    from ...domain.security.model import Resource
+
+    principal = security.principal(actor, workspace_id)
+    perspective = replace(principal, roles=(role,))
+    decision = security.decision_for(
+        perspective, security.tenant_context(workspace_id),
+        "capability.invoke",
+        Resource(type="capability", id=action_id, workspace_id=workspace_id),
+        check_scope=False,
+    )
+    if not decision.allow:
+        raise AccessDeniedError(
+            f"role {role!r} is not allowed to execute {action_id!r}: "
+            f"{decision.reason}"
+        )
+
+
 def invoke_smart_action(platform: "Platform", workspace_id: str, actor: str,
                         action_id: str, body: dict[str, Any]) -> dict[str, Any]:
     actor_role = _actor_role(platform, workspace_id, actor)
@@ -2610,18 +2679,14 @@ def invoke_smart_action(platform: "Platform", workspace_id: str, actor: str,
     cap = _capability_key_by_id(caps, action_id)
     if cap is None:
         raise ValidationError(f"unknown platform capability {action_id!r}")
-    if role not in _action_roles(action_id):
-        raise AccessDeniedError(
-            f"role {role!r} is not allowed to execute {action_id!r}; "
-            f"required: {list(_action_roles(action_id))}"
-        )
+    _authorize_smart_action(platform, workspace_id, actor, role, action_id)
     if str(cap.get("lifecycle") or "published") != "published":
         raise ValidationError(f"capability {action_id!r} is not published")
     # Parameterized capabilities declare their inputs in the platform model;
     # collect and type-check them here instead of silently dropping values.
     action_args = _action_args(cap, body.get("args"))
     ontology = _ontology_of(platform, workspace_id, actor)
-    context = _select_focus(platform, workspace_id, ontology)
+    context = _select_focus(platform, workspace_id, ontology, actor=actor)
     if not context.get("ready"):
         raise ValidationError(
             "当前工作空间没有可用的对象实例，无法解析动作目标；"

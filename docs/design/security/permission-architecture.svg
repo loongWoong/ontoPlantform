@@ -1,0 +1,178 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1546.00" height="1139.00" viewBox="0 0 1546.00 1139.00" aria-label="权限底座统一，权限策略渐进" font-family="ui-sans-serif, system-ui, &quot;PingFang SC&quot;, sans-serif">
+  <rect x="0.00" y="0.00" width="1546.00" height="1139.00" rx="0.00" fill="#ffffff" stroke="none" />
+  <g data-shape="group">
+    <path d="M 33.00 141.00 A 14.00 14.00 0 0 1 47.00 127.00 L 919.00 127.00 A 14.00 14.00 0 0 1 933.00 141.00 L 933.00 973.00 A 14.00 14.00 0 0 1 919.00 987.00 L 47.00 987.00 A 14.00 14.00 0 0 1 33.00 973.00 L 33.00 141.00 Z" fill="#fbfaf8" stroke="#e6e2d9" stroke-dasharray="6 5" stroke-width="1.5" />
+    <text x="47.00" y="149.20" fill="#0f172a" font-family="inherit" font-size="12" font-weight="600">运行时授权链 · Runtime enforcement</text>
+  </g>
+  <g data-shape="group">
+    <path d="M 963.00 141.00 A 14.00 14.00 0 0 1 977.00 127.00 L 1499.00 127.00 A 14.00 14.00 0 0 1 1513.00 141.00 L 1513.00 973.00 A 14.00 14.00 0 0 1 1499.00 987.00 L 977.00 987.00 A 14.00 14.00 0 0 1 963.00 973.00 L 963.00 141.00 Z" fill="#f7f6f3" stroke="#e6e2d9" stroke-dasharray="6 5" stroke-width="1.5" />
+    <text x="977.00" y="149.20" fill="#4c1d95" font-family="inherit" font-size="12" font-weight="600">生成时治理链 · Policy lifecycle</text>
+  </g>
+  <g data-shape="node">
+    <path d="M 173.00 213.00 A 10.00 10.00 0 0 1 183.00 203.00 L 468.00 203.00 A 10.00 10.00 0 0 1 478.00 213.00 L 478.00 252.00 A 10.00 10.00 0 0 1 468.00 262.00 L 183.00 262.00 A 10.00 10.00 0 0 1 173.00 252.00 L 173.00 213.00 Z" fill="#dbeafe" stroke="#1d4ed8" stroke-width="1.5" />
+    <text x="325.50" y="228.90" fill="#1e3a8a" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">请求进入</text>
+    <text x="325.50" y="244.50" fill="#1e3a8a" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">控制台 · API · Agent 工具 · 异步任务</text>
+  </g>
+  <g data-shape="node">
+    <path d="M 197.00 323.00 A 10.00 10.00 0 0 1 207.00 313.00 L 445.00 313.00 A 10.00 10.00 0 0 1 455.00 323.00 L 455.00 362.00 A 10.00 10.00 0 0 1 445.00 372.00 L 207.00 372.00 A 10.00 10.00 0 0 1 197.00 362.00 L 197.00 323.00 Z" fill="#dbeafe" stroke="#1d4ed8" stroke-width="1.5" />
+    <text x="326.00" y="338.90" fill="#1e3a8a" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">PEP 统一拦截</text>
+    <text x="326.00" y="354.50" fill="#1e3a8a" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">每个入口 / 每次调用 / 每个任务</text>
+  </g>
+  <g data-shape="node">
+    <path d="M 69.00 457.00 A 10.00 10.00 0 0 1 79.00 447.00 L 238.00 447.00 A 10.00 10.00 0 0 1 248.00 457.00 L 248.00 515.00 A 10.00 10.00 0 0 1 238.00 525.00 L 79.00 525.00 A 10.00 10.00 0 0 1 69.00 515.00 L 69.00 457.00 Z" fill="#f1f5f9" stroke="#334155" stroke-width="1.5" />
+    <text x="158.50" y="474.30" fill="#0f172a" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">PIP 权限信息点</text>
+    <text x="158.50" y="489.90" fill="#0f172a" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">成员 · 组织树 · 角色</text>
+    <text x="158.50" y="506.10" fill="#0f172a" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">对象关系 · 资源属性</text>
+  </g>
+  <g data-shape="node">
+    <path d="M 343.00 447.00 A 10.00 10.00 0 0 1 353.00 437.00 L 520.00 437.00 A 10.00 10.00 0 0 1 530.00 447.00 L 530.00 561.00 A 10.00 10.00 0 0 1 520.00 571.00 L 353.00 571.00 A 10.00 10.00 0 0 1 343.00 561.00 L 343.00 447.00 Z" fill="#fef3c7" stroke="#d97706" stroke-width="1.5" />
+    <text x="436.50" y="467.90" fill="#78350f" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">五道确定性校验</text>
+    <text x="436.50" y="483.50" fill="#78350f" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">① 身份与会话有效</text>
+    <text x="436.50" y="499.70" fill="#78350f" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">② 租户 / 工作空间匹配</text>
+    <text x="436.50" y="516.00" fill="#78350f" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">③ 角色 / 动作允许</text>
+    <text x="436.50" y="532.20" fill="#78350f" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">④ 数据范围 / 对象关系</text>
+    <text x="436.50" y="548.50" fill="#78350f" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">⑤ 字段 / 状态条件</text>
+  </g>
+  <g data-form="diamond" data-shape="node">
+    <path d="M 432.32 648.45 A 10.00 10.00 0 0 1 439.68 648.45 L 517.47 679.20 A 10.00 10.00 0 0 1 517.47 697.80 L 439.68 728.55 A 10.00 10.00 0 0 1 432.32 728.55 L 354.53 697.80 A 10.00 10.00 0 0 1 354.53 679.20 L 432.32 648.45 Z" fill="#f59e0b" stroke="#d97706" stroke-width="1.5" />
+    <text x="436.00" y="693.10" fill="#451a03" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">全部通过?</text>
+  </g>
+  <g data-shape="node">
+    <path d="M 293.00 807.00 A 10.00 10.00 0 0 1 303.00 797.00 L 509.00 797.00 A 10.00 10.00 0 0 1 519.00 807.00 L 519.00 846.00 A 10.00 10.00 0 0 1 509.00 856.00 L 303.00 856.00 A 10.00 10.00 0 0 1 293.00 846.00 L 293.00 807.00 Z" fill="#d1fae5" stroke="#047857" stroke-width="1.5" />
+    <text x="406.00" y="822.90" fill="#064e3b" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">ALLOW + 义务</text>
+    <text x="406.00" y="838.50" fill="#064e3b" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">行过滤 · 字段脱敏 · 写审计</text>
+  </g>
+  <g data-shape="node">
+    <path d="M 603.00 807.00 A 10.00 10.00 0 0 1 613.00 797.00 L 764.00 797.00 A 10.00 10.00 0 0 1 774.00 807.00 L 774.00 846.00 A 10.00 10.00 0 0 1 764.00 856.00 L 613.00 856.00 A 10.00 10.00 0 0 1 603.00 846.00 L 603.00 807.00 Z" fill="#ffe4e6" stroke="#be123c" stroke-width="1.5" />
+    <text x="688.50" y="822.90" fill="#881337" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">DENY</text>
+    <text x="688.50" y="838.50" fill="#881337" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">默认拒绝 · 记录原因</text>
+  </g>
+  <g data-shape="node">
+    <path d="M 1033.00 213.00 A 10.00 10.00 0 0 1 1043.00 203.00 L 1241.00 203.00 A 10.00 10.00 0 0 1 1251.00 213.00 L 1251.00 252.00 A 10.00 10.00 0 0 1 1241.00 262.00 L 1043.00 262.00 A 10.00 10.00 0 0 1 1033.00 252.00 L 1033.00 213.00 Z" fill="#ede9fe" stroke="#6d28d9" stroke-width="1.5" />
+    <text x="1142.00" y="228.90" fill="#4c1d95" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">需求 + 本体</text>
+    <text x="1142.00" y="244.50" fill="#4c1d95" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">对象 · 属性 · 关系 · 行为</text>
+  </g>
+  <g data-shape="node">
+    <path d="M 1061.00 323.00 A 10.00 10.00 0 0 1 1071.00 313.00 L 1214.00 313.00 A 10.00 10.00 0 0 1 1224.00 323.00 L 1224.00 381.00 A 10.00 10.00 0 0 1 1214.00 391.00 L 1071.00 391.00 A 10.00 10.00 0 0 1 1061.00 381.00 L 1061.00 323.00 Z" fill="#ede9fe" stroke="#6d28d9" stroke-width="1.5" />
+    <text x="1142.50" y="340.30" fill="#4c1d95" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">AI 安全规划器</text>
+    <text x="1142.50" y="355.90" fill="#4c1d95" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">生成 Security 声明</text>
+    <text x="1142.50" y="372.10" fill="#4c1d95" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">只建议，不授权</text>
+  </g>
+  <g data-shape="node">
+    <path d="M 1029.00 457.00 A 10.00 10.00 0 0 1 1039.00 447.00 L 1245.00 447.00 A 10.00 10.00 0 0 1 1255.00 457.00 L 1255.00 515.00 A 10.00 10.00 0 0 1 1245.00 525.00 L 1039.00 525.00 A 10.00 10.00 0 0 1 1029.00 515.00 L 1029.00 457.00 Z" fill="#ede9fe" stroke="#6d28d9" stroke-width="1.5" />
+    <text x="1142.00" y="474.30" fill="#4c1d95" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">确定性校验器</text>
+    <text x="1142.00" y="489.90" fill="#4c1d95" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">未知动作 · 越权 · 范围闭合</text>
+    <text x="1142.00" y="506.10" fill="#4c1d95" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">冲突 · 反例测试</text>
+  </g>
+  <g data-shape="node">
+    <path d="M 1041.00 587.00 A 10.00 10.00 0 0 1 1051.00 577.00 L 1234.00 577.00 A 10.00 10.00 0 0 1 1244.00 587.00 L 1244.00 626.00 A 10.00 10.00 0 0 1 1234.00 636.00 L 1051.00 636.00 A 10.00 10.00 0 0 1 1041.00 626.00 L 1041.00 587.00 Z" fill="#ede9fe" stroke="#6d28d9" stroke-width="1.5" />
+    <text x="1142.50" y="602.90" fill="#4c1d95" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">人工审批</text>
+    <text x="1142.50" y="618.50" fill="#4c1d95" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">安全负责人 + 业务负责人</text>
+  </g>
+  <g data-shape="node">
+    <path d="M 1075.00 697.00 A 10.00 10.00 0 0 1 1085.00 687.00 L 1212.00 687.00 A 10.00 10.00 0 0 1 1222.00 697.00 L 1222.00 755.00 A 10.00 10.00 0 0 1 1212.00 765.00 L 1085.00 765.00 A 10.00 10.00 0 0 1 1075.00 755.00 L 1075.00 697.00 Z" fill="#ede9fe" stroke="#6d28d9" stroke-width="1.5" />
+    <text x="1148.50" y="714.30" fill="#4c1d95" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">PAP 策略管理</text>
+    <text x="1148.50" y="729.90" fill="#4c1d95" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">版本化 · dry-run</text>
+    <text x="1148.50" y="746.10" fill="#4c1d95" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">发布 · 回滚</text>
+  </g>
+  <g data-shape="node">
+    <path d="M 293.00 1057.00 A 10.00 10.00 0 0 1 303.00 1047.00 L 1283.00 1047.00 A 10.00 10.00 0 0 1 1293.00 1057.00 L 1293.00 1096.00 A 10.00 10.00 0 0 1 1283.00 1106.00 L 303.00 1106.00 A 10.00 10.00 0 0 1 293.00 1096.00 L 293.00 1057.00 Z" fill="#f1f5f9" stroke="#334155" stroke-width="1.5" />
+    <text x="793.00" y="1072.90" fill="#0f172a" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">审计脊柱</text>
+    <text x="793.00" y="1088.50" fill="#0f172a" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">主体 · 租户 · 动作 · 资源 · 决策 · 策略版本 · 义务</text>
+  </g>
+  <g data-shape="edge">
+    <path d="M 325.50 262.00 L 325.50 287.25 A 0.25 0.25 0 0 0 325.75 287.50 L 325.75 287.50 A 0.25 0.25 0 0 1 326.00 287.75 L 326.00 306.00" fill="none" stroke="#64748b" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
+    <path d="M 326.00 313.00 L 322.85 306.00 L 329.15 306.00 Z" fill="#64748b" stroke="#64748b" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
+  </g>
+  <g data-shape="edge">
+    <path d="M 326.00 372.00 L 326.00 394.50 A 10.00 10.00 0 0 0 336.00 404.50 L 426.50 404.50 A 10.00 10.00 0 0 1 436.50 414.50 L 436.50 430.00" fill="none" stroke="#64748b" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
+    <path d="M 436.50 437.00 L 433.35 430.00 L 439.65 430.00 Z" fill="#64748b" stroke="#64748b" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
+  </g>
+  <g data-shape="edge">
+    <path d="M 248.00 486.00 L 286.50 486.00 A 9.00 9.00 0 0 1 295.50 495.00 L 295.50 495.00 A 9.00 9.00 0 0 0 304.50 504.00 L 336.00 504.00" fill="none" stroke="#cbd5e1" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
+    <path d="M 343.00 504.00 L 336.00 507.15 L 336.00 500.85 Z" fill="#cbd5e1" stroke="#cbd5e1" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
+  </g>
+  <g data-shape="edge">
+    <path d="M 436.50 571.00 L 436.50 608.75 A 0.25 0.25 0 0 1 436.25 609.00 L 436.25 609.00 A 0.25 0.25 0 0 0 436.00 609.25 L 436.00 640.00" fill="none" stroke="#64748b" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
+    <path d="M 436.00 647.00 L 432.85 640.00 L 439.15 640.00 Z" fill="#64748b" stroke="#64748b" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
+  </g>
+  <g data-shape="edge">
+    <path d="M 398.20 730.00 L 398.20 759.60 A 3.90 3.90 0 0 0 402.10 763.50 L 402.10 763.50 A 3.90 3.90 0 0 1 406.00 767.40 L 406.00 790.00" fill="none" stroke="#6ee7b7" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
+    <path d="M 406.00 797.00 L 402.85 790.00 L 409.15 790.00 Z" fill="#6ee7b7" stroke="#6ee7b7" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
+  </g>
+  <g data-shape="edge">
+    <path d="M 473.80 730.00 L 473.80 753.50 A 10.00 10.00 0 0 0 483.80 763.50 L 678.50 763.50 A 10.00 10.00 0 0 1 688.50 773.50 L 688.50 790.00" fill="none" stroke="#fda4af" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
+    <path d="M 688.50 797.00 L 685.35 790.00 L 691.65 790.00 Z" fill="#fda4af" stroke="#fda4af" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
+  </g>
+  <g data-shape="edge">
+    <path d="M 1142.00 262.00 L 1142.00 287.25 A 0.25 0.25 0 0 0 1142.25 287.50 L 1142.25 287.50 A 0.25 0.25 0 0 1 1142.50 287.75 L 1142.50 306.00" fill="none" stroke="#c4b5fd" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
+    <path d="M 1142.50 313.00 L 1139.35 306.00 L 1145.65 306.00 Z" fill="#c4b5fd" stroke="#c4b5fd" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
+  </g>
+  <g data-shape="edge">
+    <path d="M 1142.50 391.00 L 1142.50 418.75 A 0.25 0.25 0 0 1 1142.25 419.00 L 1142.25 419.00 A 0.25 0.25 0 0 0 1142.00 419.25 L 1142.00 440.00" fill="none" stroke="#c4b5fd" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
+    <path d="M 1142.00 447.00 L 1138.85 440.00 L 1145.15 440.00 Z" fill="#c4b5fd" stroke="#c4b5fd" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
+  </g>
+  <g data-shape="edge">
+    <path d="M 1142.00 525.00 L 1142.00 550.75 A 0.25 0.25 0 0 0 1142.25 551.00 L 1142.25 551.00 A 0.25 0.25 0 0 1 1142.50 551.25 L 1142.50 570.00" fill="none" stroke="#c4b5fd" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
+    <path d="M 1142.50 577.00 L 1139.35 570.00 L 1145.65 570.00 Z" fill="#c4b5fd" stroke="#c4b5fd" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
+  </g>
+  <g data-shape="edge">
+    <path d="M 1142.50 636.00 L 1142.50 658.50 A 3.00 3.00 0 0 0 1145.50 661.50 L 1145.50 661.50 A 3.00 3.00 0 0 1 1148.50 664.50 L 1148.50 680.00" fill="none" stroke="#c4b5fd" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
+    <path d="M 1148.50 687.00 L 1145.35 680.00 L 1151.65 680.00 Z" fill="#c4b5fd" stroke="#c4b5fd" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
+  </g>
+  <g data-shape="edge">
+    <path d="M 1075.00 726.00 L 812.50 726.00 A 10.00 10.00 0 0 1 802.50 716.00 L 802.50 514.00 A 10.00 10.00 0 0 0 792.50 504.00 L 537.00 504.00" fill="none" stroke="#c4b5fd" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
+    <path d="M 530.00 504.00 L 537.00 500.85 L 537.00 507.15 Z" fill="#c4b5fd" stroke="#c4b5fd" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
+  </g>
+  <g data-shape="edge">
+    <path d="M 406.00 856.00 L 406.00 941.50 A 10.00 10.00 0 0 0 416.00 951.50 L 503.00 951.50 A 10.00 10.00 0 0 1 513.00 961.50 L 513.00 1040.00" fill="none" stroke="#6ee7b7" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
+    <path d="M 513.00 1047.00 L 509.85 1040.00 L 516.15 1040.00 Z" fill="#6ee7b7" stroke="#6ee7b7" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
+  </g>
+  <g data-shape="edge">
+    <path d="M 688.50 856.00 L 688.50 941.50 A 10.00 10.00 0 0 0 698.50 951.50 L 703.00 951.50 A 10.00 10.00 0 0 1 713.00 961.50 L 713.00 1040.00" fill="none" stroke="#fda4af" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
+    <path d="M 713.00 1047.00 L 709.85 1040.00 L 716.15 1040.00 Z" fill="#fda4af" stroke="#fda4af" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
+  </g>
+  <g data-shape="edge">
+    <path d="M 1148.50 765.00 L 1148.50 896.00 A 10.00 10.00 0 0 1 1138.50 906.00 L 1063.00 906.00 A 10.00 10.00 0 0 0 1053.00 916.00 L 1053.00 1040.00" fill="none" stroke="#c4b5fd" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
+    <path d="M 1053.00 1047.00 L 1049.85 1040.00 L 1056.15 1040.00 Z" fill="#c4b5fd" stroke="#c4b5fd" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
+  </g>
+  <g data-shape="label-box">
+    <rect x="251.80" y="454.00" width="86.40" height="16.00" rx="4.00" fill="#ffffff" stroke="none" />
+    <text x="295.00" y="466.20" fill="#0f172a" font-family="inherit" font-size="12" text-anchor="middle">属性 / 关系</text>
+  </g>
+  <g data-shape="label-box">
+    <rect x="703.30" y="559.00" width="159.50" height="16.00" rx="4.00" fill="#ffffff" stroke="none" />
+    <text x="783.00" y="571.20" fill="#4c1d95" font-family="inherit" font-size="12" text-anchor="middle">已发布策略 · 版本哈希</text>
+  </g>
+  <g data-shape="label-box">
+    <rect x="405.80" y="614.00" width="64.50" height="16.00" rx="4.00" fill="#ffffff" stroke="none" />
+    <text x="438.00" y="626.20" fill="#475569" font-family="inherit" font-size="12" text-anchor="middle">五道全过</text>
+  </g>
+  <g data-shape="label-box">
+    <rect x="370.70" y="759.00" width="20.60" height="16.00" rx="4.00" fill="#ffffff" stroke="none" />
+    <text x="381.00" y="771.20" fill="#064e3b" font-family="inherit" font-size="12" text-anchor="middle">是</text>
+  </g>
+  <g data-shape="label-box">
+    <rect x="482.70" y="759.00" width="20.60" height="16.00" rx="4.00" fill="#ffffff" stroke="none" />
+    <text x="493.00" y="771.20" fill="#881337" font-family="inherit" font-size="12" text-anchor="middle">否</text>
+  </g>
+  <g data-shape="label-box">
+    <rect x="1160.40" y="549.00" width="35.20" height="16.00" rx="4.00" fill="#ffffff" stroke="none" />
+    <text x="1178.00" y="561.20" fill="#4c1d95" font-family="inherit" font-size="12" text-anchor="middle">通过</text>
+  </g>
+  <g data-shape="label-box">
+    <rect x="1150.80" y="659.00" width="64.50" height="16.00" rx="4.00" fill="#ffffff" stroke="none" />
+    <text x="1183.00" y="671.20" fill="#4c1d95" font-family="inherit" font-size="12" text-anchor="middle">审批发布</text>
+  </g>
+  <g data-shape="label-box">
+    <rect x="451.20" y="984.00" width="93.70" height="16.00" rx="4.00" fill="#ffffff" stroke="none" />
+    <text x="498.00" y="996.20" fill="#064e3b" font-family="inherit" font-size="12" text-anchor="middle">每次决策留痕</text>
+  </g>
+  <text x="773.00" y="62.80" fill="#1a1814" font-family="inherit" font-size="28" font-weight="700" text-anchor="middle">权限底座统一，权限策略渐进</text>
+  <text x="773.00" y="93.90" fill="#6b665c" font-family="inherit" font-size="14" text-anchor="middle">运行时只认确定性策略；AI 生成声明、解释结果，人工审批发布</text>
+  <text x="1313.00" y="853.70" fill="#6b665c" font-family="inherit" font-size="12" text-anchor="middle">AI 不执行授权</text>
+  <text x="1313.00" y="868.70" fill="#6b665c" font-family="inherit" font-size="12" text-anchor="middle">自然语言不进入运行时决策</text>
+  <text x="163.00" y="953.70" fill="#98372e" font-family="inherit" font-size="12" text-anchor="middle">默认拒绝</text>
+  <text x="163.00" y="968.70" fill="#98372e" font-family="inherit" font-size="12" text-anchor="middle">无策略即无权限</text>
+</svg>

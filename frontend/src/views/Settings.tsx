@@ -92,21 +92,29 @@ export function SettingsView() {
 function Identity() {
   const { authMode, token, setToken, toast } = usePlatform();
   const [draft, setDraft] = useState("");
+  const secured = authMode !== "local";
+  const modeLabel = authMode === "token+session"
+    ? "Bearer 令牌或 OIDC/LDAP 会话"
+    : authMode === "session"
+      ? "OIDC/LDAP 会话令牌"
+      : authMode === "token"
+        ? "Bearer 访问令牌"
+        : "本地操作者（回环，缺省 admin）";
   return (
     <Card title="身份与访问" sub="本地回环请求缺省使用 admin actor；启用服务端令牌后，调用者必须提交令牌。"
-          aside={<Tag kind={authMode === "token" ? "ok" : "plain"}>{authMode === "token" ? "已提交访问令牌" : "本地操作者"}</Tag>}>
+          aside={<Tag kind={secured ? "ok" : "plain"}>{secured ? "已启用服务端认证" : "本地操作者"}</Tag>}>
       <dl className="kv">
-        <div className="kv-pair"><dt>当前模式</dt><dd>{authMode === "token" ? "Bearer 令牌（仅本次标签页）" : "本地操作者（回环地址，缺省 admin）"}</dd></div>
+        <div className="kv-pair"><dt>当前模式</dt><dd>{modeLabel}</dd></div>
         <div className="kv-pair"><dt>令牌状态</dt><dd className="mono">{token ? `已设置（${token.length} 字符，不回显）` : "未设置"}</dd></div>
       </dl>
       <div className="inline-create wrap">
-        <TextInput type="password" value={draft} placeholder="粘贴访问令牌（可留空清除）"
+        <TextInput type="password" value={draft} placeholder="粘贴访问令牌或会话 token（可留空清除）"
                    aria-label="访问令牌" autoComplete="off"
                    onChange={e => setDraft(e.target.value)} />
         <Btn size="sm" onClick={() => { setToken(draft); setDraft(""); toast(draft.trim() ? "访问令牌已写入当前标签页会话" : "访问令牌已清除", "ok"); }}>保存令牌</Btn>
         <Btn size="sm" variant="subtle" disabled={!token} onClick={() => { setToken(""); setDraft(""); toast("访问令牌已清除", "ok"); }}>清除</Btn>
       </div>
-      <p className="muted small">令牌只存在 sessionStorage，关闭标签页即失效；不会写入 localStorage，也不会写进模型配置。</p>
+      <p className="muted small">令牌只存在 sessionStorage，关闭标签页即失效；不会写入 localStorage，也不会写进模型配置。OIDC/LDAP 登录返回的会话 token 可直接粘贴到此处。</p>
     </Card>
   );
 }
