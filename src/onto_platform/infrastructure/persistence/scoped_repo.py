@@ -19,6 +19,11 @@ from __future__ import annotations
 from typing import Any
 
 from ...errors import AccessDeniedError
+from ...domain.security.filters import (
+    compile_filter_sql,
+    filter_rows,
+    normalize_filter,
+)
 
 
 class ScopedRepository:
@@ -114,10 +119,11 @@ __all__ = ["ScopedRepository", "GovernedRepository"]
 #: business data.  They are still workspace-pinned but must not be filtered by
 #: a business row scope such as ``station = principal.station``.
 CONTROL_KINDS = frozenset({
-    "workspace", "membership", "llm_config", "security_policy",
-    "role_binding", "security_group", "relation_tuple",
-    "authorization_decision", "audit", "event", "org_unit",
-    "identity_user", "webhook", "scheduler_task",
+    "workspace", "membership", "tenant", "tenant_membership",
+    "llm_config", "security_policy", "role_binding", "security_group",
+    "relation_tuple", "authorization_decision", "audit", "event",
+    "org_unit", "identity_user", "webhook", "scheduler_task",
+    "async_task", "break_glass", "mfa_enrollment",
 })
 
 
@@ -237,6 +243,44 @@ class GovernedRepository:
         rows = [row for row in rows
                 if not row.get("workspace_id")
                 or row.get("workspace_id") == scope.tenant.workspace_id]
+        return self._reads(kind, rows, scope)
+
+    def query(self, kind: str, workspace_id: str | None = None, *,
+              filter: dict | None = None, limit: int | None = None) -> list[dict]:
+        """Authorized query with the row scope pushed into SQL.
+
+        The scope AST and the caller's filter are merged before compilation, so
+        the database applies exactly the predicate the PDP previewed.  Memory
+        repositories fall back to the same predicate evaluated in Python.
+        """
+        scope = self._scope()
+        wid = self._pin(kind, workspace_id, scope)
+        node = None
+        if filter is not None:
+            node = normalize_filter(filter)
+        if scope is not None and scope.decision.scope:
+            node = ({"all": [scope.decision.scope, node]}
+                    if node is not None else scope.decision.scope)
+        if node is None:
+            rows = self._repo.list(kind, wid)
+        elif hasattr(self._repo, "query_sql"):
+            where, params = compile_filter_sql(
+                node,
+                scope.principal if scope is not None else None,
+                scope.tenant.to_dict() if scope is not None else {},
+                columns={"tenant_id": "tenant_id",
+                         "workspace_id": "workspace_id"},
+                json_data_column="data")
+            rows = self._repo.query_sql(kind, wid, where, params, limit)
+        else:
+            principal = scope.principal if scope is not None else None
+            context = scope.tenant.to_dict() if scope is not None else {}
+            rows = filter_rows(self._repo.list(kind, wid), node, principal,
+                               context)
+            if limit is not None:
+                rows = rows[:max(0, int(limit))]
+        if scope is None:
+            return rows
         return self._reads(kind, rows, scope)
 
     def _prepare_write(self, kind: str, workspace_id: str | None,

@@ -237,6 +237,29 @@ class SqliteRepository:
                 ).fetchall()
         return [json.loads(r[0]) for r in rows]
 
+    def query_sql(self, kind: str, workspace_id: str | None, where: str = "",
+                  params: tuple | list = (), limit: int | None = None
+                  ) -> list[dict]:
+        """Run a pushed-down predicate over the document JSON.
+
+        ``where`` is produced only by ``compile_filter_sql`` (validated field
+        names, parameterised values); this method never interpolates caller
+        text.  Tenant/workspace are still part of the SQL predicate.
+        """
+        sql = ("SELECT data FROM documents WHERE kind = ? "
+               "AND workspace_id IS ?")
+        values: list = [kind, workspace_id]
+        if where:
+            sql += f" AND ({where})"
+            values.extend(params)
+        sql += " ORDER BY rowid"
+        if limit is not None:
+            sql += " LIMIT ?"
+            values.append(max(0, int(limit)))
+        with self._lock:
+            rows = self._conn.execute(sql, tuple(values)).fetchall()
+        return [json.loads(row[0]) for row in rows]
+
     def workspace_kinds(self, workspace_id: str) -> dict[str, int]:
         with self._lock:
             rows = self._conn.execute(

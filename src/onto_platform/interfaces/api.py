@@ -484,6 +484,13 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
             query = {k: _parse_scalar(v[-1]) for k, v in parse_qs(parsed.query).items()}
             try:
                 self._check_origin()
+                if parts[:2] == ["scim", "v2"]:
+                    platform.scim.authenticate(
+                        self.headers.get("Authorization") or "")
+                    if parts[2:3] == ["Groups"] and len(parts) == 4:
+                        return self._send(200, platform.scim.delete_group(
+                            parts[3]))
+                    raise ValidationError(f"no SCIM route for {self.path}")
                 if parts[:2] != ["api", "workspaces"]:
                     raise ValidationError(f"no route for {self.path}")
                 wid = parts[2] if len(parts) > 2 else None
@@ -655,6 +662,22 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
                             *smart_ui_features,
                         ],
                     })
+                if parts == ["api", "tenants"]:
+                    return self._send(200, platform.tenants.list(
+                        self._actor(query=query)))
+                if len(parts) >= 3 and parts[:2] == ["api", "tenants"]:
+                    actor = self._actor(query=query)
+                    tenant_id = parts[2]
+                    if len(parts) == 3:
+                        return self._send(200, platform.tenants.summary(
+                            tenant_id, actor))
+                    if parts[3:] == ["workspaces"]:
+                        return self._send(200, platform.tenants.workspaces(
+                            tenant_id, actor))
+                    if parts[3:] == ["members"]:
+                        return self._send(200, platform.tenants.members(
+                            tenant_id, actor))
+                    raise ValidationError(f"no route for {self.path}")
                 if parts == ["api", "scheduler"]:
                     scheduler = platform.scheduler
                     return self._send(200, scheduler.status() if scheduler
@@ -664,8 +687,22 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
                         self.headers.get("Authorization") or "")
                     if parts[2:3] == ["Users"]:
                         if len(parts) == 3:
-                            return self._send(200, platform.scim.users())
+                            return self._send(200, platform.scim.users(
+                                filter=query.get("filter"),
+                                start_index=self._query_int(query,
+                                                            "startIndex", 1),
+                                count=(self._query_int(query, "count", 100)
+                                       if "count" in query else None)))
                         return self._send(200, platform.scim.user(parts[3]))
+                    if parts[2:3] == ["Groups"]:
+                        if len(parts) == 3:
+                            return self._send(200, platform.scim.groups(
+                                filter=query.get("filter"),
+                                start_index=self._query_int(query,
+                                                            "startIndex", 1),
+                                count=(self._query_int(query, "count", 100)
+                                       if "count" in query else None)))
+                        return self._send(200, platform.scim.group(parts[3]))
                     raise ValidationError(f"no SCIM route for {self.path}")
                 if parts[:2] != ["api", "workspaces"]:
                     raise ValidationError(f"no route for {self.path}")
@@ -741,6 +778,19 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
         def _get_security(self, wid: str, rest: list[str], query: dict,
                           user: str) -> None:
             """Read the permission console's policy/evidence views."""
+            if rest == ["breakglass"]:
+                return self._send(200, platform.break_glass.list(wid, user))
+            if rest == ["mfa", "status"]:
+                return self._send(200, {
+                    "user": user,
+                    "enrolled": platform.mfa.enrolled(user),
+                })
+            if rest == ["identity", "oidc", "discovery"]:
+                platform.ctx.require(user, wid, "viewer")
+                return self._send(200, platform.identity.oidc.discover())
+            if rest == ["cache", "stats"]:
+                platform.ctx.require(user, wid, "viewer")
+                return self._send(200, platform.ctx.security.cache_stats())
             if rest == ["policies"]:
                 return self._send(200, platform.security.policies(wid, user))
             if len(rest) == 2 and rest[0] == "policies":
@@ -826,8 +876,12 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
                                         for row in rows])
             if rest == ["async", "tasks"]:
                 platform.ctx.require_action(user, wid, "security.read")
-                return self._send(200, {"tasks":
-                                        platform.async_tasks.list_tasks()})
+                rows = platform.async_tasks.list_tasks(wid)
+                status = str(query.get("status") or "")
+                if status:
+                    rows = [row for row in rows
+                            if row.get("status") == status]
+                return self._send(200, {"tasks": rows})
             if len(rest) == 2 and rest[0] == "webhooks":
                 hook = platform.webhooks.get_webhook(wid, rest[1],
                                                     actor=user)
@@ -1154,7 +1208,23 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
                         if len(parts) == 4:
                             return self._send(200, platform.scim.patch_user(
                                 parts[3], body))
+                    if parts[2:3] == ["Groups"]:
+                        if len(parts) == 3:
+                            return self._send(201,
+                                              platform.scim.create_group(body))
+                        if len(parts) == 4:
+                            return self._send(200, platform.scim.patch_group(
+                                parts[3], body))
                     raise ValidationError(f"no SCIM route for {self.path}")
+                if parts == ["api", "tenants"]:
+                    return self._send(201, platform.tenants.create(
+                        self._actor(body=body), body.get("name", "")))
+                if len(parts) == 4 and parts[:2] == ["api", "tenants"] \
+                        and parts[3] == "members":
+                    return self._send(201, platform.tenants.add_member(
+                        parts[2], self._actor(body=body),
+                        body.get("member") or body.get("user", ""),
+                        body.get("role", "viewer")))
                 if parts[:2] != ["api", "workspaces"]:
                     raise ValidationError(f"no route for {self.path}")
                 wid = parts[2] if len(parts) > 2 else None
@@ -1189,6 +1259,45 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
 
         def _post_security(self, wid: str, rest: list[str], body: dict,
                            user: str) -> None:
+            if rest == ["breakglass", "request"]:
+                return self._send(201, platform.break_glass.request(
+                    wid, user, str(body.get("reason") or ""),
+                    ticket=str(body.get("ticket") or ""),
+                    minutes=int(body.get("minutes") or 30),
+                    role=str(body.get("role") or "owner"),
+                    mfa_code=str(body.get("mfa_code") or "")))
+            if len(rest) == 3 and rest[:1] == ["breakglass"] \
+                    and rest[2] in ("approve", "revoke"):
+                if rest[2] == "approve":
+                    return self._send(200, platform.break_glass.approve(
+                        wid, rest[1], user,
+                        mfa_code=str(body.get("mfa_code") or "")))
+                return self._send(200, platform.break_glass.revoke(
+                    wid, rest[1], user))
+            if rest == ["mfa", "enroll"]:
+                target = str(body.get("user") or user)
+                if target != user:
+                    platform.ctx.require_action(user, wid, "security.manage")
+                return self._send(201, platform.mfa.enroll(target))
+            if rest == ["mfa", "verify"]:
+                code = str(body.get("code") or "")
+                return self._send(200, {
+                    "verified": platform.mfa.verify(user, code)})
+            if rest == ["mfa", "disable"]:
+                target = str(body.get("user") or user)
+                if target != user:
+                    platform.ctx.require_action(user, wid, "security.manage")
+                return self._send(200, platform.mfa.disable(target))
+            if rest == ["query"]:
+                return self._send(200, {
+                    "objects": platform.security.query_objects(
+                        wid, user, str(body.get("kind") or ""),
+                        filter=body.get("filter"),
+                        limit=body.get("limit", 200))})
+            if rest == ["cache", "clear"]:
+                platform.ctx.require_action(user, wid, "security.manage")
+                platform.ctx.security.invalidate_cache()
+                return self._send(200, {"cleared": True})
             if rest == ["authorize"]:
                 return self._send(200, platform.security.authorize(
                     wid, user, str(body.get("action") or ""),
@@ -1349,7 +1458,8 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
                 if rest == []:
                     return self._send(200, platform.workspaces.create(
                         body.get("name", ""), actor=user,
-                        description=body.get("description", "")))
+                        description=body.get("description", ""),
+                        tenant_id=body.get("tenant_id")))
                 raise ValidationError("no route")
             if rest == ["delete"]:
                 return self._send(200, platform.workspaces.delete(
@@ -1650,6 +1760,13 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
             try:
                 self._check_origin()
                 body = self._body()
+                if parts[:2] == ["scim", "v2"]:
+                    platform.scim.authenticate(
+                        self.headers.get("Authorization") or "")
+                    if parts[2:3] == ["Groups"] and len(parts) == 4:
+                        return self._send(200, platform.scim.replace_group(
+                            parts[3], body))
+                    raise ValidationError(f"no SCIM route for {self.path}")
                 if parts[:2] != ["api", "workspaces"] or len(parts) < 3:
                     raise ValidationError(f"no route for {self.path}")
                 wid = parts[2]
@@ -1695,13 +1812,21 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
             try:
                 self._check_origin()
                 body = self._body()
+                if parts[:2] == ["scim", "v2"]:
+                    platform.scim.authenticate(
+                        self.headers.get("Authorization") or "")
+                    if parts[2:3] == ["Users"] and len(parts) == 4:
+                        return self._send(200, platform.scim.patch_user(
+                            parts[3], body))
+                    if parts[2:3] == ["Groups"] and len(parts) == 4:
+                        return self._send(200, platform.scim.patch_group(
+                            parts[3], body))
+                    raise ValidationError(f"no SCIM route for {self.path}")
                 if parts[:2] != ["api", "workspaces"] or len(parts) < 3:
                     raise ValidationError(f"no route for {self.path}")
                 wid = parts[2]
                 rest = parts[3:]
                 return self._patch(wid, rest, query, body)
-            except PlatformError as exc:
-                return self._error(exc)
             except (KeyError, json.JSONDecodeError) as exc:
                 return self._error(ValidationError(f"invalid request body: {exc}"))
             except Exception as exc:  # pragma: no cover

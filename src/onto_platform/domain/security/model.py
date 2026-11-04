@@ -49,6 +49,55 @@ def policy_hash(document: Mapping[str, Any]) -> str:
     return sha256(_canonical(document).encode("utf-8")).hexdigest()
 
 
+def policy_risk_tier(document: Mapping[str, Any]) -> str:
+    """Deterministic risk tier for an approval workflow.
+
+    High: wildcard actions, owner-level security grants, or a tenant-wide
+    scope that is not narrowed to a workspace.  Medium: many actions, field
+    masks, or a role graph change.  Low: everything else.  An explicit
+    ``approval.riskTier``/``metadata.riskTier`` always wins; the tier only
+    changes the required approver count when ``approval.useRiskTiers`` is on,
+    so existing one-approver policies keep their documented behaviour.
+    """
+    if not isinstance(document, Mapping):
+        return "high"
+    approval = document.get("approval") or {}
+    explicit = str(approval.get("riskTier")
+                   or (document.get("metadata") or {}).get("riskTier")
+                   or "").strip().lower()
+    if explicit in ("low", "medium", "high"):
+        return explicit
+    actions = document.get("actionPolicies") or []
+    high = False
+    medium = False
+    if len(actions) > 8:
+        medium = True
+    for rule in actions:
+        if not isinstance(rule, Mapping):
+            high = True
+            continue
+        action = str(rule.get("action") or "")
+        roles = [str(role) for role in (rule.get("allowRoles") or [])]
+        if action in ("*", "security.publish", "security.manage") \
+                or "owner" in roles:
+            high = True
+        if rule.get("fieldMasks"):
+            medium = True
+    tenant = document.get("tenant") or {}
+    boundary = str(tenant.get("boundary") or "workspace")
+    if boundary == "tenant":
+        high = True
+    if document.get("fieldPolicies"):
+        medium = True
+    if document.get("roles") and len(document["roles"]) > 3:
+        medium = True
+    if high:
+        return "high"
+    if medium:
+        return "medium"
+    return "low"
+
+
 @dataclass(slots=True)
 class Principal:
     """An authenticated actor.
@@ -393,6 +442,8 @@ class Group:
     workspace_id: str
     members: tuple[str, ...] = ()
     created_at: str = ""
+    external_id: str = ""
+    updated_at: str = ""
 
     def to_dict(self) -> dict:
         return {
@@ -402,6 +453,8 @@ class Group:
             "workspace_id": self.workspace_id,
             "members": list(self.members),
             "created_at": self.created_at,
+            "external_id": self.external_id,
+            "updated_at": self.updated_at,
         }
 
     @classmethod
@@ -413,6 +466,8 @@ class Group:
             workspace_id=str(data.get("workspace_id", "")),
             members=tuple(str(m) for m in data.get("members") or ()),
             created_at=str(data.get("created_at", "")),
+            external_id=str(data.get("external_id", "")),
+            updated_at=str(data.get("updated_at", "")),
         )
 
 
@@ -500,10 +555,25 @@ class PolicyRecord:
             value = int(raw)
         except (TypeError, ValueError):
             value = 1
+        if approval.get("useRiskTiers"):
+            tier = str(approval.get("riskTier") or "").strip().lower() \
+                or policy_risk_tier(self.document)
+            value = max(value, {"low": 1, "medium": 2, "high": 3}.get(tier, 1))
         return max(1, min(value, 10))
 
+    @property
+    def risk_tier(self) -> str:
+        approval = (self.document.get("approval") or {})
+        explicit = str(approval.get("riskTier")
+                       or (self.document.get("metadata") or {}).get(
+                           "riskTier") or "").strip().lower()
+        if explicit in ("low", "medium", "high"):
+            return explicit
+        return policy_risk_tier(self.document)
+
     def approval_progress(self) -> dict:
-        actors = [str(item.get("actor") or "") for item in self.approvals]
+        actors = [str(item.get("approver") or item.get("actor") or "")
+                  for item in self.approvals]
         distinct = list(dict.fromkeys(actor for actor in actors if actor))
         required = self.required_approvals
         return {
@@ -512,6 +582,7 @@ class PolicyRecord:
             "remaining": max(0, required - len(distinct)),
             "approvers": distinct,
             "satisfied": len(distinct) >= required,
+            "riskTier": self.risk_tier,
         }
 
     def to_dict(self) -> dict:

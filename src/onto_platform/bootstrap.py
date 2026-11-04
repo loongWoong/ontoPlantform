@@ -96,15 +96,18 @@ from .application.security import SecurityService, SecurityUseCases
 from .application.security import context as auth_context
 from .application.security import (
     AsyncTaskService,
+    BreakGlassService,
     ExportService,
     IdentityDirectory,
     IdentityService,
     LDAPAuthenticator,
+    MFAService,
     OIDCVerifier,
     OrganizationService,
     PolicyDraftService,
     SCIMService,
     SessionIssuer,
+    TenantService,
     WebhookService,
 )
 from .application.smartui.builtin import build_default_host
@@ -199,6 +202,9 @@ class Platform:
     webhooks: "WebhookService | None" = None
     policy_drafts: "PolicyDraftService | None" = None
     async_tasks: "AsyncTaskService | None" = None
+    tenants: "TenantService | None" = None
+    mfa: "MFAService | None" = None
+    break_glass: "BreakGlassService | None" = None
 
     def start_scheduler(self, poll_seconds: float = 1.0) -> Scheduler:
         if self.scheduler is None:
@@ -214,6 +220,10 @@ class Platform:
                                  self._evaluate_objectives)
             self.scheduler.every("controller.cycle", 60.0,
                                  self._controller_tick)
+        # A durable queue is rebuilt before the timer thread starts so a
+        # process restart never loses a deferred user action.
+        if self.async_tasks is not None:
+            self.async_tasks.restore()
         self.scheduler.start(poll_seconds=poll_seconds)
         return self.scheduler
 
@@ -459,6 +469,8 @@ def build_platform(config: PlatformConfig | None = None) -> Platform:
         platform_admins=ctx.platform_admins,
     )
     ctx.security = security_service
+    tenant_service = TenantService(ctx, security_service)
+    ctx.tenants = tenant_service
     publisher = SchemaPublisher(ctx)
     platform = Platform(
         config=config,
@@ -483,6 +495,7 @@ def build_platform(config: PlatformConfig | None = None) -> Platform:
         history=StateHistory(ctx),
         objectives=ObjectiveUseCases(ctx),
         smartui=build_default_host(),
+        tenants=tenant_service,
     )
     platform.dispatcher.subscribe("todo.opened", _notification_handler(ctx))
     platform.dispatcher.subscribe("application.objective_breached",
@@ -496,11 +509,16 @@ def build_platform(config: PlatformConfig | None = None) -> Platform:
     platform.identity = IdentityService(
         platform.identity_directory, OIDCVerifier(), SessionIssuer(),
         LDAPAuthenticator())
+    platform.mfa = MFAService(repo)
+    platform.break_glass = BreakGlassService(ctx, security_service, platform.mfa)
     platform.scim = SCIMService(
         platform.identity_directory,
         bearer_token=os.environ.get("ONTO_SCIM_BEARER_TOKEN", ""),
         allow_anonymous=(
             os.environ.get("ONTO_SCIM_ALLOW_ANONYMOUS", "") == "1"),
+        group_api=platform.security,
+        workspace_id=os.environ.get("ONTO_SCIM_WORKSPACE_ID") or None,
+        actor=os.environ.get("ONTO_SCIM_ACTOR") or "admin",
     )
     platform.exports = ExportService(ctx, platform.security)
     platform.webhooks = WebhookService(ctx, platform.security,

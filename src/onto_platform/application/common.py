@@ -93,6 +93,8 @@ class ApplicationContext:
     #: platform-level read-only auditors (2.4): may read every workspace,
     #: never write one
     platform_admins: frozenset[str] = frozenset()
+    #: tenant aggregation service; attached by the composition root
+    tenants: object | None = None
     #: unified authorization kernel (PIP/PAP/PDP/PEP).  ``None`` keeps the
     #: legacy membership-only path for isolated unit tests; the composition
     #: root always installs one.
@@ -177,6 +179,18 @@ class ApplicationContext:
                               if decision_id else {})},
             }
         )
+        # Decisions are cached for a short TTL; a membership/tenant/identity
+        # change must not keep serving the previous ALLOW.  SecurityService
+        # also invalidates from its own audit path, but this catches writes
+        # that go through the generic application context.
+        if str(action).startswith(("security.", "tenant.", "organization.",
+                                   "identity.", "workspace.add_member",
+                                   "workspace.remove_member",
+                                   "workspace.delete")):
+            security = getattr(self, "security", None)
+            invalidate = getattr(security, "invalidate_cache", None)
+            if callable(invalidate):
+                invalidate()
 
     # ---- repository helpers ----
 

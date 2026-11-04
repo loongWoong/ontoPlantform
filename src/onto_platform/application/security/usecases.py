@@ -188,7 +188,34 @@ class SecurityUseCases:
             raise ValidationError("group members must be a list")
         return self.service.create_group(
             workspace_id, actor, str(body.get("name") or ""),
-            [str(member) for member in members])
+            [str(member) for member in members],
+            external_id=str(body.get("external_id")
+                            or body.get("externalId") or ""))
+
+    def list_groups(self, workspace_id: str) -> list[dict]:
+        """Directory adapter for SCIM (the caller is already authenticated)."""
+        return self.service.list_groups(workspace_id)
+
+    def get_group(self, workspace_id: str, actor: str,
+                  group_id: str) -> dict:
+        self._ctx.require_action(actor, workspace_id, "security.read")
+        row = self.service._control_get("security_group", workspace_id,
+                                        group_id)
+        if row is None:
+            from ...errors import NotFoundError
+
+            raise NotFoundError(f"group not found: {group_id!r}")
+        return dict(row)
+
+    def set_group_members(self, workspace_id: str, actor: str, group_id: str,
+                          members: list[str]) -> dict:
+        """SCIM ``PUT``/``PATCH`` member replacement, one audit event."""
+        self._ctx.require_action(actor, workspace_id, "security.manage")
+        if not isinstance(members, list):
+            raise ValidationError("group members must be a list")
+        return self.service.update_group(
+            workspace_id, actor, group_id,
+            members=[str(member) for member in members])
 
     def update_group(self, workspace_id: str, actor: str, group_id: str,
                      body: dict) -> dict:
@@ -200,7 +227,10 @@ class SecurityUseCases:
             workspace_id, actor, group_id,
             name=body.get("name"),
             members=None if members is None
-            else [str(member) for member in members])
+            else [str(member) for member in members],
+            external_id=(str(body["external_id"])
+                         if body.get("external_id") is not None
+                         else None))
 
     def delete_group(self, workspace_id: str, actor: str,
                      group_id: str) -> dict:
@@ -335,6 +365,34 @@ class SecurityUseCases:
             out["properties"] = out_props
             kept.append(out)
         return kept
+
+    def query_objects(self, workspace_id: str, actor: str, kind: str, *,
+                      filter: dict | None = None,
+                      limit: int | None = 200) -> list[dict]:
+        """Authorized object query whose row predicate is pushed to storage.
+
+        Unlike :meth:`filter_objects`, this never loads the whole workspace
+        into memory: the PDP scope and the caller's filter are compiled into a
+        parameterized SQL predicate when the store supports it.
+        """
+        self._ctx.require_action(actor, workspace_id, "workspace.read")
+        if not str(kind or "").strip():
+            raise ValidationError("object kind must not be empty")
+        # Business data is readable with workspace.read; control-plane facts
+        # (policy, decisions, memberships, MFA/break-glass rows) need the
+        # security permission so this generic query cannot become a bypass.
+        control_kinds = {
+            "workspace", "membership", "tenant", "tenant_membership",
+            "llm_config", "security_policy", "role_binding",
+            "security_group", "relation_tuple", "authorization_decision",
+            "audit", "event", "org_unit", "identity_user", "webhook",
+            "scheduler_task", "async_task", "break_glass", "mfa_enrollment",
+        }
+        if str(kind) in control_kinds:
+            self._ctx.require_action(actor, workspace_id, "security.read")
+        return self._ctx.repo.query(
+            str(kind), workspace_id, filter=filter,
+            limit=None if limit is None else max(0, int(limit)))
 
 
 __all__ = ["SecurityUseCases"]

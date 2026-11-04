@@ -28,16 +28,20 @@ from .identity import (
 from .async_tasks import AsyncTaskService
 from .distribution import ExportService, WebhookService
 from .draft import PolicyDraftService
+from .tenancy import TenantService
+from .emergency import BreakGlassService, MFAService
 
 __all__ = [
     "AsyncTaskService",
     "AuthorizedScope",
+    "BreakGlassService",
     "ExportService",
     "FieldMasker",
     "IdentityDirectory",
     "IdentityService",
     "LDAPAuthenticator",
     "MASKERS",
+    "MFAService",
     "OIDCVerifier",
     "OrganizationService",
     "PolicyEvaluator",
@@ -47,6 +51,7 @@ __all__ = [
     "SecurityService",
     "SecurityUseCases",
     "SessionIssuer",
+    "TenantService",
     "WebhookService",
     "apply_field_masks",
     "default_policy_document",

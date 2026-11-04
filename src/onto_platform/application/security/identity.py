@@ -26,6 +26,7 @@ import hmac
 import importlib
 import json
 import os
+import re
 import time
 from datetime import datetime, timezone
 from typing import Any, Callable, Iterable, Mapping, Sequence
@@ -393,11 +394,15 @@ class SCIMService:
 
     # ---- users --------------------------------------------------------
 
-    def users(self, *, authorization: str | None = None) -> dict:
+    def users(self, *, filter: str | None = None, start_index: int = 1,
+              count: int | None = None,
+              authorization: str | None = None) -> dict:
         self._guard(authorization)
         resources = [self._user_resource(user)
                      for user in self.directory.list_users()]
-        return self._list_response(resources)
+        resources = _filter_scim_resources(resources, filter)
+        return self._list_response(resources, start_index=start_index,
+                                   count=count)
 
     def user(self, user_id: str, *, authorization: str | None = None) -> dict:
         self._guard(authorization)
@@ -429,36 +434,118 @@ class SCIMService:
         return {"id": user["id"], "active": False, "deleted": True,
                 "userName": user["user_name"]}
 
-    # ---- groups (mapped; optional) ------------------------------------
+    # ---- groups (RFC 7644 core subset: CRUD, filter, pagination) ------
 
-    def groups(self, *, authorization: str | None = None) -> dict:
+    def groups(self, *, filter: str | None = None, start_index: int = 1,
+               count: int | None = None,
+               authorization: str | None = None) -> dict:
         self._guard(authorization)
         resources = [self._group_resource(row) for row in self._group_rows()]
-        return self._list_response(resources)
+        resources = _filter_scim_resources(resources, filter)
+        return self._list_response(resources, start_index=start_index,
+                                   count=count)
 
-    def create_group(self, name: str, members: Iterable[str] = (), *,
-                     authorization: str | None = None) -> dict:
+    def group(self, group_id: str, *,
+              authorization: str | None = None) -> dict:
+        self._guard(authorization)
+        return self._group_resource(self._find_group(group_id))
+
+    def create_group(self, name: Any, members: Iterable[str] = (), *,
+                     authorization: str | None = None,
+                     external_id: str = "") -> dict:
+        """Create a group from a SCIM payload or ``(name, members)``."""
         self._guard(authorization)
         creator = getattr(self._group_api, "create_group", None)
         if not callable(creator) or not self._workspace_id:
             raise ValidationError(
                 "SCIM group management requires a group_api")
-        row = creator(self._workspace_id, self._actor,
-                      _text(name, "SCIM group displayName"),
-                      [str(member) for member in members])
+        if isinstance(name, Mapping):
+            fields = self._group_fields(name)
+            display_name = fields.get("displayName") or fields.get("name")
+            if not display_name:
+                raise ValidationError("SCIM group requires displayName")
+            members = fields.get("members") or []
+            external_id = fields.get("externalId") or ""
+        else:
+            display_name = _text(name, "SCIM group displayName")
+        row = self._create_group_via_api(
+            str(display_name), [str(member) for member in members],
+            str(external_id or ""))
         return self._group_resource(row)
+
+    def _create_group_via_api(self, name: str, members: list[str],
+                              external_id: str) -> dict:
+        creator = getattr(self._group_api, "create_group", None)
+        payload = {"name": name, "members": members,
+                   "external_id": external_id}
+        try:
+            return creator(self._workspace_id, self._actor, payload)
+        except TypeError:
+            # Adapter written for the pre-payload service signature.
+            return creator(self._workspace_id, self._actor, name, members)
+
+    def replace_group(self, group_id: str, payload: Mapping[str, Any], *,
+                      authorization: str | None = None) -> dict:
+        self._guard(authorization)
+        self._find_group(group_id)
+        api = self._group_api
+        updater = getattr(api, "update_group", None)
+        if not callable(updater) or not self._workspace_id:
+            raise ValidationError(
+                "SCIM group management requires a group_api")
+        fields = self._group_fields(payload)
+        display_name = fields.get("displayName") or fields.get("name")
+        if not display_name:
+            raise ValidationError("SCIM group requires displayName")
+        members = [str(member) for member in fields.get("members") or []]
+        row = updater(self._workspace_id, self._actor, group_id, {
+            "name": display_name,
+            "members": members,
+            "external_id": fields.get("externalId") or "",
+        })
+        return self._group_resource(row)
+
+    def delete_group(self, group_id: str, *,
+                     authorization: str | None = None) -> dict:
+        self._guard(authorization)
+        self._find_group(group_id)
+        deleter = getattr(self._group_api, "delete_group", None)
+        if not callable(deleter) or not self._workspace_id:
+            raise ValidationError(
+                "SCIM group management requires a group_api")
+        deleter(self._workspace_id, self._actor, group_id)
+        return {"id": group_id, "deleted": True}
 
     def patch_group(self, group_id: str, payload: Mapping[str, Any], *,
                     authorization: str | None = None) -> dict:
         self._guard(authorization)
         changes = self._group_patch_changes(payload)
-        self._find_group(group_id)  # NotFoundError maps to 404 at the edge
+        current = self._find_group(group_id)
         api = self._group_api
         if api is None or not self._workspace_id:
             raise ValidationError(
                 "SCIM group management requires a group_api")
         if "members" in changes:
-            setter = getattr(api, "set_members", None)
+            # RFC 7644 ``add`` is additive; ``replace``/``remove`` overwrite.
+            added: list[str] = []
+            for operation in (payload.get("Operations")
+                              or payload.get("operations") or []):
+                if not isinstance(operation, Mapping):
+                    continue
+                if str(operation.get("op") or "").lower() != "add":
+                    continue
+                path = str(operation.get("path") or "").strip().lower()
+                if path not in ("members", ""):
+                    continue
+                added.extend(str(member)
+                             for member in normalize_groups(
+                                 operation.get("value") or []))
+            if added:
+                existing = [str(member)
+                            for member in (current.get("members") or [])]
+                changes["members"] = list(dict.fromkeys(existing + added))
+            setter = (getattr(api, "set_group_members", None)
+                      or getattr(api, "set_members", None))
             if callable(setter):
                 setter(self._workspace_id, self._actor, group_id,
                        changes["members"])
@@ -471,7 +558,7 @@ class SCIMService:
                 raise ValidationError(
                     "the configured group_api cannot rename groups")
             updater(self._workspace_id, self._actor, group_id,
-                    name=str(changes["displayname"] or ""))
+                    {"name": str(changes["displayname"] or "")})
         return self._group_resource(self._find_group(group_id))
 
     def _group_patch_changes(self, payload: Mapping[str, Any]) -> dict:
@@ -491,13 +578,19 @@ class SCIMService:
 
     # ---- SCIM mapping -------------------------------------------------
 
-    def _list_response(self, resources: list[dict]) -> dict:
+    def _list_response(self, resources: list[dict], *, start_index: int = 1,
+                       count: int | None = None) -> dict:
+        total = len(resources)
+        start = max(1, int(start_index or 1))
+        page = resources[start - 1:]
+        if count is not None:
+            page = page[:max(0, int(count))]
         return {
             "schemas": [SCIM_LIST_SCHEMA],
-            "totalResults": len(resources),
-            "Resources": resources,
-            "itemsPerPage": len(resources),
-            "startIndex": 1,
+            "totalResults": total,
+            "Resources": page,
+            "itemsPerPage": len(page),
+            "startIndex": start,
         }
 
     def _user_resource(self, user: Mapping[str, Any]) -> dict:
@@ -531,6 +624,8 @@ class SCIMService:
         return {
             "schemas": [SCIM_GROUP_SCHEMA],
             "id": str(row.get("id") or ""),
+            "externalId": str(row.get("external_id")
+                              or row.get("externalId") or ""),
             "displayName": str(row.get("name") or row.get("displayName") or ""),
             "members": [
                 {"value": str(member), "display": str(member)}
@@ -539,8 +634,37 @@ class SCIMService:
             "meta": {
                 "resourceType": "Group",
                 "created": str(row.get("created_at") or ""),
+                "lastModified": str(row.get("updated_at")
+                                    or row.get("created_at") or ""),
+                "location": f"/scim/v2/Groups/{row.get('id') or ''}",
             },
         }
+
+    def _group_fields(self, payload: Mapping[str, Any]) -> dict:
+        if not isinstance(payload, Mapping):
+            raise ValidationError("SCIM group payload must be an object")
+        fields: dict[str, Any] = {}
+        for key in ("displayName", "display_name", "name"):
+            if payload.get(key) is not None:
+                fields["displayName"] = _text(payload[key],
+                                              "SCIM group displayName")
+                break
+        if payload.get("externalId") is not None:
+            fields["externalId"] = str(payload["externalId"])
+        members = payload.get("members")
+        if members is not None:
+            if not isinstance(members, list):
+                raise ValidationError("SCIM group members must be a list")
+            values: list[str] = []
+            for item in members:
+                if isinstance(item, Mapping):
+                    value = item.get("value")
+                else:
+                    value = item
+                if value is not None and str(value).strip():
+                    values.append(str(value).strip())
+            fields["members"] = normalize_groups(values)
+        return fields
 
     def _user_fields(self, payload: Mapping[str, Any]) -> dict:
         """Translate a SCIM user payload into directory kwargs."""
@@ -656,7 +780,6 @@ class SCIMService:
         if not callable(lister) or not self._workspace_id:
             return []
         return list(lister(self._workspace_id) or [])
-
     def _find_group(self, group_id: str) -> dict:
         target = str(group_id or "").strip()
         for row in self._group_rows():
@@ -665,8 +788,90 @@ class SCIMService:
         raise NotFoundError(f"SCIM group not found: {group_id!r}")
 
 
+#: Supported SCIM filter operators.  RFC 7644 allows a large grammar; the
+#: core operators below cover the provisioning flows Entra/Okta emit.
+_SCIM_FILTER_RE = re.compile(
+    r'^\s*([A-Za-z][A-Za-z0-9_.]*)\s+'
+    r'(eq|ne|co|sw|pr)\s*(?:"([^"]*)"|([^\s]+))?\s*$', re.IGNORECASE)
+
+
+def _filter_scim_resources(resources: list[dict],
+                           expression: str | None) -> list[dict]:
+    """Apply the common ``attr eq "value"``/``and``/``or`` SCIM filters.
+
+    Only allow-listed operators and top-level attributes are parsed; anything
+    unrecognized raises ``ValidationError`` (400) instead of silently returning
+    the unfiltered page, which would leak other directory entries.
+    """
+    text = str(expression or "").strip()
+    if not text:
+        return resources
+    parts = re.split(r"\s+(and|or)\s+", text, flags=re.IGNORECASE)
+    terms: list[tuple[str, str, str]] = []
+    joiner = "and"
+    index = 0
+    while index < len(parts):
+        if index:
+            joiner = parts[index].lower()
+            index += 1
+        match = _SCIM_FILTER_RE.match(parts[index])
+        if not match:
+            raise ValidationError(f"unsupported SCIM filter {text!r}")
+        field, op, quoted, bare = match.groups()
+        terms.append((field.casefold(), op.casefold(),
+                      quoted if quoted is not None else (bare or "")))
+        index += 1
+
+    def matches(resource: Mapping[str, Any]) -> bool:
+        results: list[bool] = []
+        for field, op, expected in terms:
+            actual = resource
+            for component in field.split("."):
+                if component == "members":
+                    actual = [item.get("value")
+                              for item in (actual.get("members") or [])]
+                    break
+                if isinstance(actual, Mapping):
+                    if component in actual:
+                        actual = actual.get(component)
+                    else:
+                        # Attribute names are case-insensitive in SCIM.
+                        folded = {str(key).casefold(): value
+                                  for key, value in actual.items()}
+                        actual = folded.get(component.casefold())
+                else:
+                    actual = None
+                    break
+            if isinstance(actual, list):
+                values = [str(item) for item in actual]
+            elif actual is None:
+                values = []
+            else:
+                values = [str(actual)]
+            if op == "pr":
+                results.append(bool(values))
+            elif op == "eq":
+                results.append(expected in values)
+            elif op == "ne":
+                results.append(expected not in values)
+            elif op == "co":
+                results.append(any(expected in value for value in values))
+            elif op == "sw":
+                results.append(any(value.startswith(expected)
+                                   for value in values))
+            else:  # pragma: no cover - regex limits operators
+                results.append(False)
+        if not results:
+            return True
+        if joiner == "or":
+            return any(results)
+        return all(results)
+
+    return [resource for resource in resources if matches(resource)]
+
+
 # ---------------------------------------------------------------------------
-# OIDC (HS256)
+# OIDC (HS256 / RS256, discovery + JWKS rotation)
 # ---------------------------------------------------------------------------
 
 
@@ -690,15 +895,126 @@ def _json_segment(segment: Any, label: str) -> dict:
     return value
 
 
+def _b64url_uint(segment: Any) -> int:
+    raw = _b64url_decode(segment, "JWK parameter")
+    return int.from_bytes(raw, "big")
+
+
+def _rsa_sha256_verify(jwk: Mapping[str, Any], signature: bytes,
+                       message: bytes) -> bool:
+    """RSASSA-PKCS1-v1_5/SHA-256 verification from ``n``/``e``."""
+    if str(jwk.get("kty") or "") != "RSA":
+        raise AccessDeniedError("OIDC signing key is not RSA")
+    if str(jwk.get("alg") or "RS256") != "RS256":
+        raise AccessDeniedError("OIDC signing key does not allow RS256")
+    modulus = _b64url_uint(jwk.get("n"))
+    exponent = _b64url_uint(jwk.get("e"))
+    size = (modulus.bit_length() + 7) // 8
+    if len(signature) != size:
+        return False
+    value = int.from_bytes(signature, "big")
+    if value >= modulus:
+        return False
+    encoded = pow(value, exponent, modulus).to_bytes(size, "big")
+    digest = hashlib.sha256(message).digest()
+    # DER prefix for DigestInfo(SHA-256) followed by the 32-byte digest.
+    digest_info = bytes.fromhex(
+        "3031300d060960864801650304020105000420") + digest
+    padding = size - len(digest_info) - 3
+    if padding < 8:
+        return False
+    expected = b"\x00\x01" + b"\xff" * padding + b"\x00" + digest_info
+    return hmac.compare_digest(encoded, expected)
+
+
+class JWKSCache:
+    """TTL cache for a JWKS document with forced refresh on an unknown kid."""
+
+    def __init__(self, *, fetcher: Callable[[str], dict],
+                 ttl_seconds: int = 300,
+                 clock: Callable[[], float] | None = None) -> None:
+        self._fetcher = fetcher
+        self._ttl = max(1, int(ttl_seconds))
+        self._clock = clock or time.time
+        self._entries: dict[str, tuple[float, dict]] = {}
+
+    def _load(self, uri: str) -> dict:
+        document = self._fetcher(uri)
+        if not isinstance(document, dict) or not isinstance(
+                document.get("keys"), list):
+            raise AccessDeniedError("OIDC JWKS document is malformed")
+        self._entries[uri] = (float(self._clock()), document)
+        return document
+
+    def document(self, uri: str, *, force: bool = False) -> dict:
+        cached = self._entries.get(uri)
+        if force or cached is None or \
+                float(self._clock()) - cached[0] >= self._ttl:
+            return self._load(uri)
+        return cached[1]
+
+    def key(self, uri: str, kid: str | None = None, *,
+            force: bool = False) -> dict:
+        document = self.document(uri, force=force)
+        if kid:
+            for candidate in document["keys"]:
+                if str(candidate.get("kid") or "") == kid:
+                    return dict(candidate)
+            # Key rotation: one bounded refetch before failing closed.
+            if not force:
+                return self.key(uri, kid, force=True)
+            raise AccessDeniedError(f"OIDC signing key {kid!r} was not found")
+        keys = [key for key in document["keys"]
+                if str(key.get("kty") or "") == "RSA"]
+        if not keys:
+            raise AccessDeniedError("OIDC JWKS has no RSA signing key")
+        return dict(keys[0])
+
+
+def _fetch_json_url(url: str) -> dict:
+    """Fetch a JSON document with a bounded size and timeout (stdlib only)."""
+    import urllib.request
+
+    request = urllib.request.Request(
+        str(url), headers={"Accept": "application/json"})
+    try:
+        with urllib.request.urlopen(request, timeout=5) as response:
+            body = response.read(1024 * 1024 + 1)
+    except Exception as exc:
+        raise AccessDeniedError(
+            f"OIDC discovery request failed: {exc}") from exc
+    if len(body) > 1024 * 1024:
+        raise AccessDeniedError("OIDC discovery response is too large")
+    try:
+        value = json.loads(body.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise AccessDeniedError("OIDC discovery response is not JSON") from exc
+    if not isinstance(value, dict):
+        raise AccessDeniedError("OIDC discovery response must be an object")
+    return value
+
+
 class OIDCVerifier:
-    """Verify HS256 ID tokens with a shared secret (RFC 7519 subset)."""
+    """Verify OIDC ID tokens: HS256 shared secret or RS256 via discovery/JWKS.
+
+    RS256 mode discovers ``issuer + /.well-known/openid-configuration`` (or an
+    explicit ``ONTO_OIDC_DISCOVERY_URL``), fetches the ``jwks_uri``, caches keys
+    for ``jwks_ttl_seconds`` and force-refreshes once on an unknown ``kid`` so a
+    rotated signing key is picked up without a restart.  No third-party
+    crypto dependency is used: PKCS#1 v1.5 RSA verification is implemented with
+    modular exponentiation and constant-time comparison.
+    """
 
     def __init__(self, *, secret: str | None = None,
                  issuer: str | None = None,
                  audience: str | None = None,
                  clock_skew: int | None = None,
                  environ: Mapping[str, str] | None = None,
-                 clock: Callable[[], float] | None = None) -> None:
+                 clock: Callable[[], float] | None = None,
+                 discovery_url: str | None = None,
+                 jwks_uri: str | None = None,
+                 fetcher: Callable[[str], dict] | None = None,
+                 jwks_ttl_seconds: int = 300) -> None:
         env = os.environ if environ is None else environ
         self.secret = (str(secret) if secret is not None
                        else str(env.get("ONTO_OIDC_HS256_SECRET") or ""))
@@ -716,28 +1032,104 @@ class OIDCVerifier:
                 "ONTO_OIDC_CLOCK_SKEW must be an integer number of seconds"
             ) from exc
         self._clock = clock or time.time
+        self.discovery_url = (str(discovery_url) if discovery_url is not None
+                              else str(env.get("ONTO_OIDC_DISCOVERY_URL") or ""))
+        self._configured_jwks_uri = (str(jwks_uri) if jwks_uri is not None
+                                     else str(env.get("ONTO_OIDC_JWKS_URI")
+                                              or ""))
+        self._discovery: dict | None = None
+        self._jwks_cache = JWKSCache(
+            fetcher=fetcher or _fetch_json_url,
+            ttl_seconds=max(1, int(jwks_ttl_seconds)),
+            clock=self._clock)
+
+    # ---- discovery ----------------------------------------------------
+
+    def discovery_document(self) -> dict:
+        if self._discovery is not None:
+            return self._discovery
+        url = self.discovery_url
+        if not url and self.issuer:
+            url = self.issuer.rstrip("/") + "/.well-known/openid-configuration"
+        if not url:
+            raise AccessDeniedError(
+                "OIDC discovery is not configured (ONTO_OIDC_DISCOVERY_URL)")
+        document = _fetch_json_url(url)
+        discovered_issuer = str(document.get("issuer") or "")
+        if self.issuer and discovered_issuer and discovered_issuer != self.issuer:
+            raise AccessDeniedError(
+                "OIDC discovery issuer does not match ONTO_OIDC_ISSUER")
+        if not document.get("jwks_uri"):
+            raise AccessDeniedError("OIDC discovery has no jwks_uri")
+        self._discovery = document
+        return document
+
+    def jwks_uri(self) -> str:
+        if self._configured_jwks_uri:
+            return self._configured_jwks_uri
+        return str(self.discovery_document()["jwks_uri"])
+
+    def key_for(self, kid: str | None, *, force: bool = False) -> dict:
+        uri = self.jwks_uri()
+        return self._jwks_cache.key(uri, kid=kid, force=force)
+
+    def discover(self) -> dict:
+        """Public snapshot for the console/ops endpoint."""
+        try:
+            document = self.discovery_document()
+        except Exception as exc:
+            return {"configured": False, "error": str(exc)}
+        return {
+            "configured": True,
+            "issuer": document.get("issuer"),
+            "jwks_uri": document.get("jwks_uri"),
+            "authorization_endpoint": document.get("authorization_endpoint"),
+            "token_endpoint": document.get("token_endpoint"),
+        }
+
+    # ---- token verification ------------------------------------------
 
     def verify(self, id_token: str) -> dict:
         """Return the validated claims or raise ``AccessDeniedError``."""
-        if not self.secret:
+        if not self.secret and not (self.discovery_url
+                                    or self._configured_jwks_uri
+                                    or self.issuer):
             raise AccessDeniedError(
                 "OIDC verification is not configured "
-                "(ONTO_OIDC_HS256_SECRET)")
+                "(ONTO_OIDC_HS256_SECRET or ONTO_OIDC_DISCOVERY_URL)")
         parts = str(id_token or "").strip().split(".")
         if len(parts) != 3:
             raise AccessDeniedError("malformed id token")
         header = _json_segment(parts[0], "id token header")
-        if str(header.get("alg") or "") != "HS256":
+        algorithm = str(header.get("alg") or "")
+        signing_input = f"{parts[0]}.{parts[1]}".encode("ascii")
+        signature = _b64url_decode(parts[2], "id token signature")
+        if algorithm == "HS256":
+            if not self.secret:
+                raise AccessDeniedError(
+                    "OIDC verification is not configured "
+                    "(ONTO_OIDC_HS256_SECRET)")
+            expected = hmac.new(self.secret.encode("utf-8"), signing_input,
+                                hashlib.sha256).digest()
+            if not hmac.compare_digest(signature, expected):
+                raise AccessDeniedError("id token signature is invalid")
+        elif algorithm == "RS256":
+            kid = str(header.get("kid") or "") or None
+            jwk = self.key_for(kid)
+            try:
+                verified = _rsa_sha256_verify(jwk, signature, signing_input)
+            except (TypeError, ValueError, KeyError) as exc:
+                raise AccessDeniedError(
+                    "id token signing key is invalid") from exc
+            if not verified:
+                # A rotated key may use the same kid; one forced refresh is
+                # both bounded and sufficient (no request amplification).
+                jwk = self.key_for(kid, force=True)
+                if not _rsa_sha256_verify(jwk, signature, signing_input):
+                    raise AccessDeniedError("id token signature is invalid")
+        else:
             raise AccessDeniedError(
-                f"unsupported id token algorithm {header.get('alg')!r}")
-        expected = hmac.new(
-            self.secret.encode("utf-8"),
-            f"{parts[0]}.{parts[1]}".encode("ascii"),
-            hashlib.sha256,
-        ).digest()
-        if not hmac.compare_digest(_b64url_decode(parts[2], "id token signature"),
-                                   expected):
-            raise AccessDeniedError("id token signature is invalid")
+                f"unsupported id token algorithm {algorithm!r}")
         claims = _json_segment(parts[1], "id token payload")
         now = float(self._clock())
         expires = claims.get("exp")

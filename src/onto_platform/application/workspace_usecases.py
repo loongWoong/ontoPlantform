@@ -11,14 +11,16 @@ from .security import context as auth_context
 #: settings are workspace plumbing; controller state and the outbox log are
 #: derived/replayed infrastructure rather than definitions or business state.
 NON_CONTENT_KINDS = frozenset({
-    "workspace", "membership", "llm_config", "smartui_config",
+    "workspace", "membership", "tenant", "tenant_membership",
+    "llm_config", "smartui_config",
     "controller_state", "event", "authorization_decision",
 })
 
 #: A reset keeps the container, its people and its model configuration; every
 #: other document (definitions, data, releases, runs, events) is removed.
 RESET_PRESERVED_KINDS = frozenset({
-    "workspace", "membership", "llm_config", "smartui_config",
+    "workspace", "membership", "tenant_membership",
+    "llm_config", "smartui_config",
 })
 
 
@@ -38,16 +40,25 @@ class CreateWorkspace:
     def __init__(self, ctx: ApplicationContext) -> None:
         self._ctx = ctx
 
-    def __call__(self, name: str, actor: str, description: str = "") -> dict:
+    def __call__(self, name: str, actor: str, description: str = "",
+                 tenant_id: str | None = None) -> dict:
         if not name.strip():
             raise ValidationError("workspace name must not be empty")
-        # Creating a new tenant is a platform-level act: never inherit the
-        # previous workspace's decision/row scope from a reused worker thread.
+        # Creating a new workspace/tenant is a platform-level act: never
+        # inherit the previous workspace's decision/row scope.
         auth_context.clear()
         from .limits import check_workspace_quota
 
         check_workspace_quota(self._ctx.max_workspaces,
                               len(self._ctx.repo.list("workspace")))
+        selected_tenant = str(tenant_id or "").strip()
+        tenants = getattr(self._ctx, "tenants", None)
+        tenant_role = "owner"
+        if selected_tenant and tenants is not None:
+            # A tenant editor/owner may create additional workspaces in the
+            # tenant.  The tenant check is platform-scoped, so it cannot be
+            # widened by a workspace id supplied in the request body.
+            tenant_role = tenants.require(actor, selected_tenant, "editor")
         workspace = Workspace(
             id=self._ctx.id_factory(),
             name=name.strip(),
@@ -55,9 +66,7 @@ class CreateWorkspace:
             created_at=self._ctx.clock(),
             runtime_config=dict(self._ctx.default_runtime_config),
         )
-        # V0.1: one workspace is one tenant (design §4).  Write it explicitly so
-        # no later decision has to infer the boundary.
-        workspace.tenant_id = workspace.id
+        workspace.tenant_id = selected_tenant or workspace.id
         self._ctx.repo.put("workspace", None, workspace.id, workspace.to_dict())
         # the creator becomes the workspace owner (design.txt §29 Access)
         self._ctx.repo.put(
@@ -70,8 +79,29 @@ class CreateWorkspace:
                 "role": "owner",
             },
         )
+        raw = getattr(self._ctx.repo, "raw", self._ctx.repo)
+        # A workspace without an explicit tenant keeps the V0.1 compatibility
+        # boundary (tenant_id == workspace_id) without materialising a
+        # duplicate tenant_membership row; workspace membership is the grant.
+        if selected_tenant:
+            if raw.get("tenant", None, workspace.tenant_id) is None:
+                raw.put("tenant", None, workspace.tenant_id, {
+                    "id": workspace.tenant_id,
+                    "name": name.strip(),
+                    "workspace_id": "",
+                    "boundary": "tenant",
+                    "status": "active",
+                })
+            if raw.get("tenant_membership", workspace.tenant_id, actor) is None:
+                raw.put("tenant_membership", workspace.tenant_id, actor, {
+                    "tenant_id": workspace.tenant_id,
+                    "user": actor,
+                    "role": tenant_role,
+                    "created_at": workspace.created_at,
+                })
         self._ctx.audit_event(actor, workspace.id, "workspace.create", workspace.id,
-                              {"name": workspace.name})
+                              {"name": workspace.name,
+                               "tenant_id": workspace.tenant_id})
         return workspace.to_dict()
 
 
@@ -182,12 +212,17 @@ class ResetWorkspace:
         # Snapshot the preserved plumbing documents first: they live under the
         # workspace id and would otherwise be removed with everything else.
         preserved_members = self._ctx.repo.list("membership", workspace_id)
+        preserved_tenant_members = self._ctx.repo.list(
+            "tenant_membership", workspace_id)
         preserved_llm = self._ctx.repo.get("llm_config", workspace_id, "llm")
         removed_documents = 0
         with self._ctx.transaction():
             self._ctx.repo.delete_workspace_documents(workspace_id)
             for row in preserved_members:
                 self._ctx.repo.put("membership", workspace_id, row["user"], row)
+            for row in preserved_tenant_members:
+                self._ctx.repo.put("tenant_membership", workspace_id,
+                                   str(row.get("user") or row.get("id")), row)
             if preserved_llm is not None:
                 self._ctx.repo.put("llm_config", workspace_id, "llm",
                                    preserved_llm)

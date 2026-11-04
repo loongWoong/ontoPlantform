@@ -283,20 +283,25 @@ _SQL_OPS = {
 
 def compile_filter_sql(node: Mapping[str, Any], principal: Any, context: Any,
                        *, table_alias: str = "",
-                       columns: Mapping[str, str] | None = None) -> tuple[str, list]:
+                       columns: Mapping[str, str] | None = None,
+                       json_data_column: str | None = None) -> tuple[str, list]:
     """Compile a normalized filter into ``(sql, params)``.
 
     Identifiers are validated by ``normalize_filter`` and optionally mapped
-    through ``columns``; values are always parameters.  Callers must still run
-    the SQL inside the tenant-scoped repository session.
+    through ``columns``; values are always parameters.  Set
+    ``json_data_column`` to compile non-column fields as
+    ``json_extract(<column>, '$.field')`` (SQLite pushdown).  Callers must
+    still run the SQL inside the tenant-scoped repository session.
     """
     params: list = []
-    sql = _compile(node, principal, context, table_alias, columns, params)
+    sql = _compile(node, principal, context, table_alias, columns, params,
+                   json_data_column)
     return sql, params
 
 
 def _sql_identifier(name: str, table_alias: str,
-                    columns: Mapping[str, str] | None) -> str:
+                    columns: Mapping[str, str] | None,
+                    json_data_column: str | None = None) -> str:
     if columns is not None and name in columns:
         mapped = columns[name]
         if not _FIELD_RE.match(mapped):
@@ -304,25 +309,31 @@ def _sql_identifier(name: str, table_alias: str,
         return mapped
     if not _FIELD_RE.match(name):
         raise ValidationError(f"unsafe SQL field {name!r}")
+    if json_data_column:
+        if not _FIELD_RE.match(json_data_column):
+            raise ValidationError("unsafe JSON data column")
+        return f"json_extract({json_data_column}, '$.{name}')"
     return f"{table_alias}{name}" if table_alias else name
 
 
 def _compile(node: Mapping[str, Any], principal: Any, context: Any,
              table_alias: str, columns: Mapping[str, str] | None,
-             params: list) -> str:
+             params: list, json_data_column: str | None = None) -> str:
     if "all" in node:
         parts = [_compile(child, principal, context, table_alias, columns,
-                         params) for child in node["all"]]
+                          params, json_data_column) for child in node["all"]]
         return "(" + " AND ".join(parts) + ")"
     if "any" in node:
         parts = [_compile(child, principal, context, table_alias, columns,
-                         params) for child in node["any"]]
+                          params, json_data_column) for child in node["any"]]
         return "(" + " OR ".join(parts) + ")"
     if "not" in node:
         return "(NOT " + _compile(node["not"], principal, context,
-                                  table_alias, columns, params) + ")"
+                                  table_alias, columns, params,
+                                  json_data_column) + ")"
 
-    field = _sql_identifier(node["field"], table_alias, columns)
+    field = _sql_identifier(node["field"], table_alias, columns,
+                            json_data_column)
     value = node["value"] if "value" in node else _context_value(
         node["valueFrom"], principal, context, {})
     if value is MISSING:

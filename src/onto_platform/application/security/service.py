@@ -9,6 +9,9 @@ source of the built-in matrix until a workspace publishes a custom policy.
 
 from __future__ import annotations
 
+import hashlib
+import json
+import time
 from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -43,6 +46,7 @@ from ...errors import (
     ValidationError,
 )
 from .masking import FieldMasker, apply_field_masks, validate_mask_spec
+from .cache import DecisionCache
 from .pdp import PolicyEvaluator
 from . import context as auth_context
 from .policy import (
@@ -132,6 +136,8 @@ class SecurityService:
         self.clock = clock
         self.id_factory = id_factory
         self.platform_admins = frozenset(platform_admins)
+        self.cache = DecisionCache()
+        self._cache_epoch = 0
 
     # The PDP is allowed to inspect control-plane rows for the workspace it is
     # evaluating (memberships, bindings, groups, policy, org) even when the
@@ -168,6 +174,13 @@ class SecurityService:
     def _membership_roles(self, actor: str, workspace_id: str) -> list[str]:
         roles: list[str] = []
         for row in self._control_list("membership", workspace_id):
+            if row.get("user") == actor and row.get("role"):
+                roles.append(str(row["role"]))
+        # Tenant membership grants the same role in every workspace of the
+        # tenant.  The workspace row is the authority for the tenant id; a
+        # forged tenant membership in another tenant is never reached.
+        tenant = self.tenant_id(workspace_id)
+        for row in self._control_list("tenant_membership", tenant):
             if row.get("user") == actor and row.get("role"):
                 roles.append(str(row["role"]))
         return roles
@@ -222,7 +235,29 @@ class SecurityService:
                     resource):
                 continue
             roles.append(binding.role)
+        roles.extend(self._break_glass_roles(actor, workspace_id))
         return list(dict.fromkeys(role for role in roles if role))
+
+    def _break_glass_roles(self, actor: str, workspace_id: str) -> list[str]:
+        """Time-boxed emergency grants approved by a second owner."""
+        import time
+
+        now = time.time()
+        granted: list[str] = []
+        try:
+            rows = self._control_list("break_glass", workspace_id)
+        except Exception:  # pragma: no cover - storage is authoritative
+            return granted
+        for row in rows:
+            if row.get("requester") != actor or row.get("status") != "active":
+                continue
+            expires = row.get("expires_at")
+            if expires is None or float(expires) <= now:
+                continue
+            role = str(row.get("role") or "owner")
+            if role in ("viewer", "editor", "owner"):
+                granted.append(role)
+        return granted
 
     def principal(self, actor: str, workspace_id: str, *,
                   kind: str = "user", attributes: dict | None = None,
@@ -348,8 +383,21 @@ class SecurityService:
         resource = Resource(type=resource_type, id=workspace_id,
                             tenant_id=principal.tenant_id,
                             workspace_id=workspace_id)
-        decision = self.decision_for(principal, tenant, action, resource,
-                                     bind_context=bind_context)
+        policy = self.active_policy(workspace_id)
+        cache_key = self._cache_key(principal, tenant, action, resource, policy)
+        decision = self.cache.get(cache_key) if cache_key else None
+        if decision is not None:
+            # Each call still receives a fresh decision id and its own audit
+            # row; only the (pure) policy evaluation is reused.
+            decision.decision_id = self.id_factory("dec")
+            decision.created_at = self.clock()
+            decision.duration_ms = 0.0
+        else:
+            decision = self.decision_for(principal, tenant, action, resource,
+                                         policy=policy,
+                                         bind_context=bind_context)
+            if cache_key:
+                self.cache.put(cache_key, decision)
         # The storage PEP and the audit writer read this context; bind even a
         # DENY so downstream code cannot accidentally use a stale ALLOW.
         if bind_context:
@@ -364,6 +412,29 @@ class SecurityService:
                 f"action {action!r} denied for user {actor!r} in workspace "
                 f"{workspace_id!r}: {decision.reason}")
         return decision
+
+    def _cache_key(self, principal: Principal, tenant: TenantContext,
+                   action: str, resource: Resource, policy: PolicyRecord):
+        try:
+            attributes = json.dumps(principal.attributes or {},
+                                    sort_keys=True, default=str)
+        except TypeError:  # pragma: no cover - attributes are JSON data
+            return None
+        return (
+            principal.id, tenant.tenant_id, tenant.workspace_id, action,
+            resource.type, resource.id,
+            policy.id, policy.version, policy.hash,
+            tuple(principal.roles),
+            hashlib.sha256(attributes.encode("utf-8")).hexdigest(),
+            self._cache_epoch,
+        )
+
+    def cache_stats(self) -> dict:
+        return self.cache.stats()
+
+    def invalidate_cache(self) -> None:
+        self._cache_epoch += 1
+        self.cache.clear()
 
     def decision_for(self, principal: Principal, tenant: TenantContext,
                      action: str, resource: Resource, *,
@@ -522,25 +593,62 @@ class SecurityService:
                 "invalid security policy: " + "; ".join(report["errors"]))
         return record
 
+    def _effective_approver(self, record: PolicyRecord, actor: str) -> str:
+        """Resolve an active approval delegation to its accountable owner."""
+        from datetime import datetime
+
+        approval = record.document.get("approval") or {}
+        for item in approval.get("delegates") or ():
+            if not isinstance(item, Mapping):
+                continue
+            if str(item.get("to") or "") != actor:
+                continue
+            if item.get("active") is False:
+                continue
+            expires = item.get("expiresAt", item.get("expires_at"))
+            if expires:
+                try:
+                    if isinstance(expires, (int, float)):
+                        deadline = datetime.fromtimestamp(
+                            float(expires), tz=timezone.utc)
+                    else:
+                        deadline = datetime.fromisoformat(str(expires))
+                        if deadline.tzinfo is None:
+                            deadline = deadline.replace(tzinfo=timezone.utc)
+                except (TypeError, ValueError):
+                    continue
+                if datetime.now(timezone.utc) > deadline:
+                    continue
+            return str(item.get("from") or item.get("from_") or actor)
+        return actor
+
     def approve_policy(self, workspace_id: str, policy_id: str, actor: str,
                        comment: str = "") -> PolicyRecord:
         record = self.get_policy(workspace_id, policy_id)
         if record.status not in ("validated", "approved"):
             raise ValidationError("policy must be validated before approval")
-        if record.created_by == actor:
+        approver = self._effective_approver(record, actor)
+        if record.created_by == approver:
             raise ValidationError(
                 "separation of duties: the author cannot approve their own "
                 "policy")
-        if any(item.get("actor") == actor for item in record.approvals):
+        if any((item.get("approver") or item.get("actor")) == approver
+               for item in record.approvals):
             raise ValidationError(
                 "this approver has already signed this policy version")
         now = self.clock()
-        record.approvals = [*record.approvals,
-                            {"actor": actor, "comment": comment, "at": now}]
+        record.approvals = [*record.approvals, {
+            "actor": actor,
+            "approver": approver,
+            "delegated": approver != actor,
+            "comment": comment,
+            "at": now,
+        }]
         progress = record.approval_progress()
         record.validation = {
             **record.validation, "approvalComment": comment,
             "approvalProgress": progress,
+            "riskTier": record.risk_tier,
         }
         if not progress["satisfied"]:
             # Still validated: an N-of-M policy is not publishable until every
@@ -552,16 +660,20 @@ class SecurityService:
             self._audit(actor, workspace_id, "security.policy_approval_recorded",
                         record.id, {"author": record.created_by,
                                     "comment": comment,
+                                    "approver": approver,
+                                    "delegated": approver != actor,
                                     "progress": progress})
             return record
         record.status = "approved"
-        record.approved_by = actor
+        record.approved_by = approver
         record.approved_at = now
         record.updated_at = now
         self.repo.put(POLICY_KIND, workspace_id, record.id, record.to_dict())
         self._audit(actor, workspace_id, "security.policy_approved", record.id,
                     {"author": record.created_by, "comment": comment,
-                     "approvers": progress["approvers"]})
+                     "approver": approver,
+                     "approvers": progress["approvers"],
+                     "riskTier": record.risk_tier})
         return record
 
     def publish_policy(self, workspace_id: str, policy_id: str,
@@ -715,7 +827,8 @@ class SecurityService:
                       key=lambda row: row.get("name", ""))
 
     def create_group(self, workspace_id: str, actor: str, name: str,
-                     members: Iterable[str] = ()) -> dict:
+                     members: Iterable[str] = (), *,
+                     external_id: str = "") -> dict:
         if not str(name).strip():
             raise ValidationError("group name must not be empty")
         group = Group(
@@ -725,6 +838,8 @@ class SecurityService:
             workspace_id=workspace_id,
             members=tuple(dict.fromkeys(str(member) for member in members)),
             created_at=self.clock(),
+            external_id=str(external_id or ""),
+            updated_at=self.clock(),
         )
         self.repo.put(GROUP_KIND, workspace_id, group.id, group.to_dict())
         self._audit(actor, workspace_id, "security.group_created", group.id,
@@ -733,7 +848,8 @@ class SecurityService:
 
     def update_group(self, workspace_id: str, actor: str, group_id: str, *,
                      name: str | None = None,
-                     members: Iterable[str] | None = None) -> dict:
+                     members: Iterable[str] | None = None,
+                     external_id: str | None = None) -> dict:
         row = self._control_get(GROUP_KIND, workspace_id, group_id)
         if row is None:
             raise NotFoundError(f"group not found: {group_id!r}")
@@ -745,6 +861,9 @@ class SecurityService:
         if members is not None:
             group.members = tuple(dict.fromkeys(str(member)
                                                 for member in members))
+        if external_id is not None:
+            group.external_id = str(external_id)
+        group.updated_at = self.clock()
         self.repo.put(GROUP_KIND, workspace_id, group.id, group.to_dict())
         self._audit(actor, workspace_id, "security.group_updated", group.id,
                     {"name": group.name, "members": list(group.members)})
@@ -995,6 +1114,10 @@ class SecurityService:
                 "policy_version": active.version,
             },
         })
+        # Any security mutation can change a later decision; dropping the
+        # whole cache is cheap compared with serving a stale ALLOW.
+        if str(action).startswith("security."):
+            self.invalidate_cache()
 
 
 __all__ = [
