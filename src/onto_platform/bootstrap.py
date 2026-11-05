@@ -92,6 +92,7 @@ from .application.ontology_usecases import (
     ValidateOntology,
 )
 from .application.releases import ReleaseUseCases
+from .application.standards_usecases import StandardsUseCases
 from .application.security import SecurityService, SecurityUseCases
 from .application.security import context as auth_context
 from .application.security import (
@@ -170,6 +171,10 @@ class Platform:
         self.ctx.llm = provider
     workspaces: "WorkspaceUseCases"
     ontologies: "OntologyUseCases"
+    #: standard-format adapter plugins (OWL/RDF + SKOS export, P0): the
+    #: platform never imports them; the facade discovers them through the
+    #: plugin registry and only hands over a read-only AdapterContext.
+    standards: "StandardsUseCases"
     data: "DataUseCases"
     capabilities: "CapabilityUseCases"
     applications: "ApplicationUseCases"
@@ -478,6 +483,7 @@ def build_platform(config: PlatformConfig | None = None) -> Platform:
         security=SecurityUseCases(ctx, security_service),
         workspaces=WorkspaceUseCases(ctx),
         ontologies=OntologyUseCases(ctx, publisher),
+        standards=StandardsUseCases(ctx),
         data=DataUseCases(ctx),
         capabilities=CapabilityUseCases(ctx, publisher),
         applications=ApplicationUseCases(ctx),

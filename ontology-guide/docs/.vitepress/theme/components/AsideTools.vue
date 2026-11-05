@@ -102,5 +102,20 @@ function explainSelection() {
         <button class="og-btn og-block" type="button" @click="openPanel('ai')">打开助手</button>
       </div>
     </section>
+
+    <section class="og-card">
+      <div class="og-head">
+        <span>离线阅读</span>
+        <span class="og-status">PDF</span>
+      </div>
+      <p class="og-hint">整站 43 节合并为一个 PDF，含封面与目录，方便离线阅读、打印或分享。</p>
+      <a
+        class="og-btn og-block og-pdf-download"
+        href="/ontology-guide.pdf"
+        download="本体建模与应用指南.pdf"
+        target="_blank"
+        rel="noreferrer"
+      >下载 PDF 全文</a>
+    </section>
   </div>
 </template>

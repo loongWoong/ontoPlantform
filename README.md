@@ -381,6 +381,7 @@ src/onto_platform/
 ├── ports/                     # 依赖倒置：domain/application 只认识这里
 ├── domain/                    # 七大领域 + ontology/compiler.py
 ├── application/               # 用例 + SchemaPublisher + AgentRunner + bootstrap
+├── semantic/                  # 标准适配 SPI/IRI/Context/Registry + owl/skos 插件
 ├── infrastructure/            # kernel 网关 / 持久化 / 连接器 / LLM / 执行器
 └── interfaces/                # cli.py · api.py · mcp.py · web/dist(React 构建产物) · web/index.html(兜底)
 frontend/                      # React + TS + Vite 控制台源码（构建产物提交进包内，运行期零 Node）
@@ -399,4 +400,16 @@ pnpm docs:build    # 构建到 ontology-guide/docs/.vitepress/dist
 ```
 
 内容速览与部署说明见 [ontology-guide/README.md](ontology-guide/README.md)。
+
+## 标准格式插件（P0：RDF/OWL + SKOS 导出）
+
+平台核心保持零依赖，标准格式能力以**插件适配器**形式接入：内置 `owl-rdf`（OWL/RDF 结构：类、对象/数据属性、`rdfs:domain/range`、`owl:inverseOf`）与 `skos`（词表 → `skos:ConceptScheme`/`Concept`），通过只读 `AdapterContext` 消费已发布本体，导出确定、可复现的 Turtle。语义红线：`required`/`enum`/基数等运行期约束**不**冒充 OWL 公理（留给 P1 的 SHACL）。
+
+```bash
+onto --workspace W standards list                          # 查看已发现插件及健康状态
+onto --workspace W standards export --adapter owl-rdf --out ontology.ttl
+curl "http://127.0.0.1:8000/api/workspaces/W/standards/export?adapter=owl-rdf&format=text/turtle"
+```
+
+设计与实现依据：[架构方案](docs/standards-plugin-architecture.md) · [实现计划](docs/standards-plugin-implementation-plan-v1.md) · [独立验证报告](docs/standards-plugin-implementation-report.md)（含 DoD 与残余风险）。插件契约、IRI 策略与入口发现见 `src/onto_platform/semantic/`；核心依赖仍为 `dependencies = []`，`[interop]` extra 仅用于测试解析。
 

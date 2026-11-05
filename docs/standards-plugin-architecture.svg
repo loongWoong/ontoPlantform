@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1737.00" height="1130.00" viewBox="0 0 1737.00 1130.00" aria-label="OntoPlatform · 插件化标准适配架构" font-family="ui-sans-serif, system-ui, &quot;PingFang SC&quot;, sans-serif">
+  <rect x="0.00" y="0.00" width="1737.00" height="1130.00" rx="0.00" fill="#ffffff" stroke="none" />
+  <g data-shape="group">
+    <path d="M 475.00 31.00 A 14.00 14.00 0 0 1 489.00 17.00 L 1248.00 17.00 A 14.00 14.00 0 0 1 1262.00 31.00 L 1262.00 139.00 A 14.00 14.00 0 0 1 1248.00 153.00 L 489.00 153.00 A 14.00 14.00 0 0 1 475.00 139.00 L 475.00 31.00 Z" fill="none" stroke="#cbd5e1" stroke-dasharray="6 5" stroke-width="1.5" />
+    <text x="489.00" y="39.20" fill="#0f172a" font-family="inherit" font-size="12" font-weight="600">入口层 · 触发适配 / 取回产物</text>
+  </g>
+  <g data-shape="group">
+    <path d="M 167.50 271.00 A 14.00 14.00 0 0 1 181.50 257.00 L 1555.50 257.00 A 14.00 14.00 0 0 1 1569.50 271.00 L 1569.50 379.00 A 14.00 14.00 0 0 1 1555.50 393.00 L 181.50 393.00 A 14.00 14.00 0 0 1 167.50 379.00 L 167.50 271.00 Z" fill="none" stroke="#93c5fd" stroke-dasharray="6 5" stroke-width="1.5" />
+    <text x="181.50" y="279.20" fill="#1e3a8a" font-family="inherit" font-size="12" font-weight="600">插件宿主 · 平台核心（核心零标准依赖）</text>
+  </g>
+  <g data-shape="group">
+    <path d="M 17.00 511.00 A 14.00 14.00 0 0 1 31.00 497.00 L 1706.00 497.00 A 14.00 14.00 0 0 1 1720.00 511.00 L 1720.00 619.00 A 14.00 14.00 0 0 1 1706.00 633.00 L 31.00 633.00 A 14.00 14.00 0 0 1 17.00 619.00 L 17.00 511.00 Z" fill="none" stroke="#c4b5fd" stroke-dasharray="6 5" stroke-width="1.5" />
+    <text x="31.00" y="519.20" fill="#4c1d95" font-family="inherit" font-size="12" font-weight="600">适配器插件 · 可独立安装 / 升级 / 禁用</text>
+  </g>
+  <g data-shape="group">
+    <path d="M 533.00 751.00 A 14.00 14.00 0 0 1 547.00 737.00 L 1190.00 737.00 A 14.00 14.00 0 0 1 1204.00 751.00 L 1204.00 859.00 A 14.00 14.00 0 0 1 1190.00 873.00 L 547.00 873.00 A 14.00 14.00 0 0 1 533.00 859.00 L 533.00 751.00 Z" fill="none" stroke="#6ee7b7" stroke-dasharray="6 5" stroke-width="1.5" />
+    <text x="547.00" y="759.20" fill="#064e3b" font-family="inherit" font-size="12" font-weight="600">数据基础 · 插件只读视图（不直连内核）</text>
+  </g>
+  <g data-shape="group">
+    <path d="M 704.50 991.00 A 14.00 14.00 0 0 1 718.50 977.00 L 1018.50 977.00 A 14.00 14.00 0 0 1 1032.50 991.00 L 1032.50 1099.00 A 14.00 14.00 0 0 1 1018.50 1113.00 L 718.50 1113.00 A 14.00 14.00 0 0 1 704.50 1099.00 L 704.50 991.00 Z" fill="none" stroke="#fcd34d" stroke-dasharray="6 5" stroke-width="1.5" />
+    <text x="718.50" y="999.20" fill="#78350f" font-family="inherit" font-size="12" font-weight="600">运行时内核 · 唯一事实来源（插件不可直连）</text>
+  </g>
+  <g data-shape="node">
+    <path d="M 515.00 67.00 A 10.00 10.00 0 0 1 525.00 57.00 L 733.00 57.00 A 10.00 10.00 0 0 1 743.00 67.00 L 743.00 103.00 A 10.00 10.00 0 0 1 733.00 113.00 L 525.00 113.00 A 10.00 10.00 0 0 1 515.00 103.00 L 515.00 67.00 Z" fill="#fef3c7" stroke="#d97706" stroke-width="1.5" />
+    <text x="629.00" y="81.40" fill="#78350f" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">REST API</text>
+    <text x="629.00" y="97.00" fill="#78350f" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">/adapters · /export · /validate</text>
+  </g>
+  <g data-shape="node">
+    <path d="M 791.00 67.00 A 10.00 10.00 0 0 1 801.00 57.00 L 1016.00 57.00 A 10.00 10.00 0 0 1 1026.00 67.00 L 1026.00 103.00 A 10.00 10.00 0 0 1 1016.00 113.00 L 801.00 113.00 A 10.00 10.00 0 0 1 791.00 103.00 L 791.00 67.00 Z" fill="#fef3c7" stroke="#d97706" stroke-width="1.5" />
+    <text x="908.50" y="81.40" fill="#78350f" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">CLI</text>
+    <text x="908.50" y="97.00" fill="#78350f" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">onto standards export / validate</text>
+  </g>
+  <g data-shape="node">
+    <path d="M 1074.00 67.00 A 10.00 10.00 0 0 1 1084.00 57.00 L 1212.00 57.00 A 10.00 10.00 0 0 1 1222.00 67.00 L 1222.00 103.00 A 10.00 10.00 0 0 1 1212.00 113.00 L 1084.00 113.00 A 10.00 10.00 0 0 1 1074.00 103.00 L 1074.00 67.00 Z" fill="#fef3c7" stroke="#d97706" stroke-width="1.5" />
+    <text x="1148.00" y="81.40" fill="#78350f" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">控制台 / 下载</text>
+    <text x="1148.00" y="97.00" fill="#78350f" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">本体下载 · 校验结果</text>
+  </g>
+  <g data-shape="node">
+    <path d="M 207.50 307.00 A 10.00 10.00 0 0 1 217.50 297.00 L 439.50 297.00 A 10.00 10.00 0 0 1 449.50 307.00 L 449.50 343.00 A 10.00 10.00 0 0 1 439.50 353.00 L 217.50 353.00 A 10.00 10.00 0 0 1 207.50 343.00 L 207.50 307.00 Z" fill="#ffffff" stroke="#93c5fd" stroke-width="1.5" />
+    <text x="328.50" y="321.40" fill="#1e3a8a" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">StandardAdapter SPI</text>
+    <text x="328.50" y="337.00" fill="#1e3a8a" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">manifest · 4 类能力 · api_version</text>
+  </g>
+  <g data-shape="node">
+    <path d="M 497.50 307.00 A 10.00 10.00 0 0 1 507.50 297.00 L 735.50 297.00 A 10.00 10.00 0 0 1 745.50 307.00 L 745.50 343.00 A 10.00 10.00 0 0 1 735.50 353.00 L 507.50 353.00 A 10.00 10.00 0 0 1 497.50 343.00 L 497.50 307.00 Z" fill="#ffffff" stroke="#93c5fd" stroke-width="1.5" />
+    <text x="621.50" y="321.40" fill="#1e3a8a" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">Plugin Registry</text>
+    <text x="621.50" y="337.00" fill="#1e3a8a" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">entry-point 发现 · 版本约束 · 启停</text>
+  </g>
+  <g data-shape="node">
+    <path d="M 793.50 307.00 A 10.00 10.00 0 0 1 803.50 297.00 L 984.50 297.00 A 10.00 10.00 0 0 1 994.50 307.00 L 994.50 343.00 A 10.00 10.00 0 0 1 984.50 353.00 L 803.50 353.00 A 10.00 10.00 0 0 1 793.50 343.00 L 793.50 307.00 Z" fill="#ffffff" stroke="#93c5fd" stroke-width="1.5" />
+    <text x="894.00" y="321.40" fill="#1e3a8a" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">AdapterContext</text>
+    <text x="894.00" y="337.00" fill="#1e3a8a" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">只读 TBox + ABox · IRI 策略</text>
+  </g>
+  <g data-shape="node">
+    <path d="M 1042.50 307.00 A 10.00 10.00 0 0 1 1052.50 297.00 L 1256.50 297.00 A 10.00 10.00 0 0 1 1266.50 307.00 L 1266.50 343.00 A 10.00 10.00 0 0 1 1256.50 353.00 L 1052.50 353.00 A 10.00 10.00 0 0 1 1042.50 343.00 L 1042.50 307.00 Z" fill="#ffffff" stroke="#93c5fd" stroke-width="1.5" />
+    <text x="1154.50" y="321.40" fill="#1e3a8a" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">Export / Validate / Query</text>
+    <text x="1154.50" y="337.00" fill="#1e3a8a" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">统一服务 · 产物与错误码</text>
+  </g>
+  <g data-shape="node">
+    <path d="M 1314.50 307.00 A 10.00 10.00 0 0 1 1324.50 297.00 L 1519.50 297.00 A 10.00 10.00 0 0 1 1529.50 307.00 L 1529.50 343.00 A 10.00 10.00 0 0 1 1519.50 353.00 L 1324.50 353.00 A 10.00 10.00 0 0 1 1314.50 343.00 L 1314.50 307.00 Z" fill="#f1f5f9" stroke="#334155" stroke-width="1.5" />
+    <text x="1422.00" y="321.40" fill="#0f172a" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">插件治理</text>
+    <text x="1422.00" y="337.00" fill="#0f172a" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">权限 · 审计 · 隔离 · 可选依赖</text>
+  </g>
+  <g data-shape="node">
+    <path d="M 57.00 547.00 A 10.00 10.00 0 0 1 67.00 537.00 L 329.00 537.00 A 10.00 10.00 0 0 1 339.00 547.00 L 339.00 583.00 A 10.00 10.00 0 0 1 329.00 593.00 L 67.00 593.00 A 10.00 10.00 0 0 1 57.00 583.00 L 57.00 547.00 Z" fill="#ffffff" stroke="#c4b5fd" stroke-width="1.5" />
+    <text x="198.00" y="561.40" fill="#4c1d95" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">RDF / OWL 导出</text>
+    <text x="198.00" y="577.00" fill="#4c1d95" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">→ Turtle / JSON-LD（Protégé、数据目录）</text>
+  </g>
+  <g data-shape="node">
+    <path d="M 387.00 547.00 A 10.00 10.00 0 0 1 397.00 537.00 L 632.00 537.00 A 10.00 10.00 0 0 1 642.00 547.00 L 642.00 583.00 A 10.00 10.00 0 0 1 632.00 593.00 L 397.00 593.00 A 10.00 10.00 0 0 1 387.00 583.00 L 387.00 547.00 Z" fill="#ffffff" stroke="#c4b5fd" stroke-width="1.5" />
+    <text x="514.50" y="561.40" fill="#4c1d95" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">SKOS 导出</text>
+    <text x="514.50" y="577.00" fill="#4c1d95" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">→ 词表 / 概念层级（搜索、词表平台）</text>
+  </g>
+  <g data-shape="node">
+    <path d="M 690.00 547.00 A 10.00 10.00 0 0 1 700.00 537.00 L 868.00 537.00 A 10.00 10.00 0 0 1 878.00 547.00 L 878.00 583.00 A 10.00 10.00 0 0 1 868.00 593.00 L 700.00 593.00 A 10.00 10.00 0 0 1 690.00 583.00 L 690.00 547.00 Z" fill="#ffffff" stroke="#c4b5fd" stroke-width="1.5" />
+    <text x="784.00" y="561.40" fill="#4c1d95" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">SHACL 形状</text>
+    <text x="784.00" y="577.00" fill="#4c1d95" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">→ 约束形状 + pyshacl 校验</text>
+  </g>
+  <g data-shape="node">
+    <path d="M 926.00 547.00 A 10.00 10.00 0 0 1 936.00 537.00 L 1131.00 537.00 A 10.00 10.00 0 0 1 1141.00 547.00 L 1141.00 583.00 A 10.00 10.00 0 0 1 1131.00 593.00 L 936.00 593.00 A 10.00 10.00 0 0 1 926.00 583.00 L 926.00 547.00 Z" fill="#ffffff" stroke="#c4b5fd" stroke-width="1.5" />
+    <text x="1033.50" y="561.40" fill="#4c1d95" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">SPARQL 查询</text>
+    <text x="1033.50" y="577.00" fill="#4c1d95" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">→ 只读快照查询（Fuseki / BI）</text>
+  </g>
+  <g data-shape="node">
+    <path d="M 1189.00 547.00 A 10.00 10.00 0 0 1 1199.00 537.00 L 1380.00 537.00 A 10.00 10.00 0 0 1 1390.00 547.00 L 1390.00 583.00 A 10.00 10.00 0 0 1 1380.00 593.00 L 1199.00 593.00 A 10.00 10.00 0 0 1 1189.00 583.00 L 1189.00 547.00 Z" fill="#ffffff" stroke="#c4b5fd" stroke-width="1.5" />
+    <text x="1289.50" y="561.40" fill="#4c1d95" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">OWL / SKOS 导入</text>
+    <text x="1289.50" y="577.00" fill="#4c1d95" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">← 外部本体 · 映射与冲突报告</text>
+  </g>
+  <g data-shape="node">
+    <path d="M 1438.00 547.00 A 10.00 10.00 0 0 1 1448.00 537.00 L 1670.00 537.00 A 10.00 10.00 0 0 1 1680.00 547.00 L 1680.00 583.00 A 10.00 10.00 0 0 1 1670.00 593.00 L 1448.00 593.00 A 10.00 10.00 0 0 1 1438.00 583.00 L 1438.00 547.00 Z" fill="#d1fae5" stroke="#047857" stroke-width="1.5" />
+    <text x="1559.00" y="561.40" fill="#064e3b" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">语义检索（可选）</text>
+    <text x="1559.00" y="577.00" fill="#064e3b" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">embedding / GraphRAG · 独立 extra</text>
+  </g>
+  <g data-shape="node">
+    <path d="M 573.00 787.00 A 10.00 10.00 0 0 1 583.00 777.00 L 831.00 777.00 A 10.00 10.00 0 0 1 841.00 787.00 L 841.00 823.00 A 10.00 10.00 0 0 1 831.00 833.00 L 583.00 833.00 A 10.00 10.00 0 0 1 573.00 823.00 L 573.00 787.00 Z" fill="#ffffff" stroke="#6ee7b7" stroke-width="1.5" />
+    <text x="707.00" y="801.40" fill="#064e3b" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">本体聚合（TBox）</text>
+    <text x="707.00" y="817.00" fill="#064e3b" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">类型 / 关系 / 词表 / profile / 类层次</text>
+  </g>
+  <g data-shape="node">
+    <path d="M 889.00 787.00 A 10.00 10.00 0 0 1 899.00 777.00 L 1154.00 777.00 A 10.00 10.00 0 0 1 1164.00 787.00 L 1164.00 823.00 A 10.00 10.00 0 0 1 1154.00 833.00 L 899.00 833.00 A 10.00 10.00 0 0 1 889.00 823.00 L 889.00 787.00 Z" fill="#ffffff" stroke="#6ee7b7" stroke-width="1.5" />
+    <text x="1026.50" y="801.40" fill="#064e3b" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">运行时快照（ABox）</text>
+    <text x="1026.50" y="817.00" fill="#064e3b" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">经 KernelRuntimeGateway 导出的只读视图</text>
+  </g>
+  <g data-shape="node">
+    <path d="M 744.50 1027.00 A 10.00 10.00 0 0 1 754.50 1017.00 L 982.50 1017.00 A 10.00 10.00 0 0 1 992.50 1027.00 L 992.50 1063.00 A 10.00 10.00 0 0 1 982.50 1073.00 L 754.50 1073.00 A 10.00 10.00 0 0 1 744.50 1063.00 L 744.50 1027.00 Z" fill="#ffffff" stroke="#fcd34d" stroke-width="1.5" />
+    <text x="868.50" y="1041.40" fill="#78350f" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">Kernel</text>
+    <text x="868.50" y="1057.00" fill="#78350f" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">Schema · State · Function · Change</text>
+  </g>
+  <g data-shape="edge">
+    <path d="M 868.50 153.00 L 868.50 250.00" fill="none" stroke="#cbd5e1" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
+    <path d="M 868.50 257.00 L 865.35 250.00 L 871.65 250.00 Z" fill="#cbd5e1" stroke="#cbd5e1" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
+  </g>
+  <g data-shape="edge">
+    <path d="M 868.50 393.00 L 868.50 490.00" fill="none" stroke="#93c5fd" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
+    <path d="M 868.50 497.00 L 865.35 490.00 L 871.65 490.00 Z" fill="#93c5fd" stroke="#93c5fd" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
+  </g>
+  <g data-shape="edge">
+    <path d="M 868.50 737.00 L 868.50 640.00" fill="none" stroke="#6ee7b7" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
+    <path d="M 868.50 633.00 L 871.65 640.00 L 865.35 640.00 Z" fill="#6ee7b7" stroke="#6ee7b7" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
+  </g>
+  <g data-shape="edge">
+    <path d="M 868.50 977.00 L 868.50 880.00" fill="none" stroke="#fcd34d" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
+    <path d="M 868.50 873.00 L 871.65 880.00 L 865.35 880.00 Z" fill="#fcd34d" stroke="#fcd34d" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
+  </g>
+  <g data-shape="label-box">
+    <rect x="791.80" y="197.60" width="153.40" height="14.80" rx="4.00" fill="#ffffff" stroke="none" />
+    <text x="868.50" y="208.90" fill="#0f172a" font-family="inherit" font-size="11" text-anchor="middle">导出 / 校验 / 查询请求</text>
+  </g>
+  <g data-shape="label-box">
+    <rect x="755.00" y="437.60" width="227.10" height="14.80" rx="4.00" fill="#ffffff" stroke="none" />
+    <text x="868.50" y="448.90" fill="#1e3a8a" font-family="inherit" font-size="11" text-anchor="middle">发现 · 装配 · 注入 AdapterContext</text>
+  </g>
+  <g data-shape="label-box">
+    <rect x="795.20" y="677.60" width="146.70" height="14.80" rx="4.00" fill="#ffffff" stroke="none" />
+    <text x="868.50" y="688.90" fill="#064e3b" font-family="inherit" font-size="11" text-anchor="middle">只读 TBox + ABox 快照</text>
+  </g>
+  <g data-shape="label-box">
+    <rect x="758.30" y="917.60" width="220.40" height="14.80" rx="4.00" fill="#ffffff" stroke="none" />
+    <text x="868.50" y="928.90" fill="#78350f" font-family="inherit" font-size="11" text-anchor="middle">KernelRuntimeGateway（唯一通道）</text>
+  </g>
+</svg>

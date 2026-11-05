@@ -906,6 +906,8 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
                 return self._send(200, platform.llm_config.get(wid, user))
             if rest == ["ontology"]:
                 return self._send(200, platform.ontologies.get(wid, actor=user))
+            if rest[:1] == ["standards"]:
+                return self._get_standards(wid, rest[1:], query, user)
             if rest == ["runtime"]:
                 return self._send(200, platform.ontologies.describe_runtime(wid, actor=user))
             if rest == ["datasources"]:
@@ -1187,6 +1189,33 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
                 return self._send(200, platform.ctx.audit.list(
                     wid, limit=self._query_int(query, "limit", 50)))
             raise ValidationError(f"no route for {self.path}")
+
+        def _get_standards(self, wid: str, rest: list[str], query: dict,
+                           user: str) -> None:
+            """Standard-format plugins: list adapters, export the published TBox.
+
+            Both routes are GETs because P0 export is read-only: producing a
+            Turtle document never mutates the ontology, so there is no body
+            to CSRF-check.  A missing ``adapter`` parameter, an unsupported
+            ``format``, or an adapter the registry knows but cannot run is a
+            400; a name that is not registered at all is a 404, and a
+            workspace without a published ontology is a 404 as well.
+            """
+            if rest == ["adapters"]:
+                return self._send(200, {
+                    "adapters": platform.standards.list_adapters(wid, user)})
+            if rest == ["export"]:
+                adapter = str(query.get("adapter") or "").strip()
+                if not adapter:
+                    raise ValidationError(
+                        "standard export requires ?adapter=<name>")
+                artifact = platform.standards.export(
+                    wid, user, adapter,
+                    str(query.get("format") or "").strip() or None)
+                return self._send_bytes(
+                    200, artifact["media_type"], artifact["content"],
+                    artifact["filename"])
+            raise ValidationError(f"no standards route for {self.path}")
 
         # ------------------------------------------------------------ POST
 

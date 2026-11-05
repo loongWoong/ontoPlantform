@@ -16,6 +16,11 @@ dependencies = []
 [project.optional-dependencies]
 kernel = ["ontology-runtime>=0.1.1"]
 mcp = ["mcp>=1.0"]
+# Official interop plugins: only needed to *verify* exported artifacts
+# (round-trip parse, SHACL validation) and to install the P1/P2 adapters.
+# The platform core keeps ``dependencies = []``; nothing here is imported by
+# the core distribution.
+interop = ["rdflib>=7", "pyshacl>=0.29"]
 dev = [
     "pytest>=8.0",
     "ontology-runtime>=0.1.1",

@@ -225,6 +225,27 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("audit")
     p.add_argument("--limit", type=int, default=30)
 
+    # standards (plugin adapters: OWL/RDF + SKOS export)
+    p = sub.add_parser("standards")
+    std = p.add_subparsers(dest="subcommand", required=True)
+    std_list = std.add_parser("list")
+    std_export = std.add_parser("export")
+    std_export.add_argument("--adapter", required=True,
+                            help="adapter name, e.g. owl-rdf or skos")
+    std_export.add_argument("--format", default="text/turtle",
+                            help="artifact media type (default: text/turtle)")
+    std_export.add_argument("--out",
+                            help="write the artifact to this file "
+                                 "(default: stdout)")
+    for _standard_parser in (std_list, std_export):
+        # Also accepted *after* the command, so
+        #   onto standards export --workspace W --adapter owl-rdf
+        # reads like the other examples.  SUPPRESS keeps the global value
+        # when the flag is omitted in this position.
+        _standard_parser.add_argument(
+            "--workspace", default=argparse.SUPPRESS,
+            help="workspace id (also accepted before the command)")
+
     # serve
     p = sub.add_parser("serve")
     p.add_argument("--host", default="127.0.0.1")
@@ -387,6 +408,14 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "audit":
             wid = args.workspace
             _emit(platform.ctx.audit.list(wid, limit=args.limit))
+        elif args.command == "standards":
+            wid = _need_workspace(args)
+            if args.subcommand == "list":
+                _emit(platform.standards.list_adapters(wid, user))
+            elif args.subcommand == "export":
+                artifact = platform.standards.export(
+                    wid, user, args.adapter, args.format)
+                _write_artifact(artifact, args.out)
         elif args.command == "serve":
             from .api import serve
 
@@ -395,6 +424,34 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 1
     return 0
+
+
+def _write_artifact(artifact: dict, out: str | None) -> None:
+    """Write an exported standard artifact to ``--out`` or stdout.
+
+    Turtle is UTF-8 text, so the stdout path streams the exact bytes
+    (``onto standards export --adapter owl-rdf > ontology.ttl`` keeps the
+    document byte-identical to the API response).  When a file is requested
+    the bytes go to disk and a JSON summary without the content is printed,
+    matching the other commands' output shape.
+    """
+    content = artifact["content"]
+    if out:
+        target = Path(out)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(content)
+        summary = {key: value for key, value in artifact.items()
+                   if key != "content"}
+        summary["path"] = str(target)
+        summary["bytes"] = len(content)
+        _emit(summary)
+        return
+    buffer = getattr(sys.stdout, "buffer", None)
+    if buffer is not None:
+        buffer.write(content)
+        buffer.flush()
+        return
+    sys.stdout.write(content.decode("utf-8", "replace"))
 
 
 def _make_provider(args):

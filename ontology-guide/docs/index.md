@@ -13,6 +13,10 @@ hero:
       text: 端到端案例
       link: /examples/
     - theme: alt
+      text: 下载 PDF
+      link: /ontology-guide.pdf
+      target: _blank
+    - theme: alt
       text: DDD 指南
       link: https://ddd-fans.github.io/ddd-guideline/
 
