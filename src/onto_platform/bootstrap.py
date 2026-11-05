@@ -114,6 +114,7 @@ from .application.security import (
 from .application.smartui.builtin import build_default_host
 from .application.smartui.host import PluginHost
 from .application.state_usecases import StateUseCases
+from .application.workflow_usecases import WorkflowUseCases
 from .application.verifier import (
     CapabilityVerifier,
     Reconciler,
@@ -171,10 +172,6 @@ class Platform:
         self.ctx.llm = provider
     workspaces: "WorkspaceUseCases"
     ontologies: "OntologyUseCases"
-    #: standard-format adapter plugins (OWL/RDF + SKOS export, P0): the
-    #: platform never imports them; the facade discovers them through the
-    #: plugin registry and only hands over a read-only AdapterContext.
-    standards: "StandardsUseCases"
     data: "DataUseCases"
     capabilities: "CapabilityUseCases"
     applications: "ApplicationUseCases"
@@ -182,6 +179,9 @@ class Platform:
     llm_config: "LlmConfig"
     releases: "ReleaseUseCases"
     state: "StateUseCases"
+    #: lightweight ontology engineering workflow (rounds, CQs, samples,
+    #: acceptance runs, review records) around the existing publish gate
+    workflow: "WorkflowUseCases"
     events: EventLog
     dispatcher: Dispatcher
     verifier: RuntimeVerifier
@@ -197,6 +197,12 @@ class Platform:
     #: long-running slow loop; started explicitly by the HTTP adapter (or a
     #: test) so building a Platform never opens a background thread
     scheduler: Scheduler | None = None
+    #: standard-format adapter plugins (OWL/RDF + SKOS export, P0): the
+    #: platform never imports them; the facade discovers them through the
+    #: plugin registry and only hands over a read-only AdapterContext.
+    #: Optional so third parties that assemble a Platform by hand are not
+    #: forced to configure standards; the composition root still injects it.
+    standards: "StandardsUseCases | None" = None
     #: org tree (materialized path -> principal.org_path), identity directory +
     #: OIDC/session/SCIM, and the export/webhook distribution surfaces
     organization: "OrganizationService | None" = None
@@ -491,6 +497,7 @@ def build_platform(config: PlatformConfig | None = None) -> Platform:
         llm_config=LlmConfig(ctx),
         releases=ReleaseUseCases(ctx),
         state=StateUseCases(ctx),
+        workflow=WorkflowUseCases(ctx, publisher),
         events=EventLog(ctx),
         dispatcher=Dispatcher(ctx),
         verifier=RuntimeVerifier(ctx),

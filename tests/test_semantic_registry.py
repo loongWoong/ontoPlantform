@@ -1,8 +1,10 @@
-"""Plugin registry tests (T1, standards plugin P0).
+"""Plugin registry tests (T1/A, standards plugin P0).
 
 Covers builtin registration, entry-point discovery (via injectable
 ``entry_points=``), fail isolation for broken plugins, manifest status
-reporting and the process-wide default registry.
+reporting, the process-wide default registry, and the C1 additions: alias
+resolution (``onto-standards-*`` names, decision D1), capability <-> method
+consistency (G-02) and ``requires.ontoplatform`` compatibility (D3).
 """
 
 from __future__ import annotations
@@ -15,6 +17,7 @@ from onto_platform.semantic.registry import (
     ENTRY_POINT_GROUP,
     LIFECYCLE_GROUP,
     PluginRegistry,
+    adapter_contract_problems,
     default_registry,
     reset_default_registry,
 )
@@ -320,6 +323,25 @@ def test_manifest_rows_contain_manifest_fields_and_status():
         assert row["api_version"] == ADAPTER_API_VERSION
 
 
+def test_unloadable_plugin_rows_share_the_ready_row_shape(monkeypatch):
+    monkeypatch.setattr(
+        registry_module, "BUILTIN_ADAPTERS",
+        ("onto_platform.semantic._missing_plugin:MissingAdapter",))
+    registry = _registry([])
+
+    registry.discover()
+
+    rows = registry.manifests()
+    assert rows[0]["status"] == "invalid"
+    # API consumers read every row with the same schema, even when the
+    # plugin could not be imported at all.
+    assert {
+        "name", "version", "api_version", "standards", "capabilities",
+        "formats_out", "formats_in", "description", "permissions",
+        "formats", "requires", "config_schema", "aliases",
+    } <= set(rows[0])
+
+
 # ----------------------------------------------------------------------
 # process-wide default registry
 # ----------------------------------------------------------------------
@@ -334,3 +356,211 @@ def test_default_registry_is_lazy_and_resettable():
         assert default_registry() is not first
     finally:
         reset_default_registry()
+
+
+# ----------------------------------------------------------------------
+# aliases (architecture §4 package names, decision D1)
+# ----------------------------------------------------------------------
+
+
+def test_aliases_resolve_in_get_but_never_in_names():
+    registry = _registry([
+        ("plug", lambda: FakeAdapter(_manifest(
+            name="plug", aliases=("onto-standards-plug", "plug-legacy")))),
+    ])
+
+    assert registry.discover() == ["plug"]
+
+    adapter = registry.get("onto-standards-plug")
+    assert adapter is registry.get("plug")
+    assert registry.get("plug-legacy") is adapter
+    assert registry.names() == ["plug"]
+    assert registry.manifests()[0]["aliases"] == [
+        "onto-standards-plug", "plug-legacy"]
+
+
+def test_alias_conflicting_with_a_canonical_name_is_rejected():
+    registry = _registry([])
+    registry.register(FakeAdapter(_manifest(name="owl-rdf")))
+
+    conflicting = FakeAdapter(_manifest(name="fake", aliases=("owl-rdf",)))
+    with pytest.raises(AdapterError) as excinfo:
+        registry.register(conflicting)
+    assert "alias" in str(excinfo.value)
+    assert registry.names() == ["owl-rdf"]
+
+
+def test_duplicate_alias_across_adapters_is_rejected():
+    registry = _registry([])
+    registry.register(FakeAdapter(_manifest(name="one", aliases=("shared",))))
+
+    with pytest.raises(AdapterError) as excinfo:
+        registry.register(FakeAdapter(_manifest(name="two", aliases=("shared",))))
+    assert "shared" in str(excinfo.value)
+
+
+def test_canonical_name_that_is_already_an_alias_is_rejected():
+    registry = _registry([])
+    registry.register(FakeAdapter(_manifest(name="one", aliases=("beta",))))
+
+    with pytest.raises(AdapterError) as excinfo:
+        registry.register(FakeAdapter(_manifest(name="beta")))
+    assert "alias" in str(excinfo.value)
+
+
+def test_alias_conflicts_are_isolated_during_discovery():
+    registry = _registry([
+        ("one", lambda: FakeAdapter(_manifest(name="one", aliases=("shared",)))),
+        ("two", lambda: FakeAdapter(_manifest(name="two", aliases=("shared",)))),
+    ])
+
+    assert registry.discover() == ["one"]
+    assert registry.names() == ["one"]
+    assert registry.get("shared").manifest.name == "one"
+
+    rows = {row["name"]: row for row in registry.manifests()}
+    assert rows["two"]["status"] == "invalid"
+    assert any("alias" in problem for problem in rows["two"]["problems"])
+
+
+def test_manual_aliases_survive_rediscovery_while_stale_ones_are_dropped():
+    registry = _registry([
+        ("plug", lambda: FakeAdapter(_manifest(
+            name="plug", aliases=("plug-alias",)))),
+    ])
+    registry.register(FakeAdapter(_manifest(
+        name="manual", aliases=("manual-alias",))))
+
+    assert registry.discover() == ["plug"]
+    assert registry.get("plug-alias").manifest.name == "plug"
+
+    registry._entry_points.clear()
+    assert registry.discover() == []
+    assert registry.get("manual-alias").manifest.name == "manual"
+    assert registry.names() == ["manual"]
+    with pytest.raises(AdapterNotFound):
+        registry.get("plug-alias")
+
+
+# ----------------------------------------------------------------------
+# capability <-> method consistency (G-02)
+# ----------------------------------------------------------------------
+
+
+class _ManifestOnlyAdapter:
+    """Declares capabilities it does not implement."""
+
+    def __init__(self, manifest: AdapterManifest) -> None:
+        self.manifest = manifest
+
+    def export(self, ctx, request):  # pragma: no cover - not called
+        return Artifact(content=b"", media_type="text/turtle")
+
+
+def test_capability_without_implementation_is_rejected_on_register():
+    registry = _registry([])
+    lying = _ManifestOnlyAdapter(
+        _manifest(name="lying", capabilities=("validate",), formats_out=()))
+
+    with pytest.raises(AdapterError) as excinfo:
+        registry.register(lying)
+    message = str(excinfo.value)
+    assert "capabilities" in message
+    assert "validate" in message
+    assert registry.names() == []
+
+
+def test_contract_problems_helper_reports_each_missing_method():
+    problems = adapter_contract_problems(FakeAdapter(_manifest(
+        name="partial", capabilities=("export", "validate", "query"),
+        formats_out=())))
+    assert len(problems) == 2
+    assert all("no callable" in problem for problem in problems)
+
+
+def test_import_capability_requires_the_import_underscore_method():
+    class Importer(FakeAdapter):
+        def import_(self, ctx, payload):  # pragma: no cover - protocol shape
+            raise NotImplementedError
+
+    registry = _registry([])
+    registry.register(Importer(_manifest(
+        name="importer", capabilities=("export", "import"),
+        formats_in=("text/turtle",))))
+
+    assert registry.names() == ["importer"]
+
+
+def test_contract_violations_are_isolated_during_discovery():
+    registry = _registry([
+        ("good", lambda: FakeAdapter(_manifest(name="good"))),
+        ("liar", lambda: _ManifestOnlyAdapter(
+            _manifest(name="liar", capabilities=("validate",), formats_out=()))),
+    ])
+
+    assert registry.discover() == ["good"]
+
+    rows = {row["name"]: row for row in registry.manifests()}
+    assert rows["good"]["status"] == "ready"
+    assert rows["liar"]["status"] == "invalid"
+    assert any("validate" in problem for problem in rows["liar"]["problems"])
+
+
+# ----------------------------------------------------------------------
+# requires.ontoplatform compatibility (G-13 / decision D3)
+# ----------------------------------------------------------------------
+
+
+def test_requires_incompatible_plugin_is_rejected_on_register():
+    registry = _registry([])
+    future = FakeAdapter(_manifest(
+        name="future", requires={"ontoplatform": ">=99.0"}))
+
+    with pytest.raises(AdapterIncompatible) as excinfo:
+        registry.register(future)
+    message = str(excinfo.value)
+    assert "incompatible" in message
+    assert registry.names() == []
+
+
+def test_requires_compatible_plugin_registers_and_reports_its_requires():
+    registry = _registry([])
+    registry.register(FakeAdapter(_manifest(
+        name="modern",
+        requires={"ontoplatform": ">=0.1", "extras": ["rdflib>=7"]})))
+
+    assert registry.names() == ["modern"]
+    row = registry.manifests()[0]
+    assert row["status"] == "ready"
+    assert row["requires"] == {
+        "ontoplatform": ">=0.1", "extras": ["rdflib>=7"]}
+
+
+def test_requires_incompatibility_is_isolated_and_get_raises_incompatible():
+    registry = _registry([
+        ("future", lambda: FakeAdapter(_manifest(
+            name="future", requires={"ontoplatform": ">=99.0"}))),
+    ])
+
+    assert registry.discover() == []
+
+    rows = {row["name"]: row for row in registry.manifests()}
+    assert rows["future"]["status"] == "invalid"
+    assert any("incompatible" in problem
+               for problem in rows["future"]["problems"])
+
+    with pytest.raises(AdapterIncompatible):
+        registry.get("future")
+
+
+def test_malformed_requires_block_is_an_invalid_manifest():
+    registry = _registry([
+        ("bad", lambda: FakeAdapter(_manifest(
+            name="bad", requires={"ontoplatform": "~=1.0"}))),
+    ])
+
+    assert registry.discover() == []
+
+    rows = registry.manifests()
+    assert rows[0]["status"] == "invalid"
+    assert any("ontoplatform" in problem for problem in rows[0]["problems"])

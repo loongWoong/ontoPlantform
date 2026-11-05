@@ -8,11 +8,15 @@ docs/standards-plugin-architecture.md §2.5.
 from __future__ import annotations
 
 import importlib.util
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
 from onto_platform.domain.ontology.model import ObjectTypeSpec, Ontology
+from onto_platform.semantic import formats as formats_module
+from onto_platform.semantic import owl as owl_module
+from onto_platform.semantic import skos as skos_module
 from onto_platform.semantic.iri import IriPolicy
 from onto_platform.semantic.owl import OwlRdfAdapter
 from onto_platform.semantic.skos import SkosAdapter
@@ -106,6 +110,12 @@ def build_ontology(version: int = 2) -> Ontology:
                 "kind": "object",
                 "aliases": [],
             },
+            "拥堵": {
+                "term": "拥堵",
+                "concept": "TollStation.status",
+                "kind": "property",
+                "aliases": ["拥堵状态"],
+            },
         },
     })
 
@@ -147,6 +157,7 @@ def test_both_manifests_are_contract_valid():
 
     assert owl.manifest.name == "owl-rdf"
     assert owl.manifest.api_version == "1.0"
+    assert owl.manifest.aliases == ("onto-standards-owl",)
     assert owl.manifest.capabilities == ("export",)
     assert owl.manifest.formats_out == ("text/turtle",)
     assert set(owl.manifest.standards) >= {"owl", "rdf", "turtle"}
@@ -154,6 +165,7 @@ def test_both_manifests_are_contract_valid():
 
     assert skos.manifest.name == "skos"
     assert skos.manifest.api_version == "1.0"
+    assert skos.manifest.aliases == ("onto-standards-skos",)
     assert skos.manifest.capabilities == ("export",)
     assert skos.manifest.formats_out == ("text/turtle",)
     assert skos.manifest.standards == ("skos",)
@@ -187,9 +199,11 @@ def test_owl_classes_labels_and_comments():
 
     for class_name, label in ((vehicle, "Vehicle"), (station, "TollStation")):
         assert f"{class_name} rdf:type owl:Class ." in text
+        # ASCII identifiers stay plain xsd:string: no language tag is invented
         assert f'{class_name} rdfs:label "{label}"^^xsd:string .' in text
-    assert f'{vehicle} rdfs:comment "车辆"^^xsd:string .' in text
-    assert f'{station} rdfs:comment "收费站"^^xsd:string .' in text
+    # CJK human descriptions are language-tagged zh (review G-09)
+    assert f'{vehicle} rdfs:comment "车辆"@zh .' in text
+    assert f'{station} rdfs:comment "收费站"@zh .' in text
 
 
 def test_owl_relations_domain_range_and_inverse():
@@ -226,7 +240,7 @@ def test_owl_datatype_properties_and_xsd_ranges():
 
     plate = qname(ctx, ctx.iri.property_iri("Vehicle", "plate"))
     assert (f'{plate} rdfs:comment '
-            '"车牌号码，例如 \\"鲁A12345\\"\\n第二行\\\\反斜杠"^^xsd:string .'
+            '"车牌号码，例如 \\"鲁A12345\\"\\n第二行\\\\反斜杠"@zh .'
             in text)
 
 
@@ -339,7 +353,7 @@ def test_skos_concept_scheme_and_concepts():
         line for line in text.splitlines()
         if line.endswith("rdf:type skos:Concept .")
     ]
-    assert len(concept_lines) == 2
+    assert len(concept_lines) == 3
 
 
 def test_skos_term_labels_notation_and_scheme_link():
@@ -348,14 +362,14 @@ def test_skos_term_labels_notation_and_scheme_link():
     scheme = qname(ctx, ctx.iri.concept_scheme_iri())
     station = qname(ctx, ctx.iri.vocabulary_iri("收费站"))
 
-    assert f'{station} skos:prefLabel "收费站"^^xsd:string .' in text
+    assert f'{station} skos:prefLabel "收费站"@zh .' in text
     assert f'{station} skos:notation "TollStation"^^xsd:string .' in text
     assert f'{station} skos:altLabel "toll station"^^xsd:string .' in text
-    assert f'{station} skos:altLabel "收费站点"^^xsd:string .' in text
+    assert f'{station} skos:altLabel "收费站点"@zh .' in text
     assert f"{station} skos:inScheme {scheme} ." in text
     # the term without aliases still becomes a concept
     vehicle = qname(ctx, ctx.iri.vocabulary_iri("车辆"))
-    assert f'{vehicle} skos:prefLabel "车辆"^^xsd:string .' in text
+    assert f'{vehicle} skos:prefLabel "车辆"@zh .' in text
 
 
 def test_skos_definition_when_term_exposes_description():
@@ -390,7 +404,7 @@ def test_skos_artifact_and_metadata():
     assert artifact.metadata["adapter"] == "skos"
     assert artifact.metadata["version"] == SkosAdapter.manifest.version
     assert artifact.metadata["schema_fingerprint"] == "abc123"
-    assert artifact.metadata["concepts"] == 2
+    assert artifact.metadata["concepts"] == 3
 
 
 def test_skos_is_deterministic_across_exports():
@@ -415,6 +429,127 @@ def test_skos_rejects_unsupported_formats(format_name):
     with pytest.raises(AdapterError):
         SkosAdapter().export(
             build_ctx(build_ontology()), ExportRequest(format=format_name))
+
+
+# ---------------------------------------------------------------------------
+# golden artifacts + key triple counts (review G-18, completion plan B)
+# ---------------------------------------------------------------------------
+
+GOLDEN_DIR = Path(__file__).resolve().parent / "golden" / "standards"
+GOLDEN_VERSION = 2
+
+
+def test_owl_golden_bytes_and_key_triple_counts():
+    ctx = build_ctx(build_ontology(GOLDEN_VERSION))
+    artifact = OwlRdfAdapter().export(ctx, ExportRequest(format="text/turtle"))
+
+    expected = (GOLDEN_DIR / "owl-rdf-v2.ttl").read_bytes()
+    assert artifact.content == expected
+
+    text = artifact.content.decode("utf-8")
+    assert text.count("rdf:type owl:Class .") == 2
+    assert text.count("rdf:type owl:DatatypeProperty .") == 4
+    assert text.count("rdf:type owl:ObjectProperty .") == 2
+    assert text.count("owl:inverseOf") == 2
+
+
+def test_skos_golden_bytes_and_key_triple_counts():
+    ctx = build_ctx(build_ontology(GOLDEN_VERSION))
+    artifact = SkosAdapter().export(ctx, ExportRequest(format="text/turtle"))
+
+    expected = (GOLDEN_DIR / "skos-v2.ttl").read_bytes()
+    assert artifact.content == expected
+
+    text = artifact.content.decode("utf-8")
+    assert text.count("rdf:type skos:ConceptScheme .") == 1
+    assert text.count("rdf:type skos:Concept .") == 3
+    assert text.count("skos:altLabel") == 3
+    assert text.count("skos:prefLabel") == 4  # scheme + one per concept
+
+
+# ---------------------------------------------------------------------------
+# P0 scope rejection: TBox only, never a silent ABox/TBox substitution
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("export_request", [
+    ExportRequest(scope="abox"),
+    ExportRequest(scope="both"),
+    ExportRequest(include_abox=True),
+    ExportRequest(scope="abox", include_abox=True),
+])
+def test_adapters_reject_abox_scope(export_request):
+    ctx = build_ctx(build_ontology())
+    for adapter in (OwlRdfAdapter(), SkosAdapter()):
+        with pytest.raises(AdapterError):
+            adapter.export(ctx, export_request)
+
+
+@pytest.mark.parametrize("export_request", [
+    ExportRequest(),
+    ExportRequest(scope=""),
+    ExportRequest(scope="tbox"),
+])
+def test_adapters_accept_tbox_scope(export_request):
+    ctx = build_ctx(build_ontology())
+    for adapter in (OwlRdfAdapter(), SkosAdapter()):
+        assert adapter.export(ctx, export_request).content
+
+
+# ---------------------------------------------------------------------------
+# plugin decoupling: SKOS must not depend on the OWL adapter (review G-12)
+# ---------------------------------------------------------------------------
+
+
+def test_skos_module_does_not_import_the_owl_adapter():
+    source = Path(skos_module.__file__).read_text(encoding="utf-8")
+    assert "from .owl" not in source
+    assert "import .owl" not in source
+
+
+def test_formats_module_is_the_single_source_of_truth():
+    assert formats_module.SUPPORTED_FORMATS == ("", "text/turtle", "turtle")
+    assert formats_module.check_export_format(
+        ExportRequest(), OwlRdfAdapter.manifest) == ""
+    with pytest.raises(AdapterError):
+        formats_module.check_export_format(
+            ExportRequest(format="application/rdf+xml"),
+            OwlRdfAdapter.manifest)
+    with pytest.raises(AdapterError):
+        formats_module.check_scope(
+            ExportRequest(scope="abox"), OwlRdfAdapter.manifest)
+
+
+def test_owl_keeps_check_export_format_reexport():
+    assert owl_module.check_export_format is formats_module.check_export_format
+    assert owl_module.check_export_format(
+        ExportRequest(format="turtle"), OwlRdfAdapter.manifest) == "turtle"
+
+
+# ---------------------------------------------------------------------------
+# language tags: CJK labels/comments get @zh, ASCII identifiers do not
+# ---------------------------------------------------------------------------
+
+
+def test_owl_language_tags_only_for_cjk_text():
+    text = export_text(OwlRdfAdapter(), build_ctx(build_ontology()))
+
+    assert 'rdfs:label "traffic"^^xsd:string .' in text
+    assert 'rdfs:label "Vehicle"^^xsd:string .' in text
+    assert 'rdfs:comment "车辆"@zh .' in text
+    assert 'rdfs:comment "Vehicle"@zh' not in text
+    # escaping is preserved inside a language-tagged literal
+    assert '"车牌号码，例如 \\"鲁A12345\\"\\n第二行\\\\反斜杠"@zh' in text
+
+
+def test_skos_language_tags_only_for_cjk_text():
+    text = export_text(SkosAdapter(), build_ctx(build_ontology()))
+
+    assert 'skos:prefLabel "traffic"^^xsd:string .' in text
+    assert 'skos:prefLabel "收费站"@zh .' in text
+    assert 'skos:altLabel "toll station"^^xsd:string .' in text
+    assert 'skos:altLabel "收费站点"@zh .' in text
+    assert 'skos:notation "TollStation"^^xsd:string .' in text
 
 
 # ---------------------------------------------------------------------------
@@ -463,4 +598,4 @@ def test_skos_artifact_parses_with_rdflib():
     assert len(graph) > 0
     assert (scheme, rdf.type, skos.ConceptScheme) in graph
     concepts = list(graph.subjects(rdf.type, skos.Concept))
-    assert len(concepts) == 2
+    assert len(concepts) == 3

@@ -194,6 +194,33 @@ def test_write_returns_utf8_bytes():
     assert "车辆" in data.decode("utf-8")
 
 
+def test_language_literal_escaping_and_tag_normalisation():
+    # escaping covers language-tagged strings exactly like plain ones
+    line = single_line(Literal('你好 "世界"', lang="zh"))
+    assert line == 'onto:Vehicle rdfs:label "你好 \\"世界\\""@zh .'
+    # a language tag wins over the datatype ...
+    assert single_line(Literal("plain", XSD + "integer", lang="zh")) == (
+        'onto:Vehicle rdfs:label "plain"@zh .')
+    # ... and a leading '@' in the tag is normalised away
+    assert single_line(Literal("x", lang="@en")) == (
+        'onto:Vehicle rdfs:label "x"@en .')
+
+
+def test_language_tagged_literals_stay_deterministic():
+    iri = policy()
+    statements = [
+        (iri.class_iri("Vehicle"), RDFS + "label", Literal("b", lang="zh")),
+        (iri.class_iri("Vehicle"), RDFS + "label", Literal("a")),
+        (iri.class_iri("Vehicle"), RDFS + "label", Literal("c", lang="en")),
+    ]
+    first = writer().write(statements)
+    assert writer().write(list(reversed(statements))) == first
+    text = first.decode("utf-8")
+    assert '"a"^^xsd:string' in text
+    assert '"b"@zh' in text
+    assert '"c"@en' in text
+
+
 # ---------------------------------------------------------------------------
 # determinism
 # ---------------------------------------------------------------------------

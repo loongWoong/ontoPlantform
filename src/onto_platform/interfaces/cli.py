@@ -410,6 +410,10 @@ def main(argv: list[str] | None = None) -> int:
             _emit(platform.ctx.audit.list(wid, limit=args.limit))
         elif args.command == "standards":
             wid = _need_workspace(args)
+            if getattr(platform, "standards", None) is None:
+                print("error: standards adapters are not available in this "
+                      "deployment", file=sys.stderr)
+                return 1
             if args.subcommand == "list":
                 _emit(platform.standards.list_adapters(wid, user))
             elif args.subcommand == "export":

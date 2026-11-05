@@ -61,6 +61,17 @@ class GateError(PlatformError):
     """A promotion/close gate is not satisfied (409, no automatic retry)."""
 
 
+class AdapterInvocationError(PlatformError):
+    """A standard adapter plugin raised while doing its work (502).
+
+    The platform catches unexpected adapter exceptions at the service
+    boundary and re-raises this error, so a plugin crash is reported as a
+    plugin failure (502, ``plugin_failure``, not retryable) instead of an
+    internal server error: the caller learns that the plugin failed while
+    the platform itself is healthy.
+    """
+
+
 #: Stable error taxonomy for interfaces/agents (plan-v2 1.10): category, HTTP
 #: status, and whether the caller may retry the same request.  Retry means
 #: "same request may succeed later", *not* "replay blindly with a new key".
@@ -77,6 +88,7 @@ ERROR_CLASSES: dict[type, tuple[str, int, bool]] = {
     RateLimitError: ("rate_limited", 429, True),
     ExecutionInProgressError: ("execution_in_progress", 409, True),
     GateError: ("gate_failed", 409, False),
+    AdapterInvocationError: ("plugin_failure", 502, False),
 }
 
 

@@ -24,6 +24,9 @@ runtime kernel or the composition root.
 
 from __future__ import annotations
 
+import re
+
+from .formats import SUPPORTED_FORMATS, check_export_format, check_scope
 from .iri import PREFIXES
 from .spi import (
     ADAPTER_API_VERSION,
@@ -64,20 +67,24 @@ XSD_RANGES: dict[str, str] = {
     "array": XSD + "string",
 }
 
-#: Accepted ``ExportRequest.format`` values ("" means the default format).
-SUPPORTED_FORMATS: tuple[str, ...] = ("", "text/turtle", "turtle")
-
+#: Accepted ``ExportRequest.format`` values ("" means the default format) and
+#: the format/scope guards now live in ``semantic/formats.py`` so SKOS does not
+#: have to import this module; ``check_export_format`` stays importable from
+#: here for backwards compatibility.
 _DEFAULT_XSD_RANGE = XSD + "string"
 
+#: CJK ideographs (U+4E00..U+9FFF): platform vocabulary/descriptions are mostly
+#: Chinese, so human-facing labels get ``@zh`` while ASCII identifiers do not.
+_CJK = re.compile(r"[\u4e00-\u9fff]")
 
-def check_export_format(request: ExportRequest, manifest: AdapterManifest) -> str:
-    """Validate the requested format, raising ``AdapterError`` otherwise."""
-    format_name = str(getattr(request, "format", "") or "")
-    if format_name not in SUPPORTED_FORMATS:
-        raise AdapterError(
-            f"{manifest.name} adapter does not support format {format_name!r}; "
-            "supported formats: text/turtle, turtle")
-    return format_name
+
+def _label(value: str) -> Literal:
+    """A human label: language-tagged ``zh`` when it contains CJK, else plain.
+
+    Deterministic by construction (the decision only depends on the text), so
+    golden files stay byte-identical across environments.
+    """
+    return Literal(value, lang="zh") if _CJK.search(value) else Literal(value)
 
 
 def _as_version(value: object, fallback: int = 0) -> int:
@@ -114,6 +121,9 @@ class OwlRdfAdapter:
         standards=("owl", "rdf", "turtle"),
         capabilities=("export",),
         formats_out=("text/turtle",),
+        # Architecture §4 lists the package name; the plugin id stays short
+        # (completion plan D1: aliases are the compatibility bridge).
+        aliases=("onto-standards-owl",),
         description=(
             "OWL 2 / RDF structural TBox export (classes, object properties "
             "with domain/range/inverse, datatype properties with xsd ranges) "
@@ -123,6 +133,7 @@ class OwlRdfAdapter:
     def export(self, ctx: object, request: ExportRequest | None = None) -> Artifact:
         request = request if request is not None else ExportRequest()
         check_export_format(request, self.manifest)
+        check_scope(request, self.manifest)
         tbox = getattr(ctx, "tbox", None)
         iri = getattr(ctx, "iri", None)
         if tbox is None or iri is None:
@@ -165,7 +176,7 @@ class OwlRdfAdapter:
         statement_list.extend([
             (ontology_iri, RDF_TYPE, OWL_ONTOLOGY),
             (ontology_iri, RDFS_LABEL,
-             Literal(_text(getattr(tbox, "name", "")))),
+             _label(_text(getattr(tbox, "name", "")))),
             (ontology_iri, OWL_VERSION_INFO,
              Literal(_version_info(version, fingerprint))),
             (ontology_iri, OWL_VERSION_IRI, iri.version_iri()),
@@ -177,12 +188,12 @@ class OwlRdfAdapter:
             class_iri = iri.class_iri(object_name)
             statement_list.extend([
                 (class_iri, RDF_TYPE, OWL_CLASS),
-                (class_iri, RDFS_LABEL, Literal(object_name)),
+                (class_iri, RDFS_LABEL, _label(object_name)),
             ])
             description = _text(getattr(object_spec, "description", ""))
             if description:
                 statement_list.append(
-                    (class_iri, RDFS_COMMENT, Literal(description)))
+                    (class_iri, RDFS_COMMENT, _label(description)))
             terms += 1
 
             properties = getattr(object_spec, "properties", {}) or {}
@@ -199,7 +210,8 @@ class OwlRdfAdapter:
                     getattr(property_spec, "description", ""))
                 if property_description:
                     statement_list.append(
-                        (property_iri, RDFS_COMMENT, Literal(property_description)))
+                        (property_iri, RDFS_COMMENT,
+                         _label(property_description)))
                 terms += 1
 
         skipped_inverse: list[str] = []
@@ -236,4 +248,5 @@ __all__ = [
     "SUPPORTED_FORMATS",
     "XSD_RANGES",
     "check_export_format",
+    "check_scope",
 ]

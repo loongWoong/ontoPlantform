@@ -19,6 +19,13 @@ use cases the CLI uses - no domain logic here.
     DELETE /api/workspaces/{wid}/ontology/relations/{name}
     DELETE /api/workspaces/{wid}/ontology/vocabulary/{term}
     POST /api/workspaces/{wid}/ontology/validate | /publish | /lint | /revisions
+    GET  /api/workspaces/{wid}/ontology/workflow?round_id=
+    POST /api/workspaces/{wid}/ontology/workflow/rounds
+    GET  /api/workspaces/{wid}/ontology/workflow/rounds/{rid}
+    PATCH/DELETE /ontology/workflow/rounds/{rid}[/cqs|reuse|samples/{item}]
+    POST /api/workspaces/{wid}/ontology/workflow/rounds/{rid}/check|bind|next
+    POST .../rounds/{rid}/cqs|reuse|samples|runs|reviews|publish
+    GET  .../rounds/{rid}/trace-matrix|publish-check|report
     GET  /api/workspaces/{wid}/state/history?ref=&limit=
     GET  /api/workspaces/{wid}/state/as-of?ref=&seq=   (or &at=RFC3339)
     GET  /api/workspaces/{wid}/runtime          (kernel describe)
@@ -298,7 +305,14 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
             self.wfile.write(body)
 
         def _send_bytes(self, status: int, content_type: str, body: bytes,
-                        filename: str = "") -> None:
+                        filename: str = "",
+                        headers: dict[str, str] | None = None) -> None:
+            # Text formats get an explicit charset so browsers/CLI clients do
+            # not have to guess how to decode UTF-8 Turtle/CSV bodies.  Other
+            # call sites (JSON, binary exports) keep their exact media type.
+            if (content_type.startswith("text/")
+                    and "charset=" not in content_type.lower()):
+                content_type = f"{content_type}; charset=utf-8"
             self.send_response(status)
             self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(body)))
@@ -306,6 +320,8 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
                 self.send_header(
                     "Content-Disposition",
                     f'attachment; filename="{filename}"')
+            for key, value in (headers or {}).items():
+                self.send_header(str(key), str(value))
             self._cors()
             self.end_headers()
             self.wfile.write(body)
@@ -508,6 +524,8 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
             user = self._actor(query=query)
             if wid is None:
                 raise ValidationError("workspace id is required")
+            if rest[:2] == ["ontology", "workflow"]:
+                return self._workflow_delete(wid, rest[2:], query)
             if len(rest) == 3 and rest[0] == "security" \
                     and rest[1] == "bindings":
                 return self._send(200, platform.security.delete_binding(
@@ -906,6 +924,8 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
                 return self._send(200, platform.llm_config.get(wid, user))
             if rest == ["ontology"]:
                 return self._send(200, platform.ontologies.get(wid, actor=user))
+            if rest[:2] == ["ontology", "workflow"]:
+                return self._workflow_get(wid, rest[2:], query, user)
             if rest[:1] == ["standards"]:
                 return self._get_standards(wid, rest[1:], query, user)
             if rest == ["runtime"]:
@@ -1201,6 +1221,9 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
             400; a name that is not registered at all is a 404, and a
             workspace without a published ontology is a 404 as well.
             """
+            if getattr(platform, "standards", None) is None:
+                raise NotFoundError(
+                    "standards adapters are not available in this deployment")
             if rest == ["adapters"]:
                 return self._send(200, {
                     "adapters": platform.standards.list_adapters(wid, user)})
@@ -1212,10 +1235,147 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
                 artifact = platform.standards.export(
                     wid, user, adapter,
                     str(query.get("format") or "").strip() or None)
+                metadata = artifact.get("metadata") or {}
+                headers = {
+                    "X-Adapter-Name": str(
+                        metadata.get("adapter") or artifact.get("adapter") or ""),
+                    "X-Adapter-Version": str(
+                        metadata.get("version")
+                        or metadata.get("adapter_version") or ""),
+                    "X-Ontology-Version": str(
+                        metadata.get("ontology_version", "")),
+                    "X-Schema-Fingerprint": str(
+                        metadata.get("schema_fingerprint", "")),
+                }
                 return self._send_bytes(
                     200, artifact["media_type"], artifact["content"],
-                    artifact["filename"])
+                    artifact["filename"], headers=headers)
             raise ValidationError(f"no standards route for {self.path}")
+
+        # ------------------------------------------------ workflow routes
+        #
+        # All workflow resources live below /ontology/workflow so the console
+        # (and an agent) can discover them next to the ontology they govern.
+        # Reads are viewer-level; every write goes through the use case, which
+        # enforces editor and the round's editable/accepted lifecycle.
+
+        def _workflow_get(self, wid: str, rest: list[str], query: dict,
+                          user: str) -> None:
+            if rest == []:
+                return self._send(200, platform.workflow.overview(
+                    wid, user, round_id=str(
+                        query.get("round_id") or query.get("round") or "")))
+            if rest == ["rounds"]:
+                return self._send(200, {
+                    "rounds": platform.workflow.overview(
+                        wid, user).get("rounds", [])})
+            if len(rest) >= 2 and rest[0] == "rounds":
+                round_id = rest[1]
+                tail = rest[2:]
+                if not tail:
+                    return self._send(200, platform.workflow.detail(
+                        wid, user, round_id))
+                if tail == ["trace-matrix"]:
+                    return self._send(200, platform.workflow.trace_matrix(
+                        wid, user, round_id))
+                if tail == ["publish-check"]:
+                    return self._send(200, platform.workflow.publish_check(
+                        wid, user, round_id))
+                if tail == ["report"]:
+                    return self._send(200, platform.workflow.report(
+                        wid, user, round_id))
+                if len(tail) == 2 and tail[0] == "cqs" and tail[1] == "export":
+                    return self._send(200, platform.workflow.export_cqs(
+                        wid, user, round_id,
+                        str(query.get("format") or "csv")))
+                if len(tail) == 1 and tail[0] in (
+                        "cqs", "reuse", "samples", "runs", "reviews"):
+                    detail = platform.workflow.detail(wid, user, round_id)
+                    return self._send(200, {tail[0]: detail.get(tail[0], [])})
+            raise ValidationError(f"no workflow route for {self.path}")
+
+        def _workflow_post(self, wid: str, rest: list[str],
+                           body: dict) -> None:
+            body = body or {}
+            user = self._actor(body=body)
+            if rest == ["rounds"]:
+                return self._send(200, platform.workflow.create_round(
+                    wid, user, body))
+            if len(rest) >= 2 and rest[0] == "rounds":
+                round_id = rest[1]
+                tail = rest[2:]
+                if tail == ["check"]:
+                    return self._send(200, platform.workflow.check(
+                        wid, user, round_id))
+                if tail == ["bind"]:
+                    return self._send(200, {
+                        "round": platform.workflow.bind_round(
+                            wid, user, round_id)})
+                if tail == ["next"]:
+                    return self._send(200, platform.workflow.next_round(
+                        wid, user, round_id, body))
+                if tail == ["publish"]:
+                    return self._send(200, platform.workflow.publish(
+                        wid, user, round_id))
+                if tail == ["cqs"]:
+                    return self._send(200, platform.workflow.add_cq(
+                        wid, user, round_id, body))
+                if tail == ["cqs", "import"]:
+                    return self._send(200, platform.workflow.import_cqs(
+                        wid, user, round_id, body))
+                if len(tail) == 3 and tail[0] == "cqs" and tail[2] == "run":
+                    return self._send(200, platform.workflow.preview_cq(
+                        wid, user, round_id, tail[1], body))
+                if tail == ["reuse"]:
+                    return self._send(200, platform.workflow.add_reuse(
+                        wid, user, round_id, body))
+                if tail == ["samples"]:
+                    return self._send(200, platform.workflow.add_sample(
+                        wid, user, round_id, body))
+                if tail == ["runs"]:
+                    return self._send(200, platform.workflow.run_acceptance(
+                        wid, user, round_id, body))
+                if tail == ["reviews"]:
+                    return self._send(200, platform.workflow.submit_review(
+                        wid, user, round_id, body))
+            raise ValidationError(f"no workflow route for {self.path}")
+
+        def _workflow_patch(self, wid: str, rest: list[str],
+                            body: dict) -> None:
+            body = body or {}
+            user = self._actor(body=body)
+            if len(rest) >= 2 and rest[0] == "rounds":
+                round_id = rest[1]
+                tail = rest[2:]
+                if not tail:
+                    return self._send(200, platform.workflow.update_round(
+                        wid, user, round_id, body))
+                if len(tail) == 2 and tail[0] == "cqs":
+                    return self._send(200, platform.workflow.update_cq(
+                        wid, user, round_id, tail[1], body))
+                if len(tail) == 2 and tail[0] == "reuse":
+                    return self._send(200, platform.workflow.update_reuse(
+                        wid, user, round_id, tail[1], body))
+                if len(tail) == 2 and tail[0] == "samples":
+                    return self._send(200, platform.workflow.update_sample(
+                        wid, user, round_id, tail[1], body))
+            raise ValidationError(f"no workflow route for {self.path}")
+
+        def _workflow_delete(self, wid: str, rest: list[str],
+                             query: dict) -> None:
+            user = self._actor(query=query)
+            if len(rest) == 4 and rest[0] == "rounds":
+                round_id, kind, item_id = rest[1], rest[2], rest[3]
+                if kind == "cqs":
+                    return self._send(200, platform.workflow.delete_cq(
+                        wid, user, round_id, item_id))
+                if kind == "reuse":
+                    return self._send(200, platform.workflow.delete_reuse(
+                        wid, user, round_id, item_id))
+                if kind == "samples":
+                    return self._send(200, platform.workflow.delete_sample(
+                        wid, user, round_id, item_id))
+            raise ValidationError(f"no workflow route for {self.path}")
 
         # ------------------------------------------------------------ POST
 
@@ -1512,6 +1672,8 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
                     wid, body.get("name", ""), actor=user,
                     description=body.get("description", ""),
                     profile=body.get("profile", "closed")))
+            if rest[:2] == ["ontology", "workflow"]:
+                return self._workflow_post(wid, rest[2:], body)
             if rest == ["ontology", "discard"]:
                 return self._send(200, platform.ontologies.discard_draft(
                     wid, user))
@@ -1868,6 +2030,8 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
             declared = body.pop("user", None) or (query or {}).get("user")
             user = self._actor(
                 body={"user": declared} if declared else None, query=query)
+            if rest[:2] == ["ontology", "workflow"]:
+                return self._workflow_patch(wid, rest[2:], body)
             if rest == ["ontology"]:
                 return self._send(200, platform.ontologies.update_meta(
                     wid, user, name=body.get("name"),

@@ -8,12 +8,15 @@ third-party runtime dependencies.  Adapters are discovered through
 from __future__ import annotations
 
 from .context import AdapterContext, OntologyView, SnapshotView, build_context
+from ..errors import AdapterInvocationError
 from .iri import DEFAULT_BASE, PREFIXES, IriPolicy, iri_policy_for
 from .registry import (
     BUILTIN_ADAPTERS,
+    CAPABILITY_METHODS,
     ENTRY_POINT_GROUP,
     LIFECYCLE_GROUP,
     PluginRegistry,
+    adapter_contract_problems,
     default_registry,
     reset_default_registry,
 )
@@ -32,14 +35,19 @@ from .spi import (
     StandardAdapter,
     ValidationReport,
     manifest_problems,
+    platform_version,
+    requires_compatible,
+    requires_problems,
 )
 
 __all__ = [
     "ADAPTER_API_VERSION",
     "CAPABILITY_KINDS",
+    "CAPABILITY_METHODS",
     "SCOPE_KINDS",
     "AdapterError",
     "AdapterIncompatible",
+    "AdapterInvocationError",
     "AdapterManifest",
     "AdapterNotFound",
     "Artifact",
@@ -48,7 +56,11 @@ __all__ = [
     "QueryResult",
     "StandardAdapter",
     "ValidationReport",
+    "adapter_contract_problems",
     "manifest_problems",
+    "platform_version",
+    "requires_compatible",
+    "requires_problems",
     "DEFAULT_BASE",
     "PREFIXES",
     "IriPolicy",

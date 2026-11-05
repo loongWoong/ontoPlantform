@@ -1,0 +1,24 @@
+@prefix onto: <https://ontoplatform.local/ws/ws-1/onto/traffic/v2#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+onto:ConceptScheme rdf:type skos:ConceptScheme .
+onto:ConceptScheme skos:prefLabel "traffic"^^xsd:string .
+onto:term.%E6%8B%A5%E5%A0%B5 rdf:type skos:Concept .
+onto:term.%E6%8B%A5%E5%A0%B5 skos:altLabel "拥堵状态"@zh .
+onto:term.%E6%8B%A5%E5%A0%B5 skos:inScheme onto:ConceptScheme .
+onto:term.%E6%8B%A5%E5%A0%B5 skos:notation "TollStation.status"^^xsd:string .
+onto:term.%E6%8B%A5%E5%A0%B5 skos:prefLabel "拥堵"@zh .
+onto:term.%E6%94%B6%E8%B4%B9%E7%AB%99 rdf:type skos:Concept .
+onto:term.%E6%94%B6%E8%B4%B9%E7%AB%99 skos:altLabel "收费站点"@zh .
+onto:term.%E6%94%B6%E8%B4%B9%E7%AB%99 skos:altLabel "toll station"^^xsd:string .
+onto:term.%E6%94%B6%E8%B4%B9%E7%AB%99 skos:inScheme onto:ConceptScheme .
+onto:term.%E6%94%B6%E8%B4%B9%E7%AB%99 skos:notation "TollStation"^^xsd:string .
+onto:term.%E6%94%B6%E8%B4%B9%E7%AB%99 skos:prefLabel "收费站"@zh .
+onto:term.%E8%BD%A6%E8%BE%86 rdf:type skos:Concept .
+onto:term.%E8%BD%A6%E8%BE%86 skos:inScheme onto:ConceptScheme .
+onto:term.%E8%BD%A6%E8%BE%86 skos:notation "Vehicle"^^xsd:string .
+onto:term.%E8%BD%A6%E8%BE%86 skos:prefLabel "车辆"@zh .

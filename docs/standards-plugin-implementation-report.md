@@ -217,3 +217,126 @@ git diff --stat
 2. **严格解析验证转通过**：收尾环境补装 `[interop]`（rdflib 7.6.0）后复跑，`python -m pytest -q` → **715 passed, 0 skipped, 60.93s**；原先 3 个 rdflib 解析用例由 SKIP 转 PASS，DoD §7.2 由“有条件通过”转 **完全通过**，Turtle round-trip 已在真实解析器上验证。
 3. **working tree 归属澄清**：`ontology-guide/*` 的 6 个修改与 4 个未跟踪文件属于此前已完成的 PDF 下载功能，不是本 P0 产生；P0 的改动范围 = `README.md`、`pyproject.toml`、`bootstrap.py`、`interfaces/api.py`、`interfaces/cli.py` 与全部新增文件（`semantic/`、`application/standards_usecases.py`、7 个测试、4 份文档），未 commit。
 4. **文档收尾完成**：`README.md` 新增「标准格式插件（P0）」用法与链接；`docs/standards-plugin-architecture.md` §7 新增「P0 实现状态（已落地）」及计划/报告链接（DoD §7.7 完成）。
+
+---
+
+## 附：C0+C1 收尾（task-13 / D 独立验证）
+
+> 依据 `docs/standards-plugin-completion-plan-v1.md` task D 执行；本节只记录 C0+C1 补全的独立验证结果，追加于上节 P0 验收之后，不改动历史结论。
+
+### D-0 结论
+
+C0+C1 达到计划 §1 的 5 项完成判定：全量 **794 passed / 0 skipped**、覆盖率 **79.94%**（门禁 70%）、独立契约套件 **30 项全绿（新增 17 项）**、golden 逐字节与跨进程确定性成立。**无阻塞项**；剩余缺口均为计划 §6 明确留给 C2/C3 的项（G-08/G-10/G-11/G-13/G-14/G-15，以及 G-16 的治理部分）。
+
+### D-1 验证方式（独立于开发者断言）
+
+| 维度 | 做法 |
+|---|---|
+| 契约测试 | 仍只在 `tests/test_standards_contract.py` 内自建本体 + 自写断言，不 import 开发者的测试模块或 helper |
+| golden | 输入的 `Ontology` 由冻结产物**反向重建**（解析 `tests/golden/standards/*.ttl` 的 OWL/SKOS 三元组），导出结果与产物逐字节比对；数量断言直接数 golden 文本，不复用开发者的计数断言 |
+| 跨进程 | `subprocess` + `sys.executable` 启动独立 Python 进程，`PYTHONHASHSEED=1` / `2` 各跑一次，比较 stdout 字节；脚本内重建本体并导出，同时与进程内导出比对 |
+| 异常隔离 | 私有 `PluginRegistry` 注入 `StandardsUseCases`，并通过已启动的真实 HTTP socket 验证 502；不依赖开发者用例里的同款假插件 |
+| 语言标签 | 正则提取产物中**全部** `@zh` 字面量，断言每个都含 CJK；ASCII 标识符断言 `^^xsd:string` 且无 `@lang` |
+| 语义红线 | 沿用原 P0 禁串清单（`owl:hasKey`/基数/`FunctionalProperty`/`someValuesFrom`/`allValuesFrom`/`sh:` 等），对新 golden 产物同样断言为零 |
+
+### D-2 测试矩阵（30 项 = 原有 13 项保留 + 新增 17 项）
+
+| 分组 | 新增数 | 覆盖点 |
+|---|---|---|
+| h) manifest 新字段/旧键兼容 | 2 | `formats{out,in}`/`requires`/`config_schema`/`aliases`、`manifest_problems==[]`、旧扁平键仍在、行可 JSON 序列化；旧式（pre-D3）manifest 仍可注册并带分组默认值 |
+| i) canonical/别名 | 1 | `get("onto-standards-owl"/"onto-standards-skos")` 可用、与 canonical 同一实例；`names()` 只含 canonical；别名与 canonical 导出逐字节一致；未知别名仍 404 分类 |
+| j) 能力-方法一致性 | 1 | 声明 `validate` 但无方法 → `adapter_contract_problems` 有诊断；发现列表 `status=invalid`、`get` 抛 `AdapterError`；ready 插件不受影响；手动 `register` 抛 `AdapterError` |
+| k) `requires.ontoplatform` | 1 | `>=99.0` → `status=invalid` 且 problems 含 "incompatible"；`get` 抛 `AdapterIncompatible`；`requires_compatible` 返回 False 且 reason 含当前平台版本；手动注册亦拒绝 |
+| l) scope 负例 | 2 | `scope="abox"/"both"`、`include_abox=True` → `AdapterError`（文案含 "TBox only"）；`""`/`"tbox"` 正常；`build_context` 拒绝未知 scope |
+| m) 语言标签 | 1 | OWL `rdfs:label "Vehicle"^^xsd:string`、`rdfs:comment "车辆"@zh`；SKOS `prefLabel/altLabel` 中文 `@zh`、英文别名 `^^xsd:string`；不变式：所有 `@zh` 字面量都含 CJK |
+| n) 插件异常隔离 | 3 | use case → `AdapterInvocationError`，`classify` = `plugin_failure`/502/不可重试；审计恰好一条 `standards.export.failed`（RuntimeError + message），无 success 审计；平台校验错误（`AdapterError`）原样透传且不写失败审计；HTTP 502 结构化错误；`Platform.standards=None` 两条路由 404 |
+| o) provenance | 2 | API 响应头 `X-Adapter-Name/-Version`、`X-Ontology-Version`、`X-Schema-Fingerprint` 与已发布版本一致，`Content-Type` 含 `charset=utf-8`、`Content-Disposition` 含 `.ttl`；别名请求头仍报 canonical 且字节相同；use case metadata 含 actor/ontology_version/schema_fingerprint/adapter_version、无时间戳、重复导出完全一致 |
+| p) golden 独立核对 | 2 | OWL/SKOS 产物与冻结文件逐字节相等；OWL 2 类/4 数据属性/2 对象属性/2 `owl:inverseOf`；SKOS 1 scheme/3 concept/3 altLabel/4 prefLabel；CJK/ASCII 标签与红线 |
+| q) 跨进程确定性 | 1 | `PYTHONHASHSEED=1` 与 `2` 两次子进程 stdout 字节相等，且与进程内导出、与 golden 相等（超时 60s） |
+| r) 包导出面 | 1 | `onto_platform.semantic` 暴露 `AdapterInvocationError`/`CAPABILITY_METHODS`/`adapter_contract_problems`/`platform_version`/`requires_compatible`/`requires_problems` |
+
+原有 13 项（发现/确定性/语义红线/依赖边界/真实 socket E2E/rdflib round-trip/坏插件隔离）全部保留；仅将「未知 adapter 404」用例的注释从“计划写 400”更新为已对齐口径，断言未放松。
+
+### D-3 逐项契约验证结果
+
+| # | 契约 | 结果 |
+|---|---|---|
+| 1 | manifest 新字段 + 旧键兼容 | 通过（`to_dict()` 同时含嵌套 `formats/requires/config_schema/aliases` 与扁平 `formats_out/in`；builtin 行 `status=ready`、`problems=[]`） |
+| 2 | 别名解析且 canonical 唯一 | 通过（`names()==["owl-rdf","skos"]`；别名与 canonical 导出逐字节一致） |
+| 3 | 能力-方法一致 | 通过（`status=invalid` 或注册 `AdapterError`，两者皆被覆盖；ready 插件隔离） |
+| 4 | `requires` 不兼容可见 | 通过（`status=invalid` + problems 含 "incompatible"，`get` → `AdapterIncompatible`） |
+| 5 | scope 显式拒绝 | 通过（abox/both/include_abox → `AdapterError`；tbox 正常） |
+| 6 | 语言标签 | 通过（CJK → `@zh`；ASCII → `^^xsd:string`；无 `"Vehicle"@zh`） |
+| 7 | 异常隔离 + 审计 + 502 | 通过（use case 与 HTTP 双层；审计 `standards.export.failed`；`PluginError` 透传不误报） |
+| 8 | provenance 头/metadata | 通过（四个 `X-*` 头 + charset；metadata 无时间戳且可复现） |
+| 9 | golden 逐字节 + 数量 | 通过（输出 == 冻结文件；数量断言见 D-2 p） |
+| 10 | 跨进程确定性 | 通过（seed 1/2 相等，且与进程内一致） |
+
+### D-4 测量数字（本机：Windows / Python 3.12.10 / rdflib 7.6.0 / pytest-cov 已装）
+
+| 命令 | 结果 |
+|---|---|
+| `python -m pytest tests/test_standards_contract.py -q` | **30 passed in 5.50s** |
+| `python -m pytest <tests/test_semantic_*.py tests/test_standards_*.py> -q` | **195 passed in 12.57s** |
+| `python -m pytest -q` | **794 passed, 0 skipped in 64.37s** |
+| `python -m pytest -q --cov=onto_platform --cov-report=term --cov-fail-under=70` | **794 passed in 82.01s**；TOTAL **80%（精确 79.94%）**，`Required test coverage of 70% reached` |
+| 覆盖率（`semantic` 包） | spi 88%、registry 93%、owl 96%、skos 93%、turtle 93%、iri 96%、context 100%、formats 100% |
+
+与 P0 验收基线（715 passed / 0 skipped / 60.93s）相比，新增 79 项（A/B/C/D 及补全测试），无回归、无环境 skip。
+
+### D-5 G-01…G-25 补全状态（C0+C1）
+
+| 缺口 | 状态 | 说明 / 证据 |
+|---|---|---|
+| G-01 manifest 不完整 | **关闭** | 嵌套 `formats/requires/config_schema/aliases` 已出，旧扁平键保留（D-2 h） |
+| G-02 能力-方法不校验 | **关闭** | `adapter_contract_problems` + discover 标 `invalid` + register 拒绝（D-2 j） |
+| G-03 异常未隔离 | **关闭** | `AdapterInvocationError`→502/`plugin_failure`/不可重试 + 失败审计（D-2 n） |
+| G-04 scope 被静默忽略 | **关闭** | abox/both/include_abox 显式 `AdapterError`（D-2 l） |
+| G-05 插件名与架构不一致 | **关闭** | canonical 短名 + `onto-standards-*` 别名，`get` 双写法（D-2 i） |
+| G-06 IRI SSOT 文档不一致 | **关闭（Lead 文档）** | 架构 §5 与实现对齐；golden 锁定 IRI 形态（D-2 p） |
+| G-07 provenance 未落图 | **P0 范围关闭 / 命名图 P1** | metadata + `X-*` 头已交付；命名图按架构 §6（L191）属 P1 |
+| G-08 无类层次 | 未关闭（C3） | 依赖模型层 `ObjectTypeSpec.parent`，非插件可解 |
+| G-09 无语言标签 | **关闭** | CJK `@zh` / ASCII `xsd:string`（D-2 m） |
+| G-10 `skos:definition` 恒空 | 未关闭（C3） | 依赖 `VocabularyTerm.description` 模型字段 |
+| G-11 无 JSON-LD | 降级为 P1（文档已改口径） | P0 明确 Turtle-only（plan D4），能力边界已写入 README |
+| G-12 SKOS 横向依赖 OWL | **关闭** | 共享 `semantic/formats.py`；SKOS 不再 import OWL（原有解耦断言保留） |
+| G-13 API 路由缺口 | 未关闭（C2） | validate/artifacts/reload 属 P1 |
+| G-14 use case 缺口 | 未关闭（C2） | Validate/Query 属 P1 |
+| G-15 CLI validate | 未关闭（C2） | 属 P1 |
+| G-16 治理/兼容校验 | **部分关闭** | 能力-方法与 `requires` 兼容已补；workspace 启停/reload/health/permissions 运行时强制属 C2 |
+| G-17 `Platform.standards` 必填 | **关闭（Lead）** | 可选字段默认 None，API/CLI 显式 404（D-2 n 覆盖） |
+| G-18 无 golden/数量断言 | **关闭** | golden 两件 + 数量断言（D-2 p） |
+| G-19 CI 不装 interop | **关闭（Lead）** | CI 改 `[dev,interop]` + `--cov` 门禁（`.github/workflows/ci.yml`） |
+| G-20 无跨进程确定性 | **关闭** | 双 `PYTHONHASHSEED` 子进程字节比对（D-2 q） |
+| G-21 无插件异常路径测试 | **关闭** | C 的用例测试 + D 的独立双层验证（D-2 n） |
+| G-22 `[dev]` 缺 pytest-cov | **关闭（Lead）** | `pyproject.toml` dev extra 含 pytest-cov/coverage；CI 门禁可运行 |
+| G-23 架构文档不一致 | **关闭（Lead）** | §2.2/§4/§5/§6 已对齐（本报告抽查 L64-82、L111-120、L156-175、L191、L207-214） |
+| G-24 路线图/审计注记 | **关闭（Lead）** | `plan-v2.md:196` 已加 O-3 导出侧状态补充；`docs/ontology-implementation-review-v1.md` 已加 P0 部分关闭说明与“B2 被架构 §2.5 取代”注记（本轮抽查 diff 确认） |
+| G-25 无能力矩阵 | **关闭（Lead）** | README「P0 能力边界（诚实清单）」+ 架构 §7 插件/阶段清单 |
+
+### D-6 DoD 对照（计划 §1「C0+C1 完成判定」）
+
+| # | 判定 | 结果 |
+|---|---|---|
+| 1 | 全量全绿、≥715 + 新增、0 环境 skip | **通过**：794 passed / 0 skipped（`[interop]` 已装） |
+| 2 | 覆盖率 ≥70% | **通过**：79.94%，门禁命令可运行 |
+| 3 | 契约测试新增项齐备 | **通过**：manifest/别名/能力-方法/requires/scope/异常 502+审计/golden/数量/语言标签/provenance/跨进程 全部有断言（D-2） |
+| 4 | `git diff` 仅声明文件、`dependencies=[]`、Kernel 未动 | **通过（D 范围）**：D 只改本报告 + `tests/test_standards_contract.py`；`dependencies=[]` 复核未变；未 commit；其余改动属 A/B/C/Lead 各自写作用域 |
+| 5 | 文档与实现一致 | **通过（Lead 完成，D 抽查）**：架构 §2.2/§4/§5/§6、README 能力边界、CI、pyproject 已同步；本报告补注 C0+C1 |
+
+### D-7 残余风险与观察（C2/C3）
+
+1. **C2（P1，未做）**：G-08/G-10 依赖模型层（`ObjectTypeSpec.parent`、`VocabularyTerm.description/broader/narrower`）；G-11 JSON-LD；G-13/G-14/G-15 validate/artifacts/reload；G-16 的 workspace 启停/权限强制/健康检查；G-07 的命名图 provenance（架构 §6 L191 已标 P1）。
+2. **C3（P2/P3，未做）**：ABox 快照导出、SPARQL 查询、导入、类层次/词表层级、RDFS/OWL-RL 推理。
+3. **观察（不构成失败）**：`StandardsUseCases.export` 返回的 `adapter` 字段是**调用方传入的名字**（用别名调用时保留别名），而 `metadata.adapter`/`X-Adapter-Name` 为 canonical。HTTP 导出响应体是 Turtle 字节、不暴露该 JSON，故仅影响直接调用 use case 的宿主；建议 P1 统一为 canonical（本轮未擅改实现）。
+4. **测试成本**：跨进程确定性用例会启动 2 个 Python 子进程（约 +1–2s）；脚本用 `sys.stdout.buffer` 写字节，避免 Windows 文本模式换行转换。
+5. **golden 维护**：`_golden_ontology()` 从产物反向重建输入，若未来修订 golden 需同步解析器；这是“golden 即契约”的有意设计，换来的是一旦产物漂移测试必失败。
+
+### D-8 交付与工作区
+
+| 项 | 内容 |
+|---|---|
+| 改动文件（D 写作用域） | `tests/test_standards_contract.py`（30 项；`git diff --numstat`：+770/−3）；本报告本节追加（+123 行） |
+| 未改动 | `src/**`、其他 `tests/**`、`tests/conftest.py`、`tests/golden/**`；未 `git commit` |
+| 工作区其余改动 | A/B/C/Lead 的既有改动（`semantic/{spi,registry,owl,skos,formats,__init__}.py`、`application/standards_usecases.py`、`errors.py`、`bootstrap.py`、`interfaces/{api,cli}.py`、`tests/test_semantic_registry.py`、`tests/test_standards_{api,cli,export,turtle}.py`、`pyproject.toml`、CI、README、docs）；D 未触碰 |
+| 未跟踪 | `docs/standards-plugin-completion-plan-v1.md`、`docs/standards-plugin-completion-review-v1.md`、`src/onto_platform/semantic/formats.py`、`tests/golden/`、`tests/test_semantic_spi.py`、`.coverage`（覆盖率运行产物） |

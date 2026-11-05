@@ -28,6 +28,7 @@ from .spi import (
     AdapterNotFound,
     _major,
     manifest_problems,
+    requires_compatible,
 )
 
 #: importlib.metadata group scanned for third-party adapters
@@ -41,6 +42,16 @@ BUILTIN_ADAPTERS: tuple[str, ...] = (
     "onto_platform.semantic.owl:OwlRdfAdapter",
     "onto_platform.semantic.skos:SkosAdapter",
 )
+
+#: manifest capability -> adapter method that must be callable (G-02).  The
+#: ``import`` capability maps to ``import_`` because ``import`` is a keyword.
+CAPABILITY_METHODS: tuple[tuple[str, str], ...] = (
+    ("export", "export"),
+    ("validate", "validate"),
+    ("query", "query"),
+    ("import", "import_"),
+)
+_CAPABILITY_METHODS = dict(CAPABILITY_METHODS)
 
 _STATUS_READY = "ready"
 _STATUS_INVALID = "invalid"
@@ -58,7 +69,35 @@ def _empty_manifest(name: str) -> dict:
         "formats_in": [],
         "description": "",
         "permissions": {"network": False, "write": False},
+        "formats": {"out": [], "in": []},
+        "requires": {"ontoplatform": "", "extras": []},
+        "config_schema": {},
+        "aliases": [],
     }
+
+
+def adapter_contract_problems(adapter) -> list[str]:
+    """Problems where a declared capability has no callable implementation.
+
+    A manifest is a promise: declaring ``validate`` while the object has no
+    ``validate()`` makes the adapter lie about its capability surface (G-02).
+    The registry treats it like any other contract violation - ``invalid`` on
+    discovery, :class:`AdapterError` on manual registration - instead of
+    exposing a plugin that raises ``AttributeError`` on first use.
+    """
+    manifest = getattr(adapter, "manifest", None)
+    if not isinstance(manifest, AdapterManifest):
+        return [f"adapter has no AdapterManifest (got {type(manifest).__name__})"]
+    problems: list[str] = []
+    for capability in manifest.capabilities:
+        method_name = _CAPABILITY_METHODS.get(capability)
+        if method_name is None:
+            continue  # unknown capability is already a manifest problem
+        if not callable(getattr(adapter, method_name, None)):
+            problems.append(
+                f"adapter declares capability {capability!r} but has no "
+                f"callable {method_name}()")
+    return problems
 
 
 def _manifest_problems(manifest: AdapterManifest) -> list[str]:
@@ -107,6 +146,8 @@ class PluginRegistry:
         self._entry_points = entry_points
         self._adapters: dict[str, object] = {}
         self._sources: dict[str, str] = {}
+        #: alias -> canonical adapter name (architecture §4 package names)
+        self._aliases: dict[str, str] = {}
         #: name -> (manifest dict, problems) for discovered-but-unusable items
         self._invalid: dict[str, tuple[dict, list[str]]] = {}
         #: name -> incompatibility reason (for AdapterIncompatible on get())
@@ -119,8 +160,10 @@ class PluginRegistry:
     def register(self, adapter, *, source: str = "manual") -> None:
         """Register one adapter under its manifest name.
 
-        Raises :class:`AdapterError` for a malformed manifest or a duplicate
-        name, and :class:`AdapterIncompatible` for an SPI major mismatch.
+        Raises :class:`AdapterError` for a malformed manifest, a capability
+        without an implementation, a duplicate name, or a conflicting alias,
+        and :class:`AdapterIncompatible` for an SPI or platform-version
+        mismatch.
         """
         manifest = getattr(adapter, "manifest", None)
         if not isinstance(manifest, AdapterManifest):
@@ -137,11 +180,26 @@ class PluginRegistry:
             raise AdapterError(
                 f"adapter {manifest.name!r} has an invalid manifest: "
                 + "; ".join(problems))
+        problems = adapter_contract_problems(adapter)
+        if problems:
+            raise AdapterError(
+                f"adapter {manifest.name!r} does not implement its declared "
+                f"capabilities: " + "; ".join(problems))
+        compatible, reason = requires_compatible(manifest)
+        if not compatible:
+            raise AdapterIncompatible(reason)
         if manifest.name in self._adapters or manifest.name in self._invalid:
             raise AdapterError(
                 f"adapter {manifest.name!r} is already registered")
+        alias_problems = self._alias_problems(manifest)
+        if alias_problems:
+            raise AdapterError(
+                f"adapter {manifest.name!r} has conflicting aliases: "
+                + "; ".join(alias_problems))
         self._adapters[manifest.name] = adapter
         self._sources[manifest.name] = source
+        self._record_aliases(manifest)
+
 
     # ---- discovery ----------------------------------------------------
 
@@ -213,25 +271,26 @@ class PluginRegistry:
     # ---- inspection ---------------------------------------------------
 
     def names(self) -> list[str]:
-        """Names of usable (loaded and valid) adapters, sorted."""
+        """Canonical names of usable adapters, sorted (aliases excluded)."""
         return sorted(self._adapters)
 
     def get(self, name: str):
-        """Return a loaded adapter.
+        """Return a loaded adapter by canonical name or by alias.
 
-        Unknown name -> ``AdapterNotFound``; known but SPI-incompatible ->
+        Unknown name -> ``AdapterNotFound``; known but incompatible ->
         ``AdapterIncompatible``; known but otherwise unusable ->
         ``AdapterError``.
         """
-        adapter = self._adapters.get(name)
+        canonical = self._aliases.get(name, name)
+        adapter = self._adapters.get(canonical)
         if adapter is not None:
             return adapter
-        if name in self._incompatible:
-            raise AdapterIncompatible(self._incompatible[name])
-        if name in self._invalid:
-            _, problems = self._invalid[name]
+        if canonical in self._incompatible:
+            raise AdapterIncompatible(self._incompatible[canonical])
+        if canonical in self._invalid:
+            _, problems = self._invalid[canonical]
             raise AdapterError(
-                f"adapter {name!r} is not usable: " + "; ".join(problems))
+                f"adapter {canonical!r} is not usable: " + "; ".join(problems))
         raise AdapterNotFound(f"unknown standard adapter {name!r}")
 
     def manifests(self) -> list[dict]:
@@ -271,9 +330,40 @@ class PluginRegistry:
             for name, source in self._sources.items()
             if source == "manual"
         }
+        # keep only aliases that still point at a surviving adapter
+        self._aliases = {
+            alias: canonical
+            for alias, canonical in self._aliases.items()
+            if canonical in self._adapters
+        }
         self._invalid = {}
         self._incompatible = {}
         self.problems = []
+
+    def _alias_problems(self, manifest: AdapterManifest) -> list[str]:
+        """Conflicts between the manifest's aliases and already known names."""
+        name = manifest.name
+        problems: list[str] = []
+        if name in self._aliases:
+            problems.append(
+                f"adapter name {name!r} is already registered as an alias of "
+                f"{self._aliases[name]!r}")
+        for alias in manifest.aliases:
+            if not isinstance(alias, str) or alias == name:
+                continue  # already a manifest problem
+            if alias in self._adapters or alias in self._invalid:
+                problems.append(
+                    f"alias {alias!r} collides with an existing adapter name")
+            owner = self._aliases.get(alias)
+            if owner is not None and owner != name:
+                problems.append(
+                    f"alias {alias!r} is already registered by {owner!r}")
+        return problems
+
+    def _record_aliases(self, manifest: AdapterManifest) -> None:
+        for alias in manifest.aliases:
+            if isinstance(alias, str) and alias and alias != manifest.name:
+                self._aliases[alias] = manifest.name
 
     def _accept(self, adapter, *, fallback_name: str, source: str):
         """Validate a discovered adapter; return its name or None on failure."""
@@ -299,12 +389,32 @@ class PluginRegistry:
                     f"{ADAPTER_API_VERSION!r}")
             return None
 
+        contract = adapter_contract_problems(adapter)
+        if contract:
+            self.problems.append((name, "; ".join(contract)))
+            self._remember_invalid(name, manifest.to_dict(), contract)
+            return None
+
+        compatible, reason = requires_compatible(manifest)
+        if not compatible:
+            self.problems.append((name, reason))
+            self._remember_invalid(name, manifest.to_dict(), [reason])
+            self._incompatible[name] = reason
+            return None
+
+        alias_problems = self._alias_problems(manifest)
+        if alias_problems:
+            self.problems.append((name, "; ".join(alias_problems)))
+            self._remember_invalid(name, manifest.to_dict(), alias_problems)
+            return None
+
         if name in self._adapters:
             self.problems.append((
                 name, f"duplicate adapter name from {source}"))
             return None
         self._adapters[name] = adapter
         self._sources[name] = source
+        self._record_aliases(manifest)
         return name
 
     def _remember_invalid(self, name: str, manifest: dict,

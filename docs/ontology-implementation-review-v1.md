@@ -31,6 +31,10 @@
 | P1 | 单 workspace 单本体、无模块化/导入/命名空间/IRI | `modeling/elements/module`、`ontology-model` |
 | P2 | 版本 diff/impact 无 API；provenance 只到对象级；无 valid-time 历史；LLM 无强 grounding | `impl/arch-pattern/versioning`、`application/lifecycle`、`application/semantic-search` |
 
+> **状态更新（v0.3，标准插件 P0）**：表中 P0“无语义标准互操作”已**部分关闭**——OWL/RDF（Turtle）与 SKOS 导出、确定性 IRI、插件 SPI/Registry、REST/CLI 导出已落地（`src/onto_platform/semantic/`，`GET …/standards/export`、`onto standards export`）；SHACL/SPARQL/导入/ABox/类层次仍缺。复核与补全计划见 [`standards-plugin-completion-review-v1.md`](./standards-plugin-completion-review-v1.md)。
+>
+> **注意**：下文 §3.3 的 B2 行要求“OWL 导出基数限制/enum/hasKey”，与 [`standards-plugin-architecture.md`](./standards-plugin-architecture.md) §2.5 红线（OWL 只写结构、约束只进 SHACL）**冲突**，B2 已被架构方案取代，请勿按 B2 返工。
+
 ---
 
 ## 1. 问题清单（P0 / P1 / P2，含证据）

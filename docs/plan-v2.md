@@ -193,6 +193,8 @@ Relation:
 
 **本体工作项（O-1..O-12，详见 `docs/_draft2/ontology.md` §C）与阶段映射**：O-1 profile/CWA、O-2 身份进 TBox、O-3 命名空间/ID 冲突/撤回、O-10 映射校验前移 → **Phase 0**（与 W2 聚合版本同批）；O-4 属性 facets、O-5 词表契约、O-6 事件/对象区分与 lint、O-7 时间最小模型、O-8 发布时 ABox 合规+兼容性矩阵、O-11 语义上下文机读 → **Phase 1**；O-9 修订与指纹、O-12 上部区分固化为 lint（**不引入 BFO/DOLCE/SOSA**）→ **Phase 2**。
 
+> 状态补充（v0.3）：O-3 的**导出侧命名空间/IRI 稳定性**已由标准插件 P0 落地（`semantic/iri.py`，确定性 base/term IRI + 冲突检测），见 `docs/standards-plugin-architecture.md` 与 `docs/standards-plugin-completion-review-v1.md`；**平台层 ID 冲突检测/撤回**、`VocabularyTerm` 的 `broader/narrower/description` 与类层次（O-2/O-5）仍未完成，属后续模型路线。
+
 **CWA 声明**：统一语义为"未设置 = 未知"；`find` 在属性缺失时**不返回**该对象，但 `get` 必须能区分 `missing` 与 `null`（返回值中带 `unknown_fields` 或 `null` 语义），前端/Agent 观察据此显示"未知"。
 
 **版本与兼容**：`schema_version` 单调递增并落库；兼容性规则表（新增属性=兼容、放宽约束=兼容、收窄/删除/重命名=不兼容，需 migration 或 deprecate 期）；发布时打印 drift 报告。

@@ -15,6 +15,9 @@ The adapter reads only ``ctx.tbox`` and ``ctx.iri`` and stays zero-dependency.
 
 from __future__ import annotations
 
+import re
+
+from .formats import check_export_format, check_scope
 from .iri import PREFIXES
 from .spi import (
     ADAPTER_API_VERSION,
@@ -23,7 +26,6 @@ from .spi import (
     Artifact,
     ExportRequest,
 )
-from .owl import check_export_format
 from .turtle import Literal, TurtleWriter
 
 RDF = PREFIXES["rdf"]
@@ -37,6 +39,15 @@ SKOS_ALT_LABEL = SKOS + "altLabel"
 SKOS_NOTATION = SKOS + "notation"
 SKOS_IN_SCHEME = SKOS + "inScheme"
 SKOS_DEFINITION = SKOS + "definition"
+
+#: CJK ideographs (U+4E00..U+9FFF): Chinese human labels get ``@zh``; ASCII
+#: identifiers/notations stay plain ``xsd:string`` (deterministic decision).
+_CJK = re.compile(r"[\u4e00-\u9fff]")
+
+
+def _label(value: str) -> Literal:
+    """A human label: ``@zh`` when it contains CJK, plain string otherwise."""
+    return Literal(value, lang="zh") if _CJK.search(value) else Literal(value)
 
 
 def _text(value: object) -> str:
@@ -60,6 +71,9 @@ class SkosAdapter:
         standards=("skos",),
         capabilities=("export",),
         formats_out=("text/turtle",),
+        # D1: canonical plugin id stays "skos"; the architecture package name
+        # is exposed as an alias so external integrations can use either.
+        aliases=("onto-standards-skos",),
         description=(
             "SKOS export of the ontology vocabulary: one ConceptScheme with "
             "one Concept per term (prefLabel/notation/altLabel/definition) "
@@ -69,6 +83,7 @@ class SkosAdapter:
     def export(self, ctx: object, request: ExportRequest | None = None) -> Artifact:
         request = request if request is not None else ExportRequest()
         check_export_format(request, self.manifest)
+        check_scope(request, self.manifest)
         tbox = getattr(ctx, "tbox", None)
         iri = getattr(ctx, "iri", None)
         if tbox is None or iri is None:
@@ -101,7 +116,7 @@ class SkosAdapter:
         statements: list[tuple[str, str, object]] = [
             (scheme_iri, RDF_TYPE, SKOS_CONCEPT_SCHEME),
             (scheme_iri, SKOS_PREF_LABEL,
-             Literal(_text(getattr(tbox, "name", "")))),
+             _label(_text(getattr(tbox, "name", "")))),
         ]
 
         vocabulary = getattr(tbox, "vocabulary", {}) or {}
@@ -113,7 +128,7 @@ class SkosAdapter:
             statements.append((
                 concept_iri,
                 SKOS_PREF_LABEL,
-                Literal(_text(getattr(term_spec, "term", "")) or term_key),
+                _label(_text(getattr(term_spec, "term", "")) or term_key),
             ))
             notation = _text(getattr(term_spec, "concept", ""))
             if notation:
@@ -124,7 +139,7 @@ class SkosAdapter:
                 if _text(alias)
             })
             for alias in aliases:
-                statements.append((concept_iri, SKOS_ALT_LABEL, Literal(alias)))
+                statements.append((concept_iri, SKOS_ALT_LABEL, _label(alias)))
             statements.append((concept_iri, SKOS_IN_SCHEME, scheme_iri))
             definition = _text(getattr(term_spec, "description", ""))
             if definition:

@@ -7,7 +7,9 @@ import {
   type RelationSpec, type VocabTerm,
 } from "../api";
 import { useAction, usePlatform } from "../store";
+import { OntologyGraph } from "../components/OntologyGraph";
 import { OntologyDraftPanel } from "./OntologyDraft";
+import { OntologyWorkflow } from "./OntologyWorkflow";
 import {
   MetaEditDrawer, ObjectEditDrawer, RelationEditDrawer, TermEditDrawer,
 } from "./OntologyEdit";
@@ -22,6 +24,8 @@ type Panel = "object" | "relation" | "term";
 export function OntologyView() {
   const { wid, toast, confirm, refreshRuntime, go, objectTypes } = usePlatform();
   const [panel, setPanel] = useState<Panel>("object");
+  /** 本体结构的三种读法：表格用来改，关系图看全局联系，工程流看一轮怎么收敛。 */
+  const [view, setView] = useState<"table" | "graph" | "workflow">("table");
   const [lint, setLint] = useState<OntologyLint | null>(null);
   const load = useLoad(() => (wid ? api.ontology(wid) : Promise.resolve(null)), [wid]);
   const ont = load.data;
@@ -246,7 +250,7 @@ export function OntologyView() {
               confirmText: "开始修订",
               run: async () => { await revise(); },
             })}>修订</Btn>
-          ) : (
+          ) : view !== "workflow" ? (
             <Btn busy={publishing} onClick={() => confirm({
               title: "发布这个业务世界？",
               danger: true,
@@ -265,7 +269,7 @@ export function OntologyView() {
             })}>
               <SealCheck size={14} /> 发布
             </Btn>
-          )}
+          ) : null}
         </>}
       />
 
@@ -291,37 +295,66 @@ export function OntologyView() {
         </div>
       )}
 
+      <div className="subtabs compact onto-view-tabs" role="tablist" aria-label="本体展示方式">
+        <button type="button" role="tab" aria-selected={view === "table"}
+                onClick={() => setView("table")}>表格</button>
+        <button type="button" role="tab" aria-selected={view === "graph"}
+                onClick={() => setView("graph")}>关系图</button>
+        <button type="button" role="tab" aria-selected={view === "workflow"}
+                onClick={() => setView("workflow")}>工程流</button>
+      </div>
+
+      {view === "workflow" ? (
+        <div className="wf-full">
+          <OntologyWorkflow
+            ontology={ont}
+            onRefresh={async () => { await refreshRuntime(); load.reload(); }}
+            onShowStructure={next => setView(next)}
+          />
+        </div>
+      ) : (
       <div className="layout main-stage">
         <div>
           <Card title="已发布结构" sub="运行时的结构版本由发布动作推进；这里展示的是平台侧定义。"
                 aside={<Tag kind={frozen ? "ok" : "warn"}>{LIFECYCLE_LABEL[ont.lifecycle] || ont.lifecycle}</Tag>}>
-            <Collapsible defaultOpen label="AI 快速建模：粘贴一段业务描述，自动生成草稿">
-              <OntologyDraftPanel
+            {view === "graph" ? (
+              <OntologyGraph
+                ontology={ont}
                 frozen={frozen}
-                onApplied={async () => { await refreshRuntime(); load.reload(); }}
+                onEditObject={name => setEditObject(name)}
+                onEditRelation={name => setEditRelation(name)}
               />
-            </Collapsible>
+            ) : (
+              <>
+                <Collapsible defaultOpen label="AI 快速建模：粘贴一段业务描述，自动生成草稿">
+                  <OntologyDraftPanel
+                    frozen={frozen}
+                    onApplied={async () => { await refreshRuntime(); load.reload(); }}
+                  />
+                </Collapsible>
 
-            <ObjectsTable objects={ont.objects} frozen={frozen} busy={removing}
-                          onEdit={name => setEditObject(name)}
-                          onDelete={name => askRemove("object", name)} />
-            <RelationsTable relations={ont.relations} frozen={frozen} busy={removing}
-                            onEdit={name => setEditRelation(name)}
-                            onDelete={name => askRemove("relation", name)} />
-            <VocabTable terms={ont.vocabulary} frozen={frozen} busy={removing}
-                        onEdit={term => setEditTerm(term)}
-                        onDelete={term => askRemove("term", term)} />
+                <ObjectsTable objects={ont.objects} frozen={frozen} busy={removing}
+                              onEdit={name => setEditObject(name)}
+                              onDelete={name => askRemove("object", name)} />
+                <RelationsTable relations={ont.relations} frozen={frozen} busy={removing}
+                                onEdit={name => setEditRelation(name)}
+                                onDelete={name => askRemove("relation", name)} />
+                <VocabTable terms={ont.vocabulary} frozen={frozen} busy={removing}
+                            onEdit={term => setEditTerm(term)}
+                            onDelete={term => askRemove("term", term)} />
 
-            <div className="btn-row">
-              {objectCount > 0 && (
-                <Btn variant="subtle" size="sm" onClick={() => go("state")}>
-                  去对象实例 <ArrowRight size={13} />
-                </Btn>
-              )}
-              <Btn variant="subtle" size="sm" onClick={() => go("data")}>
-                去接入数据 <ArrowRight size={13} />
-              </Btn>
-            </div>
+                <div className="btn-row">
+                  {objectCount > 0 && (
+                    <Btn variant="subtle" size="sm" onClick={() => go("state")}>
+                      去对象实例 <ArrowRight size={13} />
+                    </Btn>
+                  )}
+                  <Btn variant="subtle" size="sm" onClick={() => go("data")}>
+                    去接入数据 <ArrowRight size={13} />
+                  </Btn>
+                </div>
+              </>
+            )}
           </Card>
 
           <Collapsible label="这份本体怎么变成运行时结构">
@@ -406,6 +439,7 @@ export function OntologyView() {
           </div>
         </Card>
       </div>
+      )}
 
       {!frozen && wid && editMeta && (
         <MetaEditDrawer wid={wid} ont={ont} onClose={closeEditors}

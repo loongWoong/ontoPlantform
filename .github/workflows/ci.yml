@@ -37,7 +37,9 @@ jobs:
           } else {
             Write-Error "ONTO_RK_REPO is not configured: the kernel is required for the contract tests"
           }
-          python -m pip install -e ontoPlantform[dev]
+          # ``interop`` is required so the rdflib round-trip / SHACL contract
+          # tests really run in CI instead of being skipped.
+          python -m pip install -e "ontoPlantform[dev,interop]"
 
       - name: Kernel suite
         shell: pwsh

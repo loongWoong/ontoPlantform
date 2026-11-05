@@ -60,24 +60,26 @@ class StandardAdapter(Protocol):
 
 ```json
 {
-  "name": "onto-standards-owl",
+  "name": "owl-rdf",
+  "aliases": ["onto-standards-owl"],
   "version": "0.1.0",
   "api_version": "1.0",
-  "standards": ["owl", "rdf", "turtle", "json-ld"],
+  "standards": ["owl", "rdf", "turtle"],
   "capabilities": ["export"],
-  "formats": {
-    "out": ["text/turtle", "application/ld+json"]
-  },
-  "requires": { "ontoplatform": ">=0.4", "extras": ["rdflib>=7"] },
+  "formats": { "out": ["text/turtle"], "in": [] },
+  "requires": { "ontoplatform": ">=0.4", "extras": [] },
   "permissions": { "network": false, "write": false },
-  "config_schema": { "type": "object", "properties": { "include_abox": { "type": "boolean" } } }
+  "config_schema": {}
 }
 ```
 
+- `name` 是**插件 ID**（短名，已随 P0 发布：`owl-rdf` / `skos`）；`aliases` 兼容更早的清单命名（`onto-standards-owl` / `onto-standards-skos`，后者可视作包名），Registry 的 `get()` 同时接受两种写法，`names()` 只返回 canonical；
 - `api_version` 与平台常量 `ADAPTER_API_VERSION` 做**主版本兼容**校验；
-- `capabilities` 决定平台暴露哪些入口（没有 `import` 能力的插件不会出现在导入列表）；
-- `permissions` 由 Registry 在调用前检查：v1 一律 `network=false`、`write=false`，只读 `context`；
-- `requires.extras` 告诉运维该插件需要安装哪个 extra，**平台不替它装**。
+- `capabilities` 决定平台暴露哪些入口；Registry 在注册/发现时还会校验**声明的能力是否有对应可调用方法**（`export/validate/query/import_`），避免“能力面撒谎”；
+- `formats` 早期扁平字段 `formats_out` / `formats_in` 保留为 dataclass 存储（向后兼容），`to_dict()` 同时输出嵌套 `formats`；
+- `permissions` 在 v1 一律 `network=false`、`write=false`；插件只拿到只读 `context`，P0 在 manifest 校验与调用隔离层面保证只读，运行时权限注入属 P1；
+- `requires.ontoplatform` 在加载时与 `onto_platform.__version__` 做兼容检查（不兼容 → `status=invalid`，`problems` 文案含 "incompatible" 并在列表标红）；`requires.extras` 告诉运维该插件需要安装哪个 extra，**平台不替它装**；
+- `config_schema` 为可选 JSON Schema 片段；P0 仅声明与校验，配置注入属 P1。
 
 ### 2.3 发现、安装与生命周期
 
@@ -93,9 +95,9 @@ class StandardAdapter(Protocol):
 | 阶段 | 行为 |
 |---|---|
 | 安装 | 插件是普通 Python 包，依赖装在插件自己的依赖树；核心不变 |
-| 发现 | 启动时 + `POST /standards/reload`（运维）扫描 entry points |
-| 启用 | 按 workspace 启用/禁用；`adapters` 列表显示版本、能力、健康状态 |
-| 调用 | `StandardsService` 统一鉴权（复用 `AccessPolicy`）、审计（`adapter.invoke`）、异常隔离（`try/except` → 502 级错误码，不影响平台主流程） |
+| 发现 | 启动时扫描 entry points（P0 已实现）；`POST /standards/reload` 热重载属 P1 |
+| 启用 | 按 workspace 启用/禁用（P1）；P0 的 `adapters` 列表已显示版本、能力、健康状态 |
+| 调用 | `StandardsService` 统一鉴权、审计（`standards.export` / `standards.export.failed`）、异常隔离（P0 已实现：插件异常 → 502 `AdapterInvocationError`，不影响平台主流程） |
 | 升级/回滚 | 插件版本独立；manifest `api_version` 不兼容时拒绝加载并在列表里标红 |
 | 卸载 | entry point 消失 → 自动标记 unavailable，历史产物保留 |
 
@@ -114,6 +116,8 @@ class AdapterContext:
 ```
 
 关键设计：**ABox 不直接暴露 gateway**，而是复用平台已有的 `ExportService`（它已实现行级过滤与字段脱敏，见审计 B 报告）。插件拿不到 `repo`、`gateway`、数据库句柄，因此“插件绕过权限”在结构上不可能发生。
+
+> P0 实现：`abox=None`、仅支持 `scope="tbox"`；`abox`/`both` 或 `include_abox=True` 会显式抛 `AdapterError`（不再静默忽略）。ABox 快照与 `ExportService` 接线属 P2。
 
 ### 2.5 语义正确性：OWL 与 SHACL 分工（红线）
 
@@ -149,10 +153,10 @@ class AdapterContext:
 
 ## 4. 首批插件清单
 
-| 插件 | 能力 | 依赖 | 阶段 | 外部消费方 |
+| 插件（ID / 别名） | 能力 | 依赖 | 阶段 | 外部消费方 |
 |---|---|---|---|---|
-| `onto-standards-owl` | export（Turtle / JSON-LD，含类层次、对象/数据属性、domain/range、inverse） | 无（核心自写最小序列化器）；CI 用 rdflib 校验 | **P0** | Protégé、数据目录、图数据库 |
-| `onto-standards-skos` | export（词表 → SKOS Concept/altLabel） | 无 | **P0** | 词表平台、搜索 |
+| `owl-rdf` / `onto-standards-owl` | export（P0：Turtle，含对象/数据属性、domain/range、inverse；JSON-LD 与类层次延后：JSON-LD P1、类层次依赖模型层） | 无（核心自写最小序列化器）；CI 用 rdflib 校验 | **P0** | Protégé、数据目录、图数据库 |
+| `skos` / `onto-standards-skos` | export（P0：词表 → SKOS Concept/prefLabel（CJK 带 `@zh`）/altLabel/notation/inScheme；broader/narrower 依赖词表层级模型，P2） | 无 | **P0** | 词表平台、搜索 |
 | `onto-standards-shacl` | export + validate（形状 + pyshacl） | `pyshacl` | **P1** | 数据接入方、pyshacl |
 | `onto-standards-sparql` | export（快照）+ query（rdflib 只读 SPARQL） | `rdflib` | **P2** | Fuseki/BI/分析 |
 | `onto-standards-import` | import（OWL/SKOS → OntologyDraft + 冲突报告） | `rdflib` | **P2** | 行业本体、标准词表 |
@@ -167,14 +171,14 @@ class AdapterContext:
 | 位置 | 改动 | 说明 |
 |---|---|---|
 | `src/onto_platform/semantic/spi.py` | 新增 SPI：Protocol、manifest dataclass、Artifact/Report/Result 类型 | 零依赖 |
-| `src/onto_platform/semantic/registry.py` | 新增 `PluginRegistry`：entry_points 发现、manifest 校验、workspace 启停、健康检查 | 失败隔离 |
-| `src/onto_platform/semantic/context.py` | 新增 `AdapterContext` 构造器：TBox 视图 + ABox 快照（复用 `ExportService`）+ `IriPolicy` | 权限不旁路 |
-| `src/onto_platform/semantic/iri.py` | 新增确定性 IRI 生成（base `https://{workspace}.ontoplatform.local/onto/{version}#`，term 稳定化，冲突检测） | 对应 O-3 |
-| `src/onto_platform/application/standards_usecases.py` | 新增用例：ListAdapters / ExportStandard / ValidateStandard / QueryStandard | 鉴权 + 审计 |
-| `src/onto_platform/interfaces/api.py` | 新增路由：`GET /standards/adapters`、`POST /standards/export`、`POST /standards/validate`、`GET /standards/artifacts/{id}` | 统一错误码 |
-| `src/onto_platform/interfaces/cli.py` | 新增 `onto standards list/export/validate` | 离线 |
-| `pyproject.toml` | 新增 `[project.optional-dependencies] interop = ["rdflib>=7", "pyshacl>=0.29"]`；**core dependencies 保持 `[]`** | — |
-| 文档/前端 | 控制台“下载本体 / 校验”按钮，URL 指向 `/standards/export?adapter=owl&format=turtle` | 可选 P1 |
+| `src/onto_platform/semantic/registry.py` | 新增 `PluginRegistry`：entry_points 发现、manifest/能力/requires 校验、别名解析、健康状态（workspace 启停属 P1） | 失败隔离 |
+| `src/onto_platform/semantic/context.py` | 新增 `AdapterContext` 构造器：TBox 视图 + `IriPolicy`（ABox 快照属 P2） | 权限不旁路 |
+| `src/onto_platform/semantic/iri.py` | 新增确定性 IRI 生成（base `https://ontoplatform.local/ws/{workspace}/onto/{name}/v{version}#`，term 稳定化，冲突检测） | 对应 O-3（平台级 ID 冲突/撤回仍属模型路线） |
+| `src/onto_platform/application/standards_usecases.py` | 用例：ListAdapters / ExportStandard（P0）；ValidateStandard / QueryStandard 属 P1/P2 | 鉴权 + 审计 + 异常隔离 |
+| `src/onto_platform/interfaces/api.py` | 路由：`GET /standards/adapters`、`GET /standards/export`（P0）；`POST /standards/validate`、`GET /standards/artifacts/{id}`、`POST /standards/reload` 属 P1 | 统一错误码（含 502） |
+| `src/onto_platform/interfaces/cli.py` | `onto standards list|export`（P0）；`validate` 属 P1 | 离线 |
+| `pyproject.toml` | `[project.optional-dependencies] interop = ["rdflib>=7", "pyshacl>=0.29"]`；dev extra 含 `pytest-cov`；**core dependencies 保持 `[]`** | — |
+| 文档/前端 | 控制台“下载本体 / 校验”按钮，URL 指向 `/standards/export?adapter=owl-rdf&format=text/turtle` | 可选 P1 |
 
 **Kernel 零改动**（符合 ADR-1 边界）。
 
@@ -183,8 +187,9 @@ class AdapterContext:
 ## 6. 版本与产物治理
 
 - 平台常量 `ADAPTER_API_VERSION = "1.0"`；插件 manifest `api_version` 主版本一致才加载；
-- 产物元数据写入命名图：`urn:ontoplatform:ws:{wid}:v{ontology_version}`，并附 `schema_fingerprint`、adapter 版本、生成时间、`actor`；
-- 产物必须**确定性**（三元组排序、IRI 稳定、无时间戳进图数据），保证同一版本两次导出 diff 为空；
+- P0 产物元数据（`Artifact.metadata` + 响应头）：`workspace_id`、`ontology_version`、`schema_fingerprint`、`adapter_version`、`actor`；Turtle 内只有 `owl:versionInfo`（含 fingerprint）与 `owl:versionIRI`，**时间戳不进图**；
+- 命名图 `urn:ontoplatform:ws:{wid}:v{ontology_version}` 属 P1（当前 Turtle 为单图；后续随 JSON-LD/产物治理落地）；
+- 产物必须**确定性**（三元组排序、IRI 稳定、无时间戳进图数据），保证同一版本两次导出 diff 为空；跨进程（不同 `PYTHONHASHSEED`）字节一致由契约测试锁定；
 - 兼容性遵循 `compat.check_compatible`：导出前对当前发布版本做一次 `compile → fingerprint`，产物与版本号绑定；
 - 语义红线测试：`test_export_does_not_emit_has_key`、`test_export_does_not_emit_owl_cardinality`、`test_required_maps_to_shacl_only`。
 
@@ -194,25 +199,26 @@ class AdapterContext:
 
 ### P0（2–3 周）打通最小闭环
 1. 核心 SPI + Registry + Context + IRI（零依赖）；
-2. `onto-standards-owl` 与 `onto-standards-skos`（自写 Turtle 序列化器，200 行内），先只导出 TBox；
+2. `owl-rdf` 与 `skos`（自写 Turtle 序列化器，零依赖），先只导出 TBox；JSON-LD 延后到 P1；
 3. `GET /standards/export` + CLI `onto standards export`；
-4. 契约一致性测试 + golden 文件；CI 里用可选 `rdflib` 解析产物（`pip install .[interop]` 只在测试 job）；
+4. 契约一致性测试 + golden 文件（逐字节 + 关键三元组数量）；CI 安装 `[dev,interop]`，用 `rdflib` 解析产物；
 5. 验收：Turtle 可被 Protégé 打开；关键三元组数量断言；599 既有测试保持全绿。
 
-### P0 实现状态（已落地）
+### P0 实现状态（已落地 + C0/C1 补全）
 
-P0 已随 `v0.3` 实现完成并通过独立验证：
+P0 已随 `v0.3` 实现完成，并按 [`standards-plugin-completion-review-v1.md`](./standards-plugin-completion-review-v1.md) 完成 C0/C1 收口（执行记录见 [`standards-plugin-completion-plan-v1.md`](./standards-plugin-completion-plan-v1.md)）：
 
 - 接口冻结与任务分解：[`standards-plugin-implementation-plan-v1.md`](./standards-plugin-implementation-plan-v1.md)
 - 独立验证结论（DoD 逐条）：[`standards-plugin-implementation-report.md`](./standards-plugin-implementation-report.md)
-- 产出：`src/onto_platform/semantic/`（`spi`/`iri`/`context`/`registry`/`turtle`/`owl`/`skos`）、`application/standards_usecases.py`、`GET /api/workspaces/{wid}/standards/adapters|export`、`onto standards list|export`；核心 `dependencies = []` 不变，内置插件 `owl-rdf` / `skos`。
-- 实测：全量 `712 passed, 3 skipped`（3 skip 仅为未装 `[interop]` 时的 rdflib 可选解析；装 `pip install -e ".[interop]"` 后转 PASS），OWL 语义红线（无 `hasKey`/cardinality/`FunctionalProperty`/`someValuesFrom`）与导出确定性均有契约测试锁定。
+- 产出：`src/onto_platform/semantic/`（`spi`/`iri`/`context`/`registry`/`turtle`/`formats`/`owl`/`skos`）、`application/standards_usecases.py`、`GET /api/workspaces/{wid}/standards/adapters|export`、`onto standards list|export`；核心 `dependencies = []` 不变，内置插件 `owl-rdf` / `skos`（别名 `onto-standards-owl` / `onto-standards-skos`）。
+- 契约：manifest 含 `formats{out,in}/requires/config_schema/aliases`；能力-方法一致性、`requires` 兼容、别名解析、插件异常 502 隔离与失败审计、`scope/include_abox` 显式拒绝、provenance 元数据与响应头、CJK `@zh` 语言标签、golden + 数量断言、跨进程确定性。
+- 实测：全量 `794 passed, 0 skipped`（60–66s 量级）；覆盖率 79.94%（门禁 70%）；CI 安装 `[dev,interop]` 后 rdflib 解析/契约用例不再 skip。Protégé 人工打开验收仍待执行（本机环境无 Protégé）。
 
 ### P1（2–3 周）治理与 SHACL
-1. entry-point 自动发现 + workspace 启停 + `adapters` API/CLI + 插件健康状态；
-2. `onto-standards-shacl`：facets → 形状（export）+ `pyshacl` 校验（validate）；
-3. 插件治理：权限检查、审计事件、失败隔离（插件异常不影响平台）；
-4. 验收：卸载插件后入口自动消失；坏插件 manifest 被拒绝并给出可操作错误。
+1. workspace 启停 + `POST /standards/reload` + 健康状态接入 `/health`（entry-point 发现与 `adapters` 列表已在 P0）；
+2. `onto-standards-shacl`：facets → 形状（export）+ `pyshacl` 校验（validate），`requires.extras` 提示；
+3. 插件治理：运行时权限检查、`POST /standards/validate` + CLI、`GET /standards/artifacts/{id}`、插件示例与开发文档、控制台按钮；
+4. 验收：禁用插件后入口返回 unavailable 且其他插件不受影响；坏插件 manifest 被拒绝并给出可操作错误；好/坏数据 SHACL 校验结果符合预期。
 
 ### P2（3–4 周）查询与导入
 1. `onto-standards-sparql`：ABox 快照 + TBox 合并为只读图，支持 SELECT/ASK；限制 10⁵ 边/workspace；
@@ -229,10 +235,10 @@ embedding/GraphRAG 作为 `onto-standards-search` 插件，不进核心、默认
 
 1. **零依赖不破**：`pip install onto-platform` 后无 rdflib/pyshacl；核心 `dependencies = []` 不变；
 2. **边界不破**：插件代码中不出现 `onto_platform.bootstrap.Platform` / `KernelRuntimeGateway` / `repo` 的引用（grep 测试）；
-3. **契约测试**：对每个插件跑同一套 conformance suite（manifest 合法、export 确定性、产物可解析、错误映射、无网络/无写权限）；
+3. **契约测试**：对每个插件跑同一套 conformance suite（manifest 合法、能力-方法一致、export 确定性、产物可解析、错误映射、无网络/无写权限）；
 4. **语义红线**：OWL 产物中不含 `owl:hasKey`、不含 `owl:cardinality` 系列冒充运行期约束；SHACL 覆盖 required/enum/range/unique；
-5. **隔离性**：插件抛异常 → 平台返回结构化错误、不崩溃、审计留痕；
-6. **可回滚**：禁用插件后所有入口返回明确 unavailable，不影响其他插件；
+5. **隔离性**：插件抛异常 → 平台返回结构化 502、不崩溃、审计留痕（P0 已实现）；
+6. **可回滚**：禁用插件后所有入口返回明确 unavailable，不影响其他插件（P1）；
 7. **既有基线**：599 个测试保持全绿；新增测试覆盖 SPI/Registry/API/CLI/golden。
 
 ---

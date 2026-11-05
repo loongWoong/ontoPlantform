@@ -26,6 +26,9 @@ dev = [
     "ontology-runtime>=0.1.1",
     # W0 test guard rails (optional, not runtime dependencies)
     "pytest-timeout>=2.3",
+    # the CI coverage gate runs ``pytest --cov``; keep it in the dev extra
+    # so a fresh ``pip install -e .[dev]`` can execute the gate
+    "pytest-cov>=5",
     "coverage[toml]>=7.4",
     "hypothesis>=6.98",
 ]

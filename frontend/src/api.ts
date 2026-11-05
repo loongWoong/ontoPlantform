@@ -1559,6 +1559,306 @@ export interface UpdateObjectResult {
   changed: string[];
 }
 
+/* ---------------- ontology workflow: rounds, CQs, evidence, publish gate ---------------- */
+
+export interface WorkflowScope {
+  summary: string;
+  in_scope: string[];
+  out_of_scope: string[];
+  actors: string[];
+  decisions: string[];
+}
+
+export interface WorkflowTarget {
+  min_cq: number;
+  max_cq: number;
+  p0_pass_rate: number;
+  overall_pass_rate: number;
+}
+
+export type WorkflowRoundStatus = "active" | "in_review" | "accepted";
+export type WorkflowStepStatus = "done" | "current" | "todo" | "warn";
+export type WorkflowCqPriority = "P0" | "P1" | "P2";
+export type WorkflowCqStatus = "open" | "ready" | "passed" | "failed" | "error" | "manual";
+
+export interface WorkflowValidation {
+  ok?: boolean;
+  problems?: string[];
+  checked_at?: string;
+  ontology_fingerprint?: string;
+}
+
+export interface WorkflowRound {
+  id: string;
+  workspace_id: string;
+  kind: string;
+  seq: number;
+  name: string;
+  goal: string;
+  status: WorkflowRoundStatus;
+  scope: WorkflowScope;
+  target: WorkflowTarget;
+  reuse_skipped: boolean;
+  validation?: WorkflowValidation;
+  ontology_id?: string;
+  ontology_version?: number;
+  ontology_fingerprint?: string;
+  published_version?: number | null;
+  published_at?: string | null;
+  created_by?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WorkflowStep {
+  key: string;
+  no: number;
+  title: string;
+  status: WorkflowStepStatus;
+  detail: string;
+  action: string;
+}
+
+export interface WorkflowCqExpected {
+  kind: string;
+  value?: unknown;
+  rows?: Record<string, unknown>[];
+  operator?: string;
+  ordered?: boolean;
+  note?: string;
+}
+
+export interface WorkflowCqQuery {
+  kind?: string;
+  object_type?: string;
+  relation?: string;
+  direction?: string;
+  ref?: string;
+  filters?: Record<string, unknown>;
+  limit?: number;
+}
+
+export interface WorkflowCq {
+  id: string;
+  round_id: string;
+  code: string;
+  question: string;
+  type: string;
+  priority: WorkflowCqPriority;
+  source: string;
+  rationale: string;
+  expected: WorkflowCqExpected;
+  query: WorkflowCqQuery;
+  model_refs: string[];
+  sample_refs: string[];
+  notes: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WorkflowReuse {
+  id: string;
+  round_id: string;
+  title: string;
+  decision: "reuse" | "extend" | "build" | "skip";
+  source: string;
+  reference: string;
+  note: string;
+  owner: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WorkflowSampleRow {
+  id: string;
+  properties: Record<string, unknown>;
+}
+
+export interface WorkflowSampleRelation {
+  name: string;
+  source: string;
+  target: string;
+}
+
+export interface WorkflowSample {
+  id: string;
+  round_id: string;
+  name: string;
+  description: string;
+  source: string;
+  objects: Record<string, WorkflowSampleRow[]>;
+  relations: WorkflowSampleRelation[];
+  row_count: number;
+  validation?: WorkflowValidation;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WorkflowCqExport {
+  format: "csv" | "markdown" | "json";
+  content: string;
+  filename: string;
+  count: number;
+}
+
+export interface WorkflowCqImport {
+  imported: number;
+  cqs: WorkflowCq[];
+}
+
+export interface WorkflowCqPreview {
+  round_id: string;
+  cq_id: string;
+  engine: string;
+  result: WorkflowRunResult;
+  sample_ids: string[];
+}
+
+export interface WorkflowRunResult {
+  cq_id: string;
+  code: string;
+  question: string;
+  priority: WorkflowCqPriority;
+  type: string;
+  expected: WorkflowCqExpected;
+  query: WorkflowCqQuery;
+  engine?: string;
+  sample_ids?: string;
+  model_refs: string[];
+  status: WorkflowCqStatus;
+  actual: Record<string, unknown>;
+  detail: string;
+}
+
+export interface WorkflowRunSummary {
+  passed: number;
+  failed: number;
+  error: number;
+  manual: number;
+  automated: number;
+  pass_rate: number;
+  p0_total: number;
+  p0_passed: number;
+  p0_pass_rate: number;
+  meets_target: boolean;
+  target: WorkflowTarget;
+}
+
+export interface WorkflowRun {
+  id: string;
+  round_id: string;
+  seq: number;
+  status: "passed" | "failed";
+  engine: string;
+  started_at: string;
+  finished_at: string;
+  created_by: string;
+  ontology_fingerprint: string;
+  ontology_version: number;
+  summary: WorkflowRunSummary;
+  results: WorkflowRunResult[];
+  evidence: Record<string, unknown>;
+}
+
+export interface WorkflowReview {
+  id: string;
+  round_id: string;
+  seq: number;
+  decision: "approve" | "reject" | "changes_requested";
+  comment: string;
+  actor: string;
+  ontology_fingerprint: string;
+  ontology_version: number;
+  evidence_run_id?: string;
+  created_at: string;
+}
+
+export interface WorkflowPublishCheck {
+  ok: boolean;
+  blockers: string[];
+  warnings: string[];
+  ontology_fingerprint: string;
+  validation: WorkflowValidation;
+  latest_run_id?: string;
+  latest_review_id?: string;
+  step: "ready" | "warning" | "blocked";
+}
+
+export interface WorkflowTraceRow {
+  cq_id: string;
+  code: string;
+  question: string;
+  type: string;
+  priority: WorkflowCqPriority;
+  model_refs: string[];
+  sample_refs: string[];
+  query: WorkflowCqQuery;
+  expected: WorkflowCqExpected;
+  status: WorkflowCqStatus;
+  detail: string;
+  actual: Record<string, unknown>;
+}
+
+export interface WorkflowOntologySummary {
+  id: string;
+  name: string;
+  version: number;
+  lifecycle: string;
+  fingerprint: string;
+  objects: string[];
+  relations: string[];
+  properties: Record<string, string[]>;
+}
+
+export interface WorkflowSampleTemplate {
+  name: string;
+  description: string;
+  objects: Record<string, Record<string, unknown>[]>;
+  relations: WorkflowSampleRelation[];
+}
+
+export interface WorkflowDetail {
+  round: WorkflowRound;
+  cqs: WorkflowCq[];
+  reuse: WorkflowReuse[];
+  samples: WorkflowSample[];
+  runs: WorkflowRun[];
+  reviews: WorkflowReview[];
+  steps: WorkflowStep[];
+  validation: WorkflowValidation;
+  ontology: WorkflowOntologySummary;
+  trace_matrix: WorkflowTraceRow[];
+  publish_check: WorkflowPublishCheck;
+  sample_template: WorkflowSampleTemplate;
+}
+
+export interface WorkflowOverview {
+  rounds: WorkflowRound[];
+  active_round_id: string;
+  round: WorkflowDetail | null;
+}
+
+export interface WorkflowCheckResult {
+  round: WorkflowRound;
+  validation: WorkflowValidation;
+  publish_check: WorkflowPublishCheck;
+}
+
+export interface WorkflowPublishResult {
+  round: WorkflowRound;
+  publish_check: WorkflowPublishCheck;
+  ontology: Ontology;
+  runtime?: RuntimeDescribe;
+}
+
+export interface WorkflowReport {
+  round: WorkflowRound;
+  markdown: string;
+  steps: WorkflowStep[];
+  trace_matrix: WorkflowTraceRow[];
+  publish_check: WorkflowPublishCheck;
+}
+
 export interface Api {
   health(): Promise<Health>;
   scheduler(): Promise<SchedulerStatus>;
@@ -1761,6 +2061,39 @@ export interface Api {
 
   lintOntology(wid: string): Promise<OntologyLint>;
   reviseOntology(wid: string): Promise<Ontology>;
+  /** Ontology workflow: the active round plus the CQ/evidence surfaces. */
+  workflow(wid: string, roundId?: string): Promise<WorkflowOverview>;
+  workflowRound(wid: string, roundId: string): Promise<WorkflowDetail>;
+  createWorkflowRound(wid: string, body: Partial<WorkflowRound> & {
+    name?: string; goal?: string; scope?: Partial<WorkflowScope>; target?: Partial<WorkflowTarget>;
+  }): Promise<WorkflowRound>;
+  updateWorkflowRound(wid: string, roundId: string, body: Partial<WorkflowRound>): Promise<WorkflowRound>;
+  bindWorkflowRound(wid: string, roundId: string): Promise<{ round: WorkflowRound }>;
+  nextWorkflowRound(wid: string, roundId: string, body?: { name?: string; goal?: string }): Promise<WorkflowRound>;
+  checkWorkflowRound(wid: string, roundId: string): Promise<WorkflowCheckResult>;
+  addWorkflowCq(wid: string, roundId: string, body: Partial<WorkflowCq>): Promise<WorkflowCq>;
+  updateWorkflowCq(wid: string, roundId: string, cqId: string, body: Partial<WorkflowCq>): Promise<WorkflowCq>;
+  deleteWorkflowCq(wid: string, roundId: string, cqId: string): Promise<{ deleted: string }>;
+  importWorkflowCqs(wid: string, roundId: string, body: {
+    content: string; format?: "auto" | "csv" | "markdown" | "json";
+  }): Promise<WorkflowCqImport>;
+  exportWorkflowCqs(wid: string, roundId: string,
+                    format: "csv" | "markdown" | "json"): Promise<WorkflowCqExport>;
+  runWorkflowCq(wid: string, roundId: string, cqId: string): Promise<WorkflowCqPreview>;
+  addWorkflowReuse(wid: string, roundId: string, body: Partial<WorkflowReuse>): Promise<WorkflowReuse>;
+  updateWorkflowReuse(wid: string, roundId: string, reuseId: string, body: Partial<WorkflowReuse>): Promise<WorkflowReuse>;
+  deleteWorkflowReuse(wid: string, roundId: string, reuseId: string): Promise<{ deleted: string }>;
+  addWorkflowSample(wid: string, roundId: string, body: Partial<WorkflowSample>): Promise<WorkflowSample>;
+  updateWorkflowSample(wid: string, roundId: string, sampleId: string, body: Partial<WorkflowSample>): Promise<WorkflowSample>;
+  deleteWorkflowSample(wid: string, roundId: string, sampleId: string): Promise<{ deleted: string }>;
+  runWorkflowAcceptance(wid: string, roundId: string, body?: { note?: string }): Promise<WorkflowRun>;
+  reviewWorkflowRound(wid: string, roundId: string, body: {
+    decision: "approve" | "reject" | "changes_requested"; comment?: string;
+  }): Promise<WorkflowReview>;
+  publishWorkflowRound(wid: string, roundId: string): Promise<WorkflowPublishResult>;
+  workflowPublishCheck(wid: string, roundId: string): Promise<WorkflowPublishCheck>;
+  workflowTraceMatrix(wid: string, roundId: string): Promise<{ round_id: string; rows: WorkflowTraceRow[] }>;
+  workflowReport(wid: string, roundId: string): Promise<WorkflowReport>;
 
   members(wid: string): Promise<Member[]>;
   addMember(wid: string, member: string, role: string): Promise<Member>;
@@ -2069,6 +2402,32 @@ export const api: Api = {
 
   lintOntology: wid => post(ws(wid, "/ontology/lint"), {}),
   reviseOntology: wid => post(ws(wid, "/ontology/revisions"), {}),
+  workflow: (wid, roundId) => call(ws(wid, "/ontology/workflow") +
+    (roundId ? `?round_id=${encodeURIComponent(roundId)}` : "")),
+  workflowRound: (wid, rid) => call(ws(wid, `/ontology/workflow/rounds/${encodeURIComponent(rid)}`)),
+  createWorkflowRound: (wid, body) => post(ws(wid, "/ontology/workflow/rounds"), body),
+  updateWorkflowRound: (wid, rid, body) => patch(ws(wid, `/ontology/workflow/rounds/${encodeURIComponent(rid)}`), body),
+  bindWorkflowRound: (wid, rid) => post(ws(wid, `/ontology/workflow/rounds/${encodeURIComponent(rid)}/bind`), {}),
+  nextWorkflowRound: (wid, rid, body) => post(ws(wid, `/ontology/workflow/rounds/${encodeURIComponent(rid)}/next`), body || {}),
+  checkWorkflowRound: (wid, rid) => post(ws(wid, `/ontology/workflow/rounds/${encodeURIComponent(rid)}/check`), {}),
+  addWorkflowCq: (wid, rid, body) => post(ws(wid, `/ontology/workflow/rounds/${encodeURIComponent(rid)}/cqs`), body),
+  updateWorkflowCq: (wid, rid, cid, body) => patch(ws(wid, `/ontology/workflow/rounds/${encodeURIComponent(rid)}/cqs/${encodeURIComponent(cid)}`), body),
+  deleteWorkflowCq: (wid, rid, cid) => del(ws(wid, `/ontology/workflow/rounds/${encodeURIComponent(rid)}/cqs/${encodeURIComponent(cid)}`)),
+  importWorkflowCqs: (wid, rid, body) => post(ws(wid, `/ontology/workflow/rounds/${encodeURIComponent(rid)}/cqs/import`), body),
+  exportWorkflowCqs: (wid, rid, format) => call(ws(wid, `/ontology/workflow/rounds/${encodeURIComponent(rid)}/cqs/export?format=${encodeURIComponent(format)}`)),
+  runWorkflowCq: (wid, rid, cid) => post(ws(wid, `/ontology/workflow/rounds/${encodeURIComponent(rid)}/cqs/${encodeURIComponent(cid)}/run`), {}),
+  addWorkflowReuse: (wid, rid, body) => post(ws(wid, `/ontology/workflow/rounds/${encodeURIComponent(rid)}/reuse`), body),
+  updateWorkflowReuse: (wid, rid, itemId, body) => patch(ws(wid, `/ontology/workflow/rounds/${encodeURIComponent(rid)}/reuse/${encodeURIComponent(itemId)}`), body),
+  deleteWorkflowReuse: (wid, rid, itemId) => del(ws(wid, `/ontology/workflow/rounds/${encodeURIComponent(rid)}/reuse/${encodeURIComponent(itemId)}`)),
+  addWorkflowSample: (wid, rid, body) => post(ws(wid, `/ontology/workflow/rounds/${encodeURIComponent(rid)}/samples`), body),
+  updateWorkflowSample: (wid, rid, sid, body) => patch(ws(wid, `/ontology/workflow/rounds/${encodeURIComponent(rid)}/samples/${encodeURIComponent(sid)}`), body),
+  deleteWorkflowSample: (wid, rid, sid) => del(ws(wid, `/ontology/workflow/rounds/${encodeURIComponent(rid)}/samples/${encodeURIComponent(sid)}`)),
+  runWorkflowAcceptance: (wid, rid, body) => post(ws(wid, `/ontology/workflow/rounds/${encodeURIComponent(rid)}/runs`), body || {}),
+  reviewWorkflowRound: (wid, rid, body) => post(ws(wid, `/ontology/workflow/rounds/${encodeURIComponent(rid)}/reviews`), body),
+  publishWorkflowRound: (wid, rid) => post(ws(wid, `/ontology/workflow/rounds/${encodeURIComponent(rid)}/publish`), {}),
+  workflowPublishCheck: (wid, rid) => call(ws(wid, `/ontology/workflow/rounds/${encodeURIComponent(rid)}/publish-check`)),
+  workflowTraceMatrix: (wid, rid) => call(ws(wid, `/ontology/workflow/rounds/${encodeURIComponent(rid)}/trace-matrix`)),
+  workflowReport: (wid, rid) => call(ws(wid, `/ontology/workflow/rounds/${encodeURIComponent(rid)}/report`)),
 
   members: wid => call(ws(wid, "/members")),
   addMember: (wid, member, role) => post(ws(wid, "/members"), { member, role }),

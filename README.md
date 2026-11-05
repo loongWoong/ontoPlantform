@@ -411,5 +411,7 @@ onto --workspace W standards export --adapter owl-rdf --out ontology.ttl
 curl "http://127.0.0.1:8000/api/workspaces/W/standards/export?adapter=owl-rdf&format=text/turtle"
 ```
 
-设计与实现依据：[架构方案](docs/standards-plugin-architecture.md) · [实现计划](docs/standards-plugin-implementation-plan-v1.md) · [独立验证报告](docs/standards-plugin-implementation-report.md)（含 DoD 与残余风险）。插件契约、IRI 策略与入口发现见 `src/onto_platform/semantic/`；核心依赖仍为 `dependencies = []`，`[interop]` extra 仅用于测试解析。
+**P0 能力边界（诚实清单）**：TBox-only、Turtle-only；SHACL/SPARQL/导入/ABox/类层次/JSON-LD 未实现（SHACL 与治理属 P1，SPARQL/导入/ABox/类层次属 P2/P3）。插件 ID 为 `owl-rdf`/`skos`，同时接受架构清单别名 `onto-standards-owl`/`onto-standards-skos`。导出元数据（`schema_fingerprint`、`ontology_version`、adapter 版本、actor）通过 `X-*` 响应头与 CLI 摘要暴露；插件异常返回 502 并写审计 `standards.export.failed`。
+
+设计与实现依据：[架构方案](docs/standards-plugin-architecture.md) · [实现计划](docs/standards-plugin-implementation-plan-v1.md) · [独立验证报告](docs/standards-plugin-implementation-report.md) · [完成度复核](docs/standards-plugin-completion-review-v1.md) · [C0+C1 执行计划](docs/standards-plugin-completion-plan-v1.md)。插件契约、IRI 策略与入口发现见 `src/onto_platform/semantic/`；核心依赖仍为 `dependencies = []`，`[interop]` extra 仅用于测试解析。
 

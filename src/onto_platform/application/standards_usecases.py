@@ -28,7 +28,7 @@ from __future__ import annotations
 
 from .common import ApplicationContext, published_ontology_row
 from ..domain.ontology.model import Ontology
-from ..errors import NotFoundError
+from ..errors import AdapterInvocationError, NotFoundError, PlatformError
 from ..semantic.context import build_context
 from ..semantic.registry import default_registry
 from ..semantic.spi import AdapterError, ExportRequest
@@ -112,7 +112,23 @@ class StandardsUseCases:
         export_adapter = self.registry.get(name)
         context = build_context(ontology, actor, scope=DEFAULT_SCOPE)
         request = ExportRequest(format=str(format or ""), scope=DEFAULT_SCOPE)
-        artifact = export_adapter.export(context, request)
+
+        # Plugin isolation (decision D7): an adapter bug must not surface as an
+        # internal platform error.  Platform errors raised *by the platform's
+        # own validation* (unknown adapter, unsupported format, unavailable
+        # workspace) keep their 400/404 taxonomy; anything else is a plugin
+        # failure (502) and is audited before it is re-raised.
+        try:
+            artifact = export_adapter.export(context, request)
+        except PlatformError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - isolation is the point
+            self._ctx.audit_event(
+                actor, workspace_id, "standards.export.failed", name,
+                {"error": type(exc).__name__, "message": str(exc)[:500]},
+            )
+            raise AdapterInvocationError(
+                f"adapter {name!r} failed: {exc}") from exc
 
         content = artifact.content
         self._ctx.audit_event(
@@ -124,13 +140,25 @@ class StandardsUseCases:
                 "schema_fingerprint": str(ontology.schema_fingerprint),
             },
         )
+        # Provenance for downstream consumers.  Every key the adapter put in
+        # artifact.metadata is preserved; the platform adds the deployment
+        # context only it knows (and reasserts the fingerprint it published).
+        # No timestamp: export stays deterministic for a given revision.
+        metadata = {
+            **dict(artifact.metadata or {}),
+            "workspace_id": workspace_id,
+            "ontology_version": int(ontology.version),
+            "schema_fingerprint": str(ontology.schema_fingerprint),
+            "adapter_version": export_adapter.manifest.version,
+            "actor": actor,
+        }
         return {
             "adapter": name,
             "format": artifact.media_type,
             "media_type": artifact.media_type,
             "filename": artifact.filename,
             "content": content,
-            "metadata": dict(artifact.metadata or {}),
+            "metadata": metadata,
         }
 
 
