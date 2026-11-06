@@ -4,6 +4,28 @@
 
 本目录是一个独立的 VitePress 站点，可单独构建与部署，也可作为 ontoPlantform 平台的文档子项目。
 
+## 界面速览
+
+站点整体宽度按 `max(90vw, 1440px)` 横向自适应：大屏不再被固定正文列限制，正文、右侧速记栏和助手抽屉都会随可用宽度展开。以下截图来自 1600×1000 的真实运行页面。
+
+### 首页
+
+![本体建模与应用指南首页：总览、阅读入口、PDF 下载与核心原则](docs/public/screenshots/guide-home.png)
+
+首页用「概念先行 / 标准驱动 / 落地导向 / 与 DDD 互补」四张卡片概括指南定位，并提供「阅读指南」「端到端案例」「下载 PDF」「DDD 指南」四个入口；顶栏的「PDF 下载全文」可下载整站合并版。
+
+### 阅读页：正文、目录与速记
+
+![指南阅读页：左侧多级目录、中间正文、右侧速记与助手入口](docs/public/screenshots/guide-reading.png)
+
+正文页保持左侧多级导航、中间阅读列和右侧速记栏。速记内容按页面路径自动保存在浏览器 `localStorage`，支持收录选中文字、复制、清空和导出 `.md`；窄屏时右侧栏收起，改用右下角「速记 / AI」浮动入口。
+
+### LLM 助手
+
+![LLM 助手抽屉：模型配置、当前页面上下文与提问入口](docs/public/screenshots/guide-assistant.png)
+
+「打开助手」会展开 960px 宽的抽屉：可在这里配置 OpenAI Chat Completions 兼容接口，解释本页概念或选中内容，并把回答插入速记。模型配置只保存在本机浏览器；浏览器直连被 CORS 拦截时，可用本目录的 `pnpm docs:proxy` 本地代理。
+
 ## 页面增强功能
 
 - **右侧速记**：每个文档页右侧栏内嵌速记编辑框，可粘贴关键段落、关键词、自己的理解或待查问题；内容按页面自动保存到浏览器 `localStorage`（键 `ontology-guide:notes:v1:<path>`）。支持「收录选中」（把正文选中文字追加进来）、复制、清空，抽屉内还可导出 `.md`。窄屏侧栏隐藏时，通过右下角「速记 / AI」浮动按钮打开。右侧栏已加宽一倍：内容区由 224px 放宽到最大 448px（`clamp(300px, 26vw, 448px)` 随视口自适应），速记框与助手面板更易读。
@@ -43,7 +65,8 @@ ontology-guide/
 │  ├─ adoption/index.md         # 落地路线图
 │  ├─ examples/index.md         # 端到端案例（电商本体）
 │  ├─ public/
-│  │  └─ ontology-guide.pdf     # 整站合并 PDF（由 scripts/build-pdf.mjs 生成）
+│  │  ├─ ontology-guide.pdf     # 整站合并 PDF（由 scripts/build-pdf.mjs 生成）
+│  │  └─ screenshots/           # README 界面速览截图
 │  └─ .vitepress/
 │     ├─ config.mts             # 站点配置（导航、侧边栏、语言）
 │     └─ theme/                 # 自定义主题：速记 + LLM 助手 + PDF 按钮 + 布局宽度
@@ -74,7 +97,7 @@ pnpm docs:preview  # 预览构建结果
 
 ## 与 DDD 指南的关系
 
-本指南是 [DDD 指南](https://ddd-fans.github.io/ddd-guideline/) 的姊妹篇：DDD 管理业务边界与行为，本体管理共享语义与数据互操作。正文中指向 DDD 指南章节的链接使用已发布站点的绝对地址；其余站内链接均指向本指南自身页面。
+本指南在领域建模方面参考了 [DDD 指南](https://ddd-fans.github.io/ddd-guideline/) ：DDD 管理业务边界与行为，本体管理共享语义与数据互操作。正文中指向 DDD 指南章节的链接使用已发布站点的绝对地址；其余站内链接均指向本指南自身页面。
 
 ## 许可
 

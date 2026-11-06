@@ -5,33 +5,55 @@ import type {
   PointerEvent as ReactPointerEvent,
 } from "react";
 import {
+  ArrowsClockwise,
   ArrowsOut,
+  CirclesFour,
   Crosshair,
   CursorClick,
+  Graph,
   Minus,
   Plus,
   Scan,
   Tag,
+  TreeStructure,
   X,
 } from "@phosphor-icons/react";
 import type { ObjectTypeSpec, Ontology, RelationSpec } from "../api";
-import { layoutOntologyGraph } from "../lib/ontologyGraph";
+import {
+  defaultForceView,
+  layoutForceGraph,
+  projectForceGraph,
+} from "../lib/forceGraph";
+import type {
+  ForceGraphLayout,
+  ForceGraphMode,
+  ForceGraphView,
+  ProjectedForceEdge,
+  ProjectedForceNode,
+} from "../lib/forceGraph";
+import { layoutOntologyGraph, wrapGraphText } from "../lib/ontologyGraph";
 import type { GraphEdge, GraphNode } from "../lib/ontologyGraph";
 
 /**
- * 本体关系图：把「对象类型 + 关系」画成可点击、可缩放、可展开的 SVG 图。
+ * 本体关系图：同一份本体支持「力导向」和「分层卡片」两种展示。
  *
- * 布局由 `../lib/ontologyGraph` 的纯函数负责（A 的模块），本组件只负责：
- * 摄像机（fit / 滚轮缩放 / 拖拽平移）、选中与关联高亮、只看相关过滤、
- * 关系名称开关、全屏展开（原生 <dialog>）以及选中详情条。
- * 暖色设计规范：只用 frontend/src/styles.css :root 里的 tokens，样式统一
- * 挂在 .onto-graph-* 命名空间下，不污染其他页面。
+ * - 力导向：`../lib/forceGraph` 负责 2D / 2.5D / 3D 投影、聚类和力模拟；
+ * - 分层卡片：`../lib/ontologyGraph` 负责分层、正交走廊和卡片几何。
+ *
+ * 本组件负责共享的摄像机（fit / 滚轮缩放 / 拖拽）、选中与关联高亮、
+ * 只看相关过滤、关系名称开关、全屏展开（原生 <dialog>）以及选中详情条。
+ * 视觉只用 frontend/src/styles.css :root 里的暖色 tokens，样式统一挂在
+ * .onto-graph-* 命名空间下，不污染其他页面。
  */
 
 type Selection =
   | { kind: "object"; name: string }
   | { kind: "relation"; name: string }
   | null;
+
+type GraphKind = "force" | "layered";
+
+type RenderEdge = ProjectedForceEdge | GraphEdge;
 
 interface Camera {
   x: number;
@@ -44,6 +66,8 @@ interface DragState {
   startX: number;
   startY: number;
   camera: Camera;
+  view: ForceGraphView;
+  rotate: boolean;
   moved: boolean;
 }
 
@@ -56,16 +80,51 @@ export interface OntologyGraphProps {
 
 const MIN_SCALE = 0.12;
 const MAX_SCALE = 2;
-const FIT_PADDING_X = 48;
-const FIT_PADDING_Y = 96;
+const FIT_PADDING_X = 64;
+const FIT_PADDING_Y = 84;
 const CARDINALITY_LABEL: Record<string, string> = {
   "one-to-one": "一对一",
   "one-to-many": "一对多",
   "many-to-one": "多对一",
   "many-to-many": "多对多",
 };
+const MODE_LABEL: Record<ForceGraphMode, string> = {
+  "2d": "2D",
+  "25d": "2.5D",
+  "3d": "3D",
+};
 
 const clampScale = (scale: number) => Math.max(MIN_SCALE, Math.min(MAX_SCALE, scale));
+
+function fitCamera(
+  bounds: { minX: number; minY: number; maxX: number; maxY: number },
+  size: { width: number; height: number },
+  kind: GraphKind,
+): Camera {
+  if (!size.width || !size.height || bounds.maxX <= bounds.minX || bounds.maxY <= bounds.minY) {
+    return { x: 0, y: 0, scale: 1 };
+  }
+  const paddingX = kind === "force" ? FIT_PADDING_X : 48;
+  const paddingY = kind === "force" ? FIT_PADDING_Y : 96;
+  const width = Math.max(1, bounds.maxX - bounds.minX);
+  const height = Math.max(1, bounds.maxY - bounds.minY);
+  const scale = clampScale(
+    Math.min(
+      1,
+      (size.width - paddingX) / width,
+      (size.height - paddingY) / height,
+    ),
+  );
+  // 窄屏严格 fit 会缩到看不清；保底可读比例，超出部分由拖拽 / 缩放 / 全屏继续看。
+  const readableScale = size.width < 600 && scale < 0.65 ? 0.65 : scale;
+  const centerX = (bounds.minX + bounds.maxX) / 2;
+  const centerY = (bounds.minY + bounds.maxY) / 2;
+  return {
+    scale: readableScale,
+    x: size.width / 2 - centerX * readableScale,
+    y: size.height / 2 - centerY * readableScale - 4,
+  };
+}
 
 /** 只保留「焦点对象 + 直接邻居 + 与之相连的关系」的临时本体。 */
 function focusOntology(ontology: Ontology, focusName: string): Ontology {
@@ -85,6 +144,10 @@ function focusOntology(ontology: Ontology, focusName: string): Ontology {
   return { ...ontology, objects, relations };
 }
 
+function clusterColorOf(layout: ForceGraphLayout, clusterId: number): number {
+  return layout.clusters.find((cluster) => cluster.id === clusterId)?.color ?? 0;
+}
+
 export function OntologyGraph({
   ontology,
   frozen = false,
@@ -93,11 +156,16 @@ export function OntologyGraph({
 }: OntologyGraphProps) {
   const [selection, setSelection] = useState<Selection>(null);
   const [focusName, setFocusName] = useState<string | null>(null);
+  const [graphKind, setGraphKind] = useState<GraphKind>("force");
   const [showLabels, setShowLabels] = useState(true);
+  const [showClusters, setShowClusters] = useState(true);
+  const [view, setView] = useState<ForceGraphView>(() => defaultForceView("2d"));
+  const [seed, setSeed] = useState(0);
   const [expanded, setExpanded] = useState(false);
   const [size, setSize] = useState({ width: 0, height: 0 });
   const [camera, setCamera] = useState<Camera>({ x: 0, y: 0, scale: 1 });
   const [dragging, setDragging] = useState(false);
+  const [rotating, setRotating] = useState(false);
 
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const dialogRef = useRef<HTMLDialogElement | null>(null);
@@ -126,7 +194,31 @@ export function OntologyGraph({
     () => (focusName && focusedObject ? focusOntology(source, focusName) : source),
     [source, focusName, focusedObject],
   );
-  const layout = useMemo(() => layoutOntologyGraph(visibleOntology), [visibleOntology]);
+  const forceLayout = useMemo(
+    () => layoutForceGraph(visibleOntology, { mode: view.mode, seed }),
+    [visibleOntology, view.mode, seed],
+  );
+  const layeredLayout = useMemo(
+    () => layoutOntologyGraph(visibleOntology),
+    [visibleOntology],
+  );
+  const projected = useMemo(
+    () => projectForceGraph(forceLayout, view),
+    [forceLayout, view],
+  );
+  const activeObjectCount =
+    graphKind === "force" ? forceLayout.objectCount : layeredLayout.objectCount;
+  const activeRelationCount =
+    graphKind === "force" ? forceLayout.relationCount : layeredLayout.relationCount;
+  const activeNodeCount =
+    graphKind === "force" ? forceLayout.nodes.length : layeredLayout.nodes.length;
+  const modeLabel = MODE_LABEL[view.mode];
+  const interactionHint =
+    graphKind === "layered"
+      ? "拖动画布平移"
+      : view.mode === "3d"
+        ? "拖动旋转 · Shift+拖动平移"
+        : "拖动画布平移";
 
   /* ---- 选中对象 / 关系（始终以完整本体为准，详情条不受聚焦影响） ---- */
   const selectedObject =
@@ -142,10 +234,10 @@ export function OntologyGraph({
 
   useEffect(() => {
     if (!focusName) return;
-    if (!source.objects[focusName] || !layout.nodes.some((node) => node.name === focusName)) {
+    if (!source.objects[focusName] || !visibleOntology.objects[focusName]) {
       setFocusName(null);
     }
-  }, [focusName, layout, source]);
+  }, [focusName, visibleOntology, source]);
 
   /* ---- ResizeObserver：画布尺寸 → fit 计算 ---- */
   useEffect(() => {
@@ -161,32 +253,15 @@ export function OntologyGraph({
     return () => observer.disconnect();
   }, [expanded]);
 
-  const fittedCamera = useMemo<Camera>(() => {
-    if (!size.width || !size.height || !layout.nodes.length) {
-      return { x: 0, y: 0, scale: 1 };
-    }
-    const scale = clampScale(
-      Math.min(
-        1,
-        (size.width - FIT_PADDING_X) / Math.max(1, layout.width),
-        (size.height - FIT_PADDING_Y) / Math.max(1, layout.height),
-      ),
-    );
-    // 窄屏上若严格 fit，整张图会缩到看不清；与参考实现一致，保留最低可读比例，
-    // 超出部分由拖拽/缩放/全屏继续查看。
-    const readableScale =
-      size.width < 600 && scale < 0.65 ? 0.65 : scale;
-    return {
-      scale: readableScale,
-      x: (size.width - layout.width * readableScale) / 2,
-      y: (size.height - layout.height * readableScale) / 2 - 12,
-    };
-  }, [layout, size]);
-
-  /* 首次挂载与布局变化（聚焦/数据刷新/展开）时自动 fit。 */
+  /* ---- 布局 / 模式 / 画布尺寸变化时自动 fit；3D 旋转不重置相机 ---- */
   useEffect(() => {
-    setCamera(fittedCamera);
-  }, [fittedCamera]);
+    const bounds = graphKind === "force"
+      ? projected.bounds
+      : { minX: 0, minY: 0, maxX: layeredLayout.width, maxY: layeredLayout.height };
+    setCamera(fitCamera(bounds, size, graphKind));
+    // projected 故意不放进依赖：3D 旋转只改变投影，不把用户的相机拉回 fit。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [graphKind, forceLayout, layeredLayout, size.width, size.height]);
 
   /* ---- 滚轮缩放（以指针为锚点），passive:false 才能 preventDefault ---- */
   useEffect(() => {
@@ -246,21 +321,42 @@ export function OntologyGraph({
       };
     });
 
-  /* ---- 拖拽平移（pointer capture；从按钮/节点开始时不拖） ---- */
+  const fitView = () => {
+    const bounds = graphKind === "force"
+      ? projected.bounds
+      : { minX: 0, minY: 0, maxX: layeredLayout.width, maxY: layeredLayout.height };
+    setCamera(fitCamera(bounds, size, graphKind));
+  };
+
+  const changeLayoutKind = (kind: GraphKind) => {
+    if (graphKind === kind) return;
+    setGraphKind(kind);
+  };
+
+  const changeMode = (mode: ForceGraphMode) => {
+    if (view.mode === mode) return;
+    setView(defaultForceView(mode));
+  };
+
+  /* ---- 拖拽：分层/2D/2.5D 平移，3D 左键旋转、Shift+左键平移 ---- */
   const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return;
     const target = event.target;
     if (target instanceof Element && target.closest("[role='button'], button")) return;
     event.currentTarget.setPointerCapture(event.pointerId);
     movedRef.current = false;
+    const rotate = graphKind === "force" && view.mode === "3d" && !event.shiftKey;
     dragRef.current = {
       pointerId: event.pointerId,
       startX: event.clientX,
       startY: event.clientY,
       camera,
+      view,
+      rotate,
       moved: false,
     };
     setDragging(true);
+    setRotating(rotate);
   };
 
   const onPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -272,7 +368,13 @@ export function OntologyGraph({
       start.moved = true;
       movedRef.current = true;
     }
-    setCamera({ ...start.camera, x: start.camera.x + dx, y: start.camera.y + dy });
+    if (start.rotate) {
+      const yaw = start.view.yaw + dx * 0.008;
+      const pitch = Math.max(-1.2, Math.min(1.2, start.view.pitch + dy * 0.007));
+      setView((current) => ({ ...current, yaw, pitch }));
+    } else {
+      setCamera({ ...start.camera, x: start.camera.x + dx, y: start.camera.y + dy });
+    }
   };
 
   const endDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -280,6 +382,7 @@ export function OntologyGraph({
     if (start && start.pointerId === event.pointerId) {
       dragRef.current = null;
       setDragging(false);
+      setRotating(false);
       if (event.currentTarget.hasPointerCapture(event.pointerId)) {
         event.currentTarget.releasePointerCapture(event.pointerId);
       }
@@ -315,67 +418,67 @@ export function OntologyGraph({
     else if (selectedObject) setFocusName(selectedObject.name);
   };
 
-  /* ---- 关联集合（当前布局内计算，聚焦子集也正确） ---- */
+  /* ---- 关联集合（按当前可见本体计算，两种布局共用） ---- */
   const relatedNodes = useMemo(() => {
     const names = new Set<string>();
     if (selection?.kind === "object") {
       names.add(selection.name);
-      for (const edge of layout.edges) {
+      for (const edge of Object.values(visibleOntology.relations)) {
         if (edge.source === selection.name || edge.target === selection.name) {
           names.add(edge.source);
           names.add(edge.target);
         }
       }
     } else if (selection?.kind === "relation") {
-      const edge = layout.edges.find((item) => item.name === selection.name);
+      const edge = visibleOntology.relations[selection.name];
       if (edge) {
         names.add(edge.source);
         names.add(edge.target);
       }
     }
     return names;
-  }, [layout, selection]);
+  }, [visibleOntology, selection]);
 
   const relatedEdges = useMemo(() => {
     const names = new Set<string>();
     if (selection?.kind === "object") {
-      for (const edge of layout.edges) {
+      for (const edge of Object.values(visibleOntology.relations)) {
         if (edge.source === selection.name || edge.target === selection.name) {
           names.add(edge.name);
         }
       }
     } else if (selection?.kind === "relation") {
-      if (layout.edges.some((edge) => edge.name === selection.name)) names.add(selection.name);
+      if (visibleOntology.relations[selection.name]) names.add(selection.name);
     }
     return names;
-  }, [layout, selection]);
+  }, [visibleOntology, selection]);
 
   const selectionInLayout =
     selection === null
       ? false
       : selection.kind === "object"
-        ? layout.nodes.some((node) => node.name === selection.name)
-        : layout.edges.some((edge) => edge.name === selection.name);
+        ? Boolean(visibleOntology.objects[selection.name])
+        : Boolean(visibleOntology.relations[selection.name]);
 
   /* ---- 详情条用的出向 / 入向关系（完整本体） ---- */
   const outgoing = useMemo(
     () =>
       selectedObject
-        ? Object.values(source.relations).filter((r) => r.source === selectedObject.name)
+        ? Object.values(source.relations).filter((relation) => relation.source === selectedObject.name)
         : [],
     [source, selectedObject],
   );
   const incoming = useMemo(
     () =>
       selectedObject
-        ? Object.values(source.relations).filter((r) => r.target === selectedObject.name)
+        ? Object.values(source.relations).filter((relation) => relation.target === selectedObject.name)
         : [],
     [source, selectedObject],
   );
   const selectedProperties = selectedObject ? Object.values(selectedObject.properties || {}) : [];
 
-  /* ---- 渲染：关系 ---- */
-  const renderEdge = (edge: GraphEdge) => {
+  /* ---- 渲染：关系（两种布局共用） ---- */
+  const renderEdge = (edge: RenderEdge, kind: GraphKind) => {
     const active = selection?.kind === "relation" && selection.name === edge.name;
     const related = relatedEdges.has(edge.name);
     const dimmed = selectionInLayout && !active && !related;
@@ -383,6 +486,7 @@ export function OntologyGraph({
     const labelsShown = showLabels || highlighted;
     const classNames = [
       "onto-graph-edge",
+      kind === "force" ? "onto-graph-force-edge" : "onto-graph-layered-edge",
       active ? "is-active" : "",
       related ? "is-related" : "",
       dimmed ? "is-dimmed" : "",
@@ -402,15 +506,16 @@ export function OntologyGraph({
       >
         <title>{`${edge.name}：${edge.source} → ${edge.target}${edge.description ? ` · ${edge.description}` : ""}`}</title>
         <path className="onto-graph-edge-hit" d={edge.path} />
+        {kind === "force" && (
+          <path className="onto-graph-force-edge-underlay" d={edge.path} />
+        )}
         <path
           className="onto-graph-edge-line"
           d={edge.path}
           markerEnd={`url(#${highlighted ? activeArrowMarker : arrowMarker})`}
         />
         <g
-          className={
-            labelsShown ? "onto-graph-edge-label" : "onto-graph-edge-label is-hidden"
-          }
+          className={labelsShown ? "onto-graph-edge-label" : "onto-graph-edge-label is-hidden"}
           transform={`translate(${edge.label.x} ${edge.label.y})`}
         >
           <rect width={edge.label.width} height={edge.label.height} rx={7} />
@@ -426,13 +531,46 @@ export function OntologyGraph({
     );
   };
 
-  /* ---- 渲染：节点卡片 ---- */
-  const renderNode = (node: GraphNode) => {
+  /* ---- 渲染：力导向聚类凸包 / 标记 ---- */
+  const renderCluster = (cluster: (typeof projected.clusters)[number]) => {
+    if (!cluster.path) return null;
+    return (
+      <g
+        key={cluster.id}
+        className={`onto-graph-force-cluster cluster-${cluster.color}`}
+        aria-hidden="true"
+      >
+        <path className="onto-graph-force-hull-glow" d={cluster.path} />
+        <path className="onto-graph-force-hull" d={cluster.path} />
+        <g transform={`translate(${cluster.labelX} ${cluster.labelY})`}>
+          <rect
+            className="onto-graph-force-cluster-pill"
+            x={-42}
+            y={-18}
+            width={84}
+            height={19}
+            rx={9.5}
+          />
+          <text className="onto-graph-force-cluster-label" textAnchor="middle" y={-4.5}>
+            {cluster.label} · {cluster.count}
+          </text>
+        </g>
+      </g>
+    );
+  };
+
+  /* ---- 渲染：力导向节点 ---- */
+  const renderForceNode = (node: ProjectedForceNode) => {
     const active = selection?.kind === "object" && selection.name === node.name;
     const related = relatedNodes.has(node.name);
     const dimmed = selectionInLayout && !active && !related;
+    const radius = Math.max(11, node.screenRadius);
+    const color = showClusters ? clusterColorOf(forceLayout, node.cluster) : "neutral";
+    const labelLines = wrapGraphText(node.name, 9);
     const classNames = [
       "onto-graph-node",
+      "onto-graph-force-node",
+      `cluster-${color}`,
       active ? "is-active" : "",
       related ? "is-related" : "",
       dimmed ? "is-dimmed" : "",
@@ -440,8 +578,54 @@ export function OntologyGraph({
       .filter(Boolean)
       .join(" ");
     const titleText = node.description ? `${node.name}：${node.description}` : node.name;
-    // 可见文本（含 SVG <title>）都写进 aria-label，避免 label-in-name 规则下
-    // 读屏名称与卡片上真正显示的文字不一致。
+    const accessibleName =
+      `${titleText}对象类型 · ${node.propertyCount} 属性 · ` +
+      `${node.relationCount} 条关系 · ${forceLayout.clusters.find((cluster) => cluster.id === node.cluster)?.label || "未聚类"} ` +
+      labelLines.join("");
+    return (
+      <g
+        key={node.name}
+        className={classNames}
+        transform={`translate(${node.screenX} ${node.screenY})`}
+        role="button"
+        tabIndex={0}
+        aria-pressed={active}
+        aria-label={accessibleName}
+        onClick={() => selectObject(node.name)}
+        onKeyDown={(event) => onItemKeyDown(event, () => selectObject(node.name))}
+      >
+        <title>{titleText}</title>
+        <circle className="onto-graph-force-ring" r={radius + 12} aria-hidden="true" />
+        <circle className="onto-graph-force-halo" r={radius + 7} />
+        <circle className="onto-graph-force-dot" r={radius} />
+        <circle className="onto-graph-force-inner" r={Math.max(4, radius - 4)} />
+        <circle className="onto-graph-force-core" r={Math.max(2.5, radius * 0.22)} />
+        <text className="onto-graph-force-label" textAnchor="middle">
+          {labelLines.map((line, index) => (
+            <tspan key={index} x={0} y={radius + 18 + index * 12}>
+              {line}
+            </tspan>
+          ))}
+        </text>
+      </g>
+    );
+  };
+
+  /* ---- 渲染：分层卡片节点 ---- */
+  const renderLayeredNode = (node: GraphNode) => {
+    const active = selection?.kind === "object" && selection.name === node.name;
+    const related = relatedNodes.has(node.name);
+    const dimmed = selectionInLayout && !active && !related;
+    const classNames = [
+      "onto-graph-node",
+      "onto-graph-layered-node",
+      active ? "is-active" : "",
+      related ? "is-related" : "",
+      dimmed ? "is-dimmed" : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+    const titleText = node.description ? `${node.name}：${node.description}` : node.name;
     const accessibleName =
       `${titleText}对象类型 · ${node.propertyCount} 属性` +
       `${node.relationCount} 条关系${node.lines.join("")}`;
@@ -583,7 +767,10 @@ export function OntologyGraph({
   ) : (
     <div className="onto-graph-detail is-empty">
       <CursorClick size={14} aria-hidden="true" />
-      <span>点击对象或关系查看详情；拖动画布平移，滚轮缩放。</span>
+      <span>
+        点击对象或关系查看详情；{interactionHint}，滚轮缩放。
+        {graphKind === "force" && view.mode === "3d" ? "拖动节点所在画布可旋转视角。" : ""}
+      </span>
     </div>
   );
 
@@ -595,10 +782,68 @@ export function OntologyGraph({
           <span className="onto-graph-status-dot" aria-hidden="true" />
           <strong>{focusedObject ? focusedObject.name : "关系总览"}</strong>
           <span className="onto-graph-counts">
-            {layout.objectCount} 个对象 · {layout.relationCount} 条关系
+            {activeObjectCount} 个对象 · {activeRelationCount} 条关系
+            {graphKind === "force" && showClusters
+              ? ` · ${forceLayout.clusters.length} 个聚类`
+              : ""}
+          </span>
+          <span className="onto-graph-mode-note">
+            {graphKind === "force" ? `${modeLabel} 力导向` : "分层卡片"}
           </span>
         </div>
         <div className="onto-graph-actions">
+          <div className="onto-graph-layout-switch" role="group" aria-label="图谱布局">
+            <button
+              type="button"
+              className={graphKind === "force" ? "is-active" : ""}
+              aria-pressed={graphKind === "force"}
+              title="力导向图：2D / 2.5D / 3D 空间与聚类"
+              onClick={() => changeLayoutKind("force")}
+            >
+              <Graph size={13} aria-hidden="true" />
+              力导向
+            </button>
+            <button
+              type="button"
+              className={graphKind === "layered" ? "is-active" : ""}
+              aria-pressed={graphKind === "layered"}
+              title="分层卡片图：从左到右展示对象与关系"
+              onClick={() => changeLayoutKind("layered")}
+            >
+              <TreeStructure size={13} aria-hidden="true" />
+              分层卡片
+            </button>
+          </div>
+          {graphKind === "force" && (
+            <div className="onto-graph-mode-switch" role="group" aria-label="力导向图维度">
+              {(["2d", "25d", "3d"] as const).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  className={view.mode === mode ? "is-active" : ""}
+                  aria-pressed={view.mode === mode}
+                  aria-label={`${MODE_LABEL[mode]} 力导向图`}
+                  title={mode === "25d" ? "2.5D 斜视角" : `${MODE_LABEL[mode]} 力导向图`}
+                  onClick={() => changeMode(mode)}
+                >
+                  {MODE_LABEL[mode]}
+                </button>
+              ))}
+            </div>
+          )}
+          {graphKind === "force" && (
+            <button
+              type="button"
+              aria-pressed={showClusters}
+              className={showClusters ? "is-active" : ""}
+              aria-label="聚类"
+              title={showClusters ? "隐藏聚类凸包与颜色" : "显示聚类凸包与颜色"}
+              onClick={() => setShowClusters((value) => !value)}
+            >
+              <CirclesFour size={14} aria-hidden="true" />
+              聚类
+            </button>
+          )}
           <button
             type="button"
             className={showLabels ? "is-active" : ""}
@@ -625,6 +870,16 @@ export function OntologyGraph({
             <Crosshair size={14} aria-hidden="true" />
             {focusedObject ? "全部对象" : "只看相关"}
           </button>
+          {graphKind === "force" && (
+            <button
+              type="button"
+              aria-label="重新计算力导向布局"
+              title="重新计算力导向布局"
+              onClick={() => setSeed((value) => value + 1)}
+            >
+              <ArrowsClockwise size={14} aria-hidden="true" />
+            </button>
+          )}
           <button
             type="button"
             ref={expanded ? undefined : expandButtonRef}
@@ -639,7 +894,12 @@ export function OntologyGraph({
 
       <div
         ref={viewportRef}
-        className={dragging ? "onto-graph-canvas is-dragging" : "onto-graph-canvas"}
+        className={[
+          "onto-graph-canvas",
+          `is-${graphKind}`,
+          dragging ? "is-dragging" : "",
+          rotating ? "is-rotating" : "",
+        ].filter(Boolean).join(" ")}
         onClick={onCanvasClick}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
@@ -648,17 +908,18 @@ export function OntologyGraph({
         onLostPointerCapture={() => {
           dragRef.current = null;
           setDragging(false);
+          setRotating(false);
         }}
       >
-        {layout.nodes.length === 0 ? (
+        {activeNodeCount === 0 ? (
           <div className="onto-graph-empty" role="status">
             <Crosshair size={22} aria-hidden="true" />
             <b>还没有可画的对象</b>
-            <p>先添加对象（例如 Vehicle、TollStation），关系图会自动出现它们的卡片与连线。</p>
+            <p>先添加对象（例如 Vehicle、TollStation），关系图会自动出现节点和连线。</p>
           </div>
         ) : (
           <>
-            {layout.relationCount === 0 && (
+            {activeRelationCount === 0 && (
               <p className="onto-graph-hint">
                 对象已就位，还没有关系；在右侧「关系」页签里把它们连起来。
               </p>
@@ -706,8 +967,18 @@ export function OntologyGraph({
                 className="onto-graph-transform"
                 transform={`translate(${camera.x} ${camera.y}) scale(${camera.scale})`}
               >
-                {layout.edges.map(renderEdge)}
-                {layout.nodes.map(renderNode)}
+                {graphKind === "force" ? (
+                  <>
+                    {showClusters && projected.clusters.map(renderCluster)}
+                    {projected.edges.map((edge) => renderEdge(edge, "force"))}
+                    {projected.nodes.map(renderForceNode)}
+                  </>
+                ) : (
+                  <>
+                    {layeredLayout.edges.map((edge) => renderEdge(edge, "layered"))}
+                    {layeredLayout.nodes.map(renderLayeredNode)}
+                  </>
+                )}
               </g>
             </svg>
             <div className="onto-graph-navigation" role="group" aria-label="画布缩放">
@@ -735,7 +1006,7 @@ export function OntologyGraph({
                 type="button"
                 aria-label="适应画布"
                 title="适应画布"
-                onClick={() => setCamera(fittedCamera)}
+                onClick={fitView}
               >
                 <Scan size={17} aria-hidden="true" />
               </button>
@@ -749,8 +1020,23 @@ export function OntologyGraph({
       <div className="onto-graph-footer">
         <span>
           <CursorClick size={13} aria-hidden="true" />
-          点击查看 · 拖动画布 · 滚轮缩放
+          点击查看 · {interactionHint} · 滚轮缩放
         </span>
+        {graphKind === "force" && showClusters && projected.clusters.length > 0 && (
+          <div className="onto-graph-cluster-legend" aria-label="聚类图例">
+            {projected.clusters.map((cluster) => (
+              <span
+                key={cluster.id}
+                className={`onto-graph-cluster-chip cluster-${cluster.color}`}
+                title={cluster.names.join("、")}
+              >
+                <i aria-hidden="true" />
+                {cluster.label}
+                <b>{cluster.count}</b>
+              </span>
+            ))}
+          </div>
+        )}
         <span>
           <i className="onto-graph-arrow-legend" aria-hidden="true" />
           箭头表示关系方向

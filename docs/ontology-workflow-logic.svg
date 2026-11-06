@@ -54,7 +54,7 @@
   </g>
   <g data-shape="node">
     <path d="M 341.20 221.50 A 10.00 10.00 0 0 1 351.20 211.50 L 512.20 211.50 A 10.00 10.00 0 0 1 522.20 221.50 L 522.20 255.50 A 10.00 10.00 0 0 1 512.20 265.50 L 351.20 265.50 A 10.00 10.00 0 0 1 341.20 255.50 L 341.20 221.50 Z" fill="#ffffff" stroke="#111827" stroke-width="1.5" />
-    <text x="431.70" y="234.90" fill="#111827" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">CQ 工作台</text>
+    <text x="431.70" y="234.90" fill="#111827" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">能力工作台</text>
     <text x="431.70" y="250.50" fill="#111827" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">问题 · 来源 · 判定方式</text>
   </g>
   <g data-shape="node">
@@ -64,7 +64,7 @@
   </g>
   <g data-shape="node">
     <path d="M 341.20 401.50 A 10.00 10.00 0 0 1 351.20 391.50 L 512.20 391.50 A 10.00 10.00 0 0 1 522.20 401.50 L 522.20 435.50 A 10.00 10.00 0 0 1 512.20 445.50 L 351.20 445.50 A 10.00 10.00 0 0 1 341.20 435.50 L 341.20 401.50 Z" fill="#ffffff" stroke="#111827" stroke-width="1.5" />
-    <text x="431.70" y="414.90" fill="#111827" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">草图与词表</text>
+    <text x="431.70" y="414.90" fill="#111827" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">草图和词表</text>
     <text x="431.70" y="430.50" fill="#111827" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">术语 · 关系图 · 概念引用</text>
   </g>
   <g data-shape="node">

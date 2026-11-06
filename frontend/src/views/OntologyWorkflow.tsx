@@ -166,6 +166,17 @@ function sampleDraft(detail: WorkflowDetail | null, sample?: WorkflowSample): Sa
   };
 }
 
+const STEP_CARD_TITLES: Record<string, string> = {
+  scope: "范围卡",
+  cq: "能力工作台",
+  reuse: "复用台账",
+  sketch: "草图和词表",
+  formalize: "模型与 IRI",
+  samples: "数据沙盘",
+  acceptance: "验收运行",
+  review: "评审室",
+};
+
 function gateTone(check: WorkflowDetail["publish_check"] | undefined) {
   if (!check) return "plain" as const;
   if (check.ok) return "ok" as const;
@@ -632,7 +643,7 @@ export function OntologyWorkflow({
                   : step.status === "warn" ? <WarningCircle size={15} weight="fill" />
                     : <Circle size={15} />} {String(step.no).padStart(2, "0")}
               </span>
-              <b>{step.title}</b>
+              <b>{STEP_CARD_TITLES[step.key] || step.title}</b>
               <span>{step.detail}</span>
               <Tag kind={stepStatusKind(step.status)}>{step.status === "done" ? "完成" : step.status === "warn" ? "待修正" : step.status === "current" ? "当前" : "未开始"}</Tag>
             </button>
@@ -644,7 +655,7 @@ export function OntologyWorkflow({
         <div className="wf-main" id="wf-panel" role="tabpanel"
              aria-labelledby={`wf-tab-${activeStepKey}`}>
           {activeStepKey === "scope" && (
-          <Card id="wf-scope" title="01 · 范围" sub="这一轮回答什么、不回答什么；范围不是文档，是取舍。"
+          <Card id="wf-scope" title={`01 · ${STEP_CARD_TITLES.scope}`} sub="这一轮回答什么、不回答什么；范围不是文档，是取舍。"
                 aside={<Tag kind={detail.steps[0]?.status === "done" ? "ok" : ""}>{detail.steps[0]?.status === "done" ? "已记录" : "待补充"}</Tag>}>
             <div className="wf-form-grid">
               <Field label="本轮目标" top>
@@ -698,7 +709,7 @@ export function OntologyWorkflow({
           )}
 
           {activeStepKey === "cq" && (
-          <Card id="wf-cq" title="02 · 编写能力问题"
+          <Card id="wf-cq" title={`02 · ${STEP_CARD_TITLES.cq}`}
                 sub="每条 CQ 都要能被查询验证；P0 是这一轮必须答对的题。"
                 aside={<div className="wf-inline">
                   <Tag kind={detail.cqs.length >= (round.target?.min_cq || 5) ? "ok" : "warn"}>
@@ -939,7 +950,7 @@ export function OntologyWorkflow({
           )}
 
           {activeStepKey === "reuse" && (
-          <Card id="wf-reuse" title="03 · 复用调研"
+          <Card id="wf-reuse" title={`03 · ${STEP_CARD_TITLES.reuse}`}
                 sub="先看行业标准、已有本体或词表能不能复用；不复用也要留下理由。"
                 aside={<Tag kind={detail.steps[2]?.status === "done" ? "ok" : "warn"}>{detail.steps[2]?.status === "done" ? "已记录" : "待调研"}</Tag>}>
             <div className="wf-inline wf-skip">
@@ -995,7 +1006,7 @@ export function OntologyWorkflow({
           )}
 
           {activeStepKey === "sketch" && (
-          <Card id="wf-sketch" title="04 · 概念草图"
+          <Card id="wf-sketch" title={`04 · ${STEP_CARD_TITLES.sketch}`}
                 sub="结构编辑仍然走「结构」标签页；这里只确认草图已经长出来。"
                 aside={<Tag kind={detail.steps[3]?.status === "done" ? "ok" : "warn"}>{detail.ontology.objects.length} 个对象</Tag>}>
             <div className="wf-structure">
@@ -1010,7 +1021,7 @@ export function OntologyWorkflow({
           )}
 
           {activeStepKey === "formalize" && (
-          <Card id="wf-formalize" title="05 · 形式化"
+          <Card id="wf-formalize" title={`05 · ${STEP_CARD_TITLES.formalize}`}
                 sub="平台用编译前的语义检查确认结构可以作为运行时契约；这一步不会改模型。"
                 aside={<Tag kind={detail.validation?.ok ? "ok" : "warn"}>{detail.validation?.ok ? "已通过" : "待检查"}</Tag>}>
             {detail.validation?.ok ? (
@@ -1030,7 +1041,7 @@ export function OntologyWorkflow({
           )}
 
           {activeStepKey === "samples" && (
-          <Card id="wf-samples" title="06 · 样例实例"
+          <Card id="wf-samples" title={`06 · ${STEP_CARD_TITLES.samples}`}
                 sub="样例集是隔离的临时数据：只用于验证 CQ，不写进运行时。"
                 aside={<div className="wf-inline">
                   <Tag kind={detail.samples.length ? "ok" : "warn"}>{detail.samples.length} 组 / {detail.samples.reduce((sum, sample) => sum + sample.row_count, 0)} 行</Tag>
@@ -1096,7 +1107,7 @@ export function OntologyWorkflow({
           )}
 
           {activeStepKey === "acceptance" && (
-          <Card id="wf-acceptance" title="07 · CQ 验证"
+          <Card id="wf-acceptance" title={`07 · ${STEP_CARD_TITLES.acceptance}`}
                 sub="每条 CQ 按自己的引擎执行：样例 fixture 隔离可重复，运行时 runtime 读真实状态；自动 CQ 的通过率决定发布门禁，人工 CQ 不计入。"
                 aside={<div className="wf-inline">
                   <Btn busy={busy === "run"} onClick={runAcceptance}><Play size={14} /> 运行验证</Btn>
@@ -1163,7 +1174,7 @@ export function OntologyWorkflow({
           )}
 
           {activeStepKey === "review" && (
-          <Card id="wf-review" title="08 · 评审发布"
+          <Card id="wf-review" title={`08 · ${STEP_CARD_TITLES.review}`}
                 sub="评审看的是本轮证据：CQ、样例、验证结果和语义检查；通过后才允许发布。"
                 aside={<Tag kind={gate.ok ? "ok" : "warn"}>{gate.ok ? "门禁已清" : "还有门禁"}</Tag>}>
             {latestReview && (

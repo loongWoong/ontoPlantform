@@ -27,6 +27,8 @@
   --green-ink: #3d6744;
   --blue-bg: #eaf1f4;
   --blue-ink: #2d657d;
+  --violet-bg: #f1edf5;
+  --violet-ink: #5f4a72;
   --code-bg: #f3f1ec;
 
   /* 字系：自托管可变字体（Geist / Newsreader / Geist Mono），中文回落系统字 */
@@ -41,7 +43,7 @@
   --nav-w: 236px;
   --nav-w-collapsed: 68px;
   --top-h: 58px;
-  --stage-max: 1320px;
+  --stage-width: 90%;
   --r: 10px;
   --r-sm: 6px;
   --r-xs: 4px;
@@ -278,7 +280,7 @@ img, svg { display: block; }
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 0 max(5%, calc((100% - var(--stage-max)) / 2));
+  padding: 0 5%;
   border-bottom: 1px solid var(--line);
   background: rgba(247, 246, 243, 0.94);
   backdrop-filter: blur(10px);
@@ -350,7 +352,7 @@ kbd {
 
 .content {
   flex: 1;
-  width: min(90%, var(--stage-max));
+  width: var(--stage-width);
   max-width: none;
   margin: 0 auto;
   padding: 30px 0 96px;
@@ -2375,6 +2377,62 @@ dl.kv > dd { margin: 0 0 2px; font-size: 12.5px; }
   cursor: not-allowed;
 }
 
+/* 图谱类型切换：力导向 / 分层卡片；维度切换只属于力导向。 */
+.onto-graph-layout-switch,
+.onto-graph-mode-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+}
+.onto-graph-actions .onto-graph-layout-switch button {
+  justify-content: center;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: var(--r-xs);
+  color: var(--muted);
+  font-size: 10.5px;
+}
+.onto-graph-actions .onto-graph-layout-switch button:hover:not(:disabled) {
+  background: var(--sunken);
+  color: var(--ink);
+}
+.onto-graph-actions .onto-graph-layout-switch button.is-active {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 0 0 1px var(--line);
+}
+.onto-graph-actions .onto-graph-mode-switch button {
+  min-width: 34px;
+  justify-content: center;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: var(--r-xs);
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.01em;
+}
+.onto-graph-actions .onto-graph-mode-switch button:hover:not(:disabled) {
+  background: var(--sunken);
+  color: var(--ink);
+}
+.onto-graph-actions .onto-graph-mode-switch button.is-active {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 0 0 1px var(--line);
+}
+.onto-graph-mode-note {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
 .onto-graph-canvas {
   position: relative;
   height: min(62vh, 640px);
@@ -2388,7 +2446,8 @@ dl.kv > dd { margin: 0 0 2px; font-size: 12.5px; }
   touch-action: none;
   user-select: none;
 }
-.onto-graph-canvas.is-dragging { cursor: grabbing; }
+.onto-graph-canvas.is-dragging,
+.onto-graph-canvas.is-rotating { cursor: grabbing; }
 .onto-graph-canvas > svg { display: block; width: 100%; height: 100%; }
 
 .onto-graph-hint {
@@ -2478,6 +2537,204 @@ dl.kv > dd { margin: 0 0 2px; font-size: 12.5px; }
   stroke-width: 2;
 }
 .onto-graph-node.is-dimmed { opacity: 0.4; }
+
+/* ---------- 力导向图：圆形节点、聚类凸包、聚类图例 ---------- */
+.onto-graph .cluster-0 {
+  --cluster-ink: var(--blue-ink);
+  --cluster-bg: var(--blue-bg);
+}
+.onto-graph .cluster-1 {
+  --cluster-ink: var(--green-ink);
+  --cluster-bg: var(--green-bg);
+}
+.onto-graph .cluster-2 {
+  --cluster-ink: var(--amber-ink);
+  --cluster-bg: var(--amber-bg);
+}
+.onto-graph .cluster-3 {
+  --cluster-ink: var(--red-ink);
+  --cluster-bg: var(--red-bg);
+}
+.onto-graph .cluster-4 {
+  --cluster-ink: var(--violet-ink);
+  --cluster-bg: var(--violet-bg);
+}
+.onto-graph .cluster-neutral {
+  --cluster-ink: var(--ink-2);
+  --cluster-bg: var(--sunken);
+}
+
+.onto-graph-force-node {
+  cursor: pointer;
+  outline: none;
+  filter: drop-shadow(0 1px 1px color-mix(in srgb, var(--ink) 4%, transparent));
+}
+.onto-graph-force-node .onto-graph-force-halo {
+  fill: var(--cluster-bg);
+  fill-opacity: 0.58;
+  stroke: color-mix(in srgb, var(--cluster-ink) 16%, transparent);
+  stroke-width: 1;
+  transition: fill-opacity 0.15s var(--ease), fill 0.15s var(--ease), stroke 0.15s var(--ease);
+}
+.onto-graph-force-node .onto-graph-force-ring {
+  fill: none;
+  stroke: var(--cluster-ink);
+  stroke-width: 1;
+  stroke-dasharray: 2.5 4;
+  stroke-opacity: 0;
+  transition: stroke-opacity 0.15s var(--ease), stroke 0.15s var(--ease);
+}
+.onto-graph-force-node .onto-graph-force-dot {
+  fill: var(--surface);
+  stroke: var(--cluster-ink);
+  stroke-width: 1.8;
+  transition: stroke 0.15s var(--ease), stroke-width 0.15s var(--ease), fill 0.15s var(--ease);
+}
+.onto-graph-force-node .onto-graph-force-inner {
+  fill: none;
+  stroke: var(--cluster-ink);
+  stroke-opacity: 0.18;
+  stroke-width: 1;
+}
+.onto-graph-force-node .onto-graph-force-core {
+  fill: var(--cluster-ink);
+  opacity: 0.9;
+}
+.onto-graph-force-node:hover .onto-graph-force-dot,
+.onto-graph-force-node:focus-visible .onto-graph-force-dot {
+  stroke: var(--ink);
+  stroke-width: 2.4;
+}
+.onto-graph-force-node:hover .onto-graph-force-halo,
+.onto-graph-force-node:focus-visible .onto-graph-force-halo {
+  fill-opacity: 0.9;
+}
+.onto-graph-force-node:hover .onto-graph-force-ring,
+.onto-graph-force-node:focus-visible .onto-graph-force-ring {
+  stroke-opacity: 0.42;
+}
+.onto-graph-force-node.is-related .onto-graph-force-dot {
+  stroke: var(--ink);
+  stroke-width: 2.2;
+}
+.onto-graph-force-node.is-related .onto-graph-force-ring {
+  stroke: var(--cluster-ink);
+  stroke-opacity: 0.38;
+}
+.onto-graph-force-node.is-active .onto-graph-force-dot {
+  stroke: var(--ink);
+  stroke-width: 2.6;
+}
+.onto-graph-force-node.is-active .onto-graph-force-halo {
+  fill: var(--ink);
+  fill-opacity: 0.08;
+}
+.onto-graph-force-node.is-active .onto-graph-force-ring {
+  stroke: var(--ink);
+  stroke-opacity: 0.75;
+  stroke-width: 1.2;
+  stroke-dasharray: none;
+}
+.onto-graph-force-node.is-dimmed { opacity: 0.34; }
+.onto-graph-force-label {
+  fill: var(--ink);
+  font-family: var(--sans);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.005em;
+  paint-order: stroke;
+  stroke: var(--surface);
+  stroke-width: 3.5px;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+
+.onto-graph-force-edge .onto-graph-edge-line { stroke-width: 1.15; }
+.onto-graph-force-edge .onto-graph-edge-label rect {
+  fill: color-mix(in srgb, var(--surface) 96%, var(--blue-bg));
+  stroke: color-mix(in srgb, var(--line-strong) 55%, transparent);
+  filter: drop-shadow(0 1px 1px color-mix(in srgb, var(--ink) 4%, transparent));
+}
+.onto-graph-force-edge .onto-graph-edge-label text {
+  font-size: 10px;
+  fill: var(--ink-2);
+}
+.onto-graph-force-edge.is-related .onto-graph-edge-label rect,
+.onto-graph-force-edge.is-active .onto-graph-edge-label rect {
+  stroke: color-mix(in srgb, var(--blue-ink) 45%, transparent);
+}
+.onto-graph-force-edge-underlay {
+  fill: none;
+  stroke: var(--surface);
+  stroke-opacity: 0.78;
+  stroke-width: 4.5;
+  stroke-linecap: round;
+  pointer-events: none;
+}
+.onto-graph-force-edge.is-related .onto-graph-force-edge-underlay,
+.onto-graph-force-edge.is-active .onto-graph-force-edge-underlay {
+  stroke: var(--blue-bg);
+  stroke-opacity: 0.85;
+}
+
+.onto-graph-force-cluster { pointer-events: none; }
+.onto-graph-force-hull {
+  fill: var(--cluster-bg);
+  fill-opacity: 0.3;
+  stroke: var(--cluster-ink);
+  stroke-opacity: 0.32;
+  stroke-width: 1.1;
+  stroke-dasharray: 4 5;
+}
+.onto-graph-force-hull-glow {
+  fill: none;
+  stroke: var(--cluster-ink);
+  stroke-opacity: 0.06;
+  stroke-width: 9;
+}
+.onto-graph-force-cluster-pill {
+  fill: color-mix(in srgb, var(--surface) 92%, var(--cluster-bg));
+  stroke: color-mix(in srgb, var(--cluster-ink) 24%, transparent);
+  stroke-width: 1;
+}
+.onto-graph-force-cluster-label {
+  fill: var(--cluster-ink);
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.02em;
+  paint-order: stroke;
+  stroke: var(--surface);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+
+.onto-graph-cluster-legend {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  min-width: 0;
+}
+.onto-graph-cluster-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--cluster-ink);
+  font-family: var(--mono);
+  font-size: 10px;
+  white-space: nowrap;
+}
+.onto-graph-cluster-chip i {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.onto-graph-cluster-chip b {
+  color: var(--ink-2);
+  font-weight: 500;
+}
 
 .onto-graph-edge-hit {
   fill: none;
@@ -2751,6 +3008,11 @@ dl.kv > dd { margin: 0 0 2px; font-size: 12.5px; }
 .onto-graph-dialog .onto-graph-toolbar,
 .onto-graph-dialog .onto-graph-detail,
 .onto-graph-dialog .onto-graph-footer { flex: 0 0 auto; }
+
+@media (max-width: 760px) {
+  .onto-graph-mode-note { display: none; }
+  .onto-graph-cluster-legend { flex: 1 1 100%; order: 3; }
+}
 
 @media (max-width: 640px) {
   .onto-graph-toolbar { padding: 10px 12px; }
