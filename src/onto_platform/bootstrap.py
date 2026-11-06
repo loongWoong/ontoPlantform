@@ -18,6 +18,7 @@ from pathlib import Path
 
 from .application.application_usecases import (
     AddAgent,
+    AddInteraction,
     AddQuery,
     AddView,
     AttachCapability,
@@ -27,9 +28,11 @@ from .application.application_usecases import (
     DeleteApplication,
     DetachCapability,
     GetApplication,
+    GetApplicationSpec,
     ListApplications,
     PublishApplication,
     RemoveAgent,
+    RemoveInteraction,
     RemoveQuery,
     RemoveView,
     RunAppAgent,
@@ -65,6 +68,15 @@ from .application.data_usecases import (
 from .application.execution_ledger import ExecutionLedger
 from .application.controller import DriftController
 from .application.scheduler import Scheduler
+from .application.event_usecases import (
+    CreateEventContract,
+    DeleteEventSubscription,
+    EmitEvent,
+    ListEventContracts,
+    ListEventSubscriptions,
+    PublishEventContract,
+    SubscribeEvent,
+)
 from .application.events import Dispatcher, EventLog
 from .application.history import StateHistory
 from .application.intelligence_usecases import AskOntology, RunAgent
@@ -92,6 +104,7 @@ from .application.ontology_usecases import (
     ValidateOntology,
 )
 from .application.releases import ReleaseUseCases
+from .application.rule_usecases import RuleUseCases
 from .application.standards_usecases import StandardsUseCases
 from .application.security import SecurityService, SecurityUseCases
 from .application.security import context as auth_context
@@ -175,6 +188,12 @@ class Platform:
     data: "DataUseCases"
     capabilities: "CapabilityUseCases"
     applications: "ApplicationUseCases"
+    #: P1 rules: declared business constraints, validated against the active
+    #: ontology revision and evaluated against workspace runtime objects
+    rules: "RuleUseCases"
+    #: P1 business events (contract/subscription/emit chain exposed to the
+    #: API); it shares one EventLog with the platform outbox ``events`` above
+    business_events: "EventUseCases"
     intelligence: "IntelligenceUseCases"
     llm_config: "LlmConfig"
     releases: "ReleaseUseCases"
@@ -367,6 +386,29 @@ class ApplicationUseCases:
         self.remove_query = RemoveQuery(ctx)
         self.remove_agent = RemoveAgent(ctx)
         self.detach_capability = DetachCapability(ctx)
+        # P1 application contract: one declarative spec + operation surfaces
+        self.get_spec = GetApplicationSpec(ctx)
+        self.add_interaction = AddInteraction(ctx)
+        self.remove_interaction = RemoveInteraction(ctx)
+
+
+class EventUseCases:
+    """P1 business-event facade (contracts, subscriptions, emission).
+
+    The platform outbox (``Platform.events``) and this facade must share the
+    same ``EventLog``: emitting through a second log would append a parallel
+    stream that the dispatcher never drains.  The composition root builds one
+    log and hands it to both.
+    """
+
+    def __init__(self, ctx: ApplicationContext, event_log: EventLog) -> None:
+        self.create_contract = CreateEventContract(ctx)
+        self.publish_contract = PublishEventContract(ctx)
+        self.list_contracts = ListEventContracts(ctx)
+        self.subscribe = SubscribeEvent(ctx)
+        self.list_subscriptions = ListEventSubscriptions(ctx)
+        self.delete_subscription = DeleteEventSubscription(ctx)
+        self.emit = EmitEvent(ctx, event_log)
 
 
 class IntelligenceUseCases:
@@ -483,6 +525,10 @@ def build_platform(config: PlatformConfig | None = None) -> Platform:
     tenant_service = TenantService(ctx, security_service)
     ctx.tenants = tenant_service
     publisher = SchemaPublisher(ctx)
+    # One outbox log for the whole platform: the facade (``events``) and the
+    # business-event use cases (``business_events``) must append to the same
+    # stream so the dispatcher drains everything exactly once.
+    event_log = EventLog(ctx)
     platform = Platform(
         config=config,
         ctx=ctx,
@@ -493,12 +539,14 @@ def build_platform(config: PlatformConfig | None = None) -> Platform:
         data=DataUseCases(ctx),
         capabilities=CapabilityUseCases(ctx, publisher),
         applications=ApplicationUseCases(ctx),
+        rules=RuleUseCases(ctx),
+        business_events=EventUseCases(ctx, event_log),
         intelligence=IntelligenceUseCases(ctx),
         llm_config=LlmConfig(ctx),
         releases=ReleaseUseCases(ctx),
         state=StateUseCases(ctx),
         workflow=WorkflowUseCases(ctx, publisher),
-        events=EventLog(ctx),
+        events=event_log,
         dispatcher=Dispatcher(ctx),
         verifier=RuntimeVerifier(ctx),
         reconciler=Reconciler(ctx),

@@ -51,6 +51,21 @@ use cases the CLI uses - no domain logic here.
     POST /api/workspaces/{wid}/releases/rollback {release_id?}
     GET  /api/workspaces/{wid}/events?limit=200&type=
     POST /api/workspaces/{wid}/events/dispatch
+    # P1 rules / business events / application spec
+    GET  /api/workspaces/{wid}/rules?lifecycle=        {"rules":[...]}
+    POST /api/workspaces/{wid}/rules                   {name,object_type,condition,...}
+    POST /api/workspaces/{wid}/rules/{rid}/publish
+    POST /api/workspaces/{wid}/rules/evaluate          {object_type?|refs?}
+    GET  /api/workspaces/{wid}/event-contracts?lifecycle=   {"contracts":[...]}
+    POST /api/workspaces/{wid}/event-contracts         {name,aggregate_kind,payload_schema,...}
+    POST /api/workspaces/{wid}/event-contracts/{name}/publish
+    GET  /api/workspaces/{wid}/event-subscriptions     {"subscriptions":[...]}
+    POST /api/workspaces/{wid}/event-subscriptions     {name,event_type,filter?,handler_key,...}
+    DELETE /api/workspaces/{wid}/event-subscriptions/{sid}
+    POST /api/workspaces/{wid}/events/emit             {event_type,aggregate_kind,aggregate_id,payload}
+    GET  /api/workspaces/{wid}/applications/{aid}/spec
+    POST /api/workspaces/{wid}/applications/{aid}/interactions
+    DELETE /api/workspaces/{wid}/applications/{aid}/interactions/{iid}
     GET  /api/workspaces/{wid}/applications     POST (same)
     PATCH /api/workspaces/{wid}/applications/{aid}  {name?,description?}
     PATCH /api/workspaces/{wid}/applications/{aid}/views/{alias}
@@ -591,6 +606,10 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
             if len(rest) == 2 and rest[0] == "applications":
                 return self._send(200, platform.applications.delete(
                     wid, rest[1], user))
+            if len(rest) == 2 and rest[0] == "event-subscriptions":
+                return self._send(200,
+                                  platform.business_events.delete_subscription(
+                                      wid, user, rest[1]))
             if len(rest) == 3 and rest[:2] == ["smart-ui", "generations"]:
                 if not studio_enabled():
                     raise NotFoundError("smart-UI Studio is disabled")
@@ -615,6 +634,10 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
             if len(rest) == 4 and rest[0] == "applications" \
                     and rest[2] == "capabilities":
                 return self._send(200, platform.applications.detach_capability(
+                    wid, rest[1], rest[3], user))
+            if len(rest) == 4 and rest[0] == "applications" \
+                    and rest[2] == "interactions":
+                return self._send(200, platform.applications.remove_interaction(
                     wid, rest[1], rest[3], user))
             raise ValidationError(f"no route for {self.path}")
 
@@ -996,6 +1019,20 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
                 return self._send(200, list_drafts(platform, wid, user))
             if rest == ["applications"]:
                 return self._send(200, platform.applications.list(wid, actor=user))
+            if rest == ["rules"]:
+                return self._send(200, {"rules": platform.rules.list(
+                    wid, user, lifecycle=query.get("lifecycle"))})
+            if rest == ["event-contracts"]:
+                return self._send(200, {"contracts":
+                                        platform.business_events.list_contracts(
+                                            wid, user,
+                                            lifecycle=query.get("lifecycle"))})
+            if rest == ["event-subscriptions"]:
+                return self._send(200, {"subscriptions":
+                                        platform.business_events
+                                        .list_subscriptions(
+                                            wid, user,
+                                            event_type=query.get("event_type"))})
             if rest == ["releases"]:
                 return self._send(200, platform.releases.list(wid, user))
             if rest == ["metrics"]:
@@ -1074,6 +1111,10 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
                     and rest[2] == "ui-artifact" and rest[3] == "view":
                 return self._send(200, application_ui_view(
                     platform, wid, user, rest[1]))
+            if rest and rest[0] == "applications" and len(rest) == 3 \
+                    and rest[2] == "spec":
+                return self._send(200, platform.applications.get_spec(
+                    wid, rest[1], user))
             if rest and rest[0] == "applications" and len(rest) == 3 \
                     and rest[2] == "objective":
                 # GET is a read: evaluation is POST .../objective/evaluate
@@ -1870,6 +1911,51 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
             if len(rest) == 3 and rest[0] == "smart-ui" and rest[1] == "actions":
                 return self._send(200, invoke_smart_action(
                     platform, wid, user, rest[2], body))
+            # ---- P1 rules / business events (contracts, subscriptions, emit)
+            if rest == ["rules"]:
+                return self._send(200, platform.rules.create(
+                    wid, user, body["name"], body["object_type"],
+                    body["condition"],
+                    description=body.get("description", ""),
+                    severity=body.get("severity", "error"),
+                    when=body.get("when"),
+                    message=body.get("message", ""),
+                    priority=body.get("priority", 100)))
+            if len(rest) == 3 and rest[0] == "rules" and rest[2] == "publish":
+                return self._send(200, platform.rules.publish(
+                    wid, user, rest[1]))
+            if rest == ["rules", "evaluate"]:
+                return self._send(200, platform.rules.evaluate(
+                    wid, user, object_type=body.get("object_type"),
+                    refs=body.get("refs"),
+                    include_drafts=bool(body.get("include_drafts", False))))
+            if rest == ["event-contracts"]:
+                try:
+                    version = int(body.get("version") or 1)
+                except (TypeError, ValueError) as exc:
+                    raise ValidationError(
+                        "event contract version must be an integer") from exc
+                return self._send(
+                    200, platform.business_events.create_contract(
+                        wid, user, body["name"], body["aggregate_kind"],
+                        body["payload_schema"],
+                        description=body.get("description", ""),
+                        version=version))
+            if len(rest) == 3 and rest[0] == "event-contracts" \
+                    and rest[2] == "publish":
+                return self._send(
+                    200, platform.business_events.publish_contract(
+                        wid, user, rest[1]))
+            if rest == ["event-subscriptions"]:
+                return self._send(200, platform.business_events.subscribe(
+                    wid, user, body["name"], body["event_type"],
+                    filter=body.get("filter"),
+                    handler_key=body.get("handler_key", ""),
+                    enabled=body.get("enabled", True)))
+            if rest == ["events", "emit"]:
+                return self._send(200, platform.business_events.emit(
+                    wid, user, body["event_type"], body["aggregate_kind"],
+                    body["aggregate_id"], payload=body.get("payload")))
             if rest == ["applications"]:
                 return self._send(200, platform.applications.create(
                     wid, user, body["name"], description=body.get("description", "")))
@@ -1884,6 +1970,17 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
                     and rest[2] == "objective" and rest[3] == "evaluate":
                 return self._send(200, platform.objectives.evaluate(
                     wid, rest[1], user))
+            if len(rest) == 3 and rest[0] == "applications" \
+                    and rest[2] == "interactions":
+                interaction_id = (body.get("interaction_id")
+                                  or body.get("id") or "")
+                return self._send(200, platform.applications.add_interaction(
+                    wid, rest[1], user, str(interaction_id), body["kind"],
+                    title=body.get("title", ""),
+                    capability_id=body.get("capability_id", ""),
+                    config=body.get("config"),
+                    permissions=body.get("permissions"),
+                    approval=body.get("approval")))
             if len(rest) == 3 and rest[0] == "executions" and rest[2] == "resolve":
                 from ..application.execution_ledger import ExecutionLedger
 

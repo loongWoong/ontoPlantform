@@ -118,6 +118,11 @@ class Application:
     # one Agent domain lives in Intelligence - the application only
     # references it, never duplicates it)
     agents: list[dict] = field(default_factory=list)
+    # operation surfaces declared on the app (P1 ViewSpec/InteractionSpec):
+    #   [{id, kind, title, capability_id, config, permissions, approval}]
+    # A list of plain dicts keeps old application rows loadable and lets the
+    # domain spec (domain/application/spec.py) own the rich contract.
+    interactions: list[dict] = field(default_factory=list)
     # business objective (plan-v2 2.1): {metric,target,band,window,direction,samples}
     objective: dict = field(default_factory=dict)
     # generated smart-UI snapshot (Studio publish): {generation_id, draft_id,
@@ -138,6 +143,7 @@ class Application:
             "queries": {k: q.to_dict() for k, q in self.queries.items()},
             "capabilities": list(self.capabilities),
             "agents": [dict(a) for a in self.agents],
+            "interactions": [dict(i) for i in self.interactions],
             "objective": dict(self.objective),
             "ui_artifact": dict(self.ui_artifact),
             "lifecycle": self.lifecycle,
@@ -156,6 +162,8 @@ class Application:
             queries={k: QuerySpec.from_dict(q) for k, q in data.get("queries", {}).items()},
             capabilities=list(data.get("capabilities", [])),
             agents=[dict(a) for a in data.get("agents", [])],
+            # P1 field: old application rows have no interactions -> empty list
+            interactions=[dict(i) for i in data.get("interactions", [])],
             objective=dict(data.get("objective") or {}),
             ui_artifact=dict(data.get("ui_artifact") or {}),
             lifecycle=data.get("lifecycle", "draft"),

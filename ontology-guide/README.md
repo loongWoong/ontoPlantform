@@ -43,6 +43,7 @@
   # PowerShell: $env:LLM_UPSTREAM='http://127.0.0.1:8000/v1'; pnpm docs:proxy
   ```
   启动后在「模型配置」里点**「填入本地代理」**（API 地址变为 `http://127.0.0.1:8788/v1`），模型名/Key 按上游要求填写即可。代理只监听 `127.0.0.1`；API Key 默认由页面请求头 `Authorization` 透传，也可用环境变量 `LLM_API_KEY` 兜底。若 8788 被占用，用 `PORT=8789 pnpm docs:proxy` 启动并相应修改地址。
+  - 跨机访问指南时，浏览器里的 `127.0.0.1` 指向访问者自己的设备，AI 代理不会自动跟随。如需在局域网使用，请在服务端启动代理：PowerShell `$env:HOST='0.0.0.0'; pnpm docs:proxy`，bash `HOST=0.0.0.0 pnpm docs:proxy`，然后在页面中把 API 地址填成 `http://<服务端IP>:8788/v1`。这会把代理暴露给同网段，务必只在可信网络使用，并注意 Key 透传风险。
   - 本机示例：`R:\target\release\llmrouter.exe` 监听 `127.0.0.1:8000` 时，用 `$env:LLM_UPSTREAM='http://127.0.0.1:8000/v1'; pnpm docs:proxy`，页面配置 `http://127.0.0.1:8788/v1` + `deepseek-v4-flash`（Key 可填任意值，llmrouter 不校验）。
 - **思考型模型**：`max_tokens` 默认 4096，避免推理内容占满预算导致正式回答为空；若仍只返回推理过程，页面会显示提示与推理内容，可重试。
 - **横向自适应布局**：整页布局宽度改为 `max(90vw, 1440px)`——大屏按视口 90% 自适应铺开，替代默认 1440px 固定宽度；正文列不再限制在 688px，随窗口变宽而变宽。右侧栏同步加宽后，1920px 屏下正文约 833px、右栏工具区 448px。
@@ -86,10 +87,15 @@ ontology-guide/
 
 ```bash
 pnpm install
-pnpm docs:dev      # 开发服务器
+pnpm docs:dev      # 监听 0.0.0.0：本机 localhost，局域网 http://<本机IP>:5173/
 pnpm docs:build    # 生产构建，输出到 docs/.vitepress/dist
-pnpm docs:preview  # 预览构建结果
+pnpm docs:preview  # 监听 0.0.0.0：本地预览构建结果，默认 4173
 ```
+
+`docs:dev` 与 `docs:preview` 都通过 `--host 0.0.0.0` 监听所有网卡。`docs:dev` 启动后终端会打印 `Local` 和 `Network` 地址；`docs:preview` 可能只打印本地地址，但同样绑定所有网卡。局域网内的其他设备访问 `http://<本机IP>:5173/`（预览为 `http://<本机IP>:4173/`）。如果 Windows 防火墙拦截，放行 Node.js 或对应端口。
+
+> [!WARNING]
+> 监听 `0.0.0.0` 会把开发/预览服务器暴露给同网段设备，仅适合可信局域网调试；正式发布请使用静态构建产物或带访问控制的反向代理。
 
 ## 部署
 

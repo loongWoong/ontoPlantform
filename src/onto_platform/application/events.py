@@ -6,14 +6,29 @@ repository documents (kind ``event``) with ``dispatched_at`` empty - that is
 the outbox: a dispatcher later delivers them to subscribers and stamps
 ``dispatched_at``; a crash in between leaves them undispatched, so delivery
 is at-least-once and retryable (plan §1.3 test: publish_survives_crash).
+
+Two kinds of events share this machinery:
+
+* platform lifecycle events, catalogued in :data:`EVENT_CATALOG` (unknown
+  types are refused), and
+* business events declared by a workspace as an
+  :class:`~onto_platform.domain.event.model.EventContract`; emitting with
+  ``contract=`` validates the payload and stamps ``event_version``/``contract``.
+
+Subscriptions are either in-process, registered by ``Dispatcher.subscribe``
+(platform lifecycle events) or declared as ``event_subscription`` documents
+that filter a contract's payload and name an in-process handler through
+``Dispatcher.subscribe_key``.
 """
 
 from __future__ import annotations
 
 from typing import Callable
 
+from ..domain.event import EventContract, EventSubscription, matching_subscriptions
 from ..errors import NotFoundError, ValidationError
 from .common import ApplicationContext
+
 
 #: Catalogue: every event type the platform may emit, with its envelope
 #: version.  Adding a type requires a new entry (unknown types are refused).
@@ -87,6 +102,24 @@ def _due(event: dict, now: str) -> bool:
     return due <= clock
 
 
+def subscriptions_for_event(ctx: ApplicationContext,
+                            event: dict) -> list[EventSubscription]:
+    """Enabled, workspace-scoped subscriptions matching ``event``.
+
+    A malformed stored row is ignored: one bad subscription document must not
+    break the outbox for every other consumer.  ``event_type`` and the
+    ``enabled`` flag are applied by ``matching_subscriptions`` on top of the
+    payload filter.
+    """
+    subscriptions: list[EventSubscription] = []
+    for row in ctx.repo.list("event_subscription", event.get("workspace_id")):
+        try:
+            subscriptions.append(EventSubscription.from_dict(row))
+        except (ValidationError, KeyError, TypeError):
+            continue
+    return matching_subscriptions(subscriptions, event)
+
+
 class EventLog:
     """Appends and lists domain events (the outbox table)."""
 
@@ -105,9 +138,35 @@ class EventLog:
         execution_id: str | None = None,
         aggregate_version: int | None = None,
         occurred_at: str | None = None,
+        contract: EventContract | None = None,
     ) -> dict:
-        if event_type not in EVENT_CATALOG:
-            raise ValidationError(f"unknown event type: {event_type!r}")
+        if contract is not None:
+            # a business event never falls back to the platform catalogue; the
+            # contract IS the declaration, and only a published one may serve
+            if contract.name != event_type:
+                raise ValidationError(
+                    f"event type {event_type!r} does not match event contract "
+                    f"{contract.name!r}"
+                )
+            if contract.lifecycle != "published":
+                raise ValidationError(
+                    f"event contract {contract.name!r} is {contract.lifecycle!r}; "
+                    "only a published contract may emit events"
+                )
+            candidates = {} if payload is None else payload
+            problems = contract.validate_payload(candidates)
+            if problems:
+                raise ValidationError(
+                    f"event payload does not match contract {contract.name!r}: "
+                    + "; ".join(problems)
+                )
+            event_version = contract.version
+            stored_payload = candidates
+        else:
+            if event_type not in EVENT_CATALOG:
+                raise ValidationError(f"unknown event type: {event_type!r}")
+            event_version = EVENT_CATALOG[event_type]
+            stored_payload = payload or {}
         if self._ctx.repo.get("workspace", None, workspace_id) is None:
             raise NotFoundError(f"workspace not found: {workspace_id!r}")
         event_id = f"evt_{self._ctx.id_factory()}"
@@ -115,7 +174,7 @@ class EventLog:
             "id": event_id,
             "event_id": event_id,
             "type": event_type,
-            "event_version": EVENT_CATALOG[event_type],
+            "event_version": event_version,
             "ts": occurred_at or self._ctx.clock(),
             "workspace_id": workspace_id,
             "actor": actor,
@@ -125,11 +184,13 @@ class EventLog:
                 "version": aggregate_version,
             },
             "execution_id": execution_id,
-            "payload": payload or {},
+            "payload": stored_payload,
             "dispatched_at": None,
             "attempts": 0,
             "last_error": None,
         }
+        if contract is not None:
+            event["contract"] = contract.name
         self._ctx.repo.put("event", workspace_id, event["id"], event)
         return event
 
@@ -189,9 +250,23 @@ class Dispatcher:
         self._ctx = ctx
         self._log = EventLog(ctx)
         self._subscribers: dict[str, list[Subscriber]] = {}
+        #: ``handler_key -> handler`` registry used by event_subscription rows
+        self._handlers: dict[str, Subscriber] = {}
 
     def subscribe(self, event_type: str, handler: Subscriber) -> None:
         self._subscribers.setdefault(event_type, []).append(handler)
+
+    def subscribe_key(self, handler_key: str, handler: Subscriber) -> None:
+        """Register the in-process handler a subscription's ``handler_key`` names.
+
+        Registering the same key again replaces the previous handler; a
+        subscription whose key is not registered is deferred by ``dispatch``
+        (counted in ``skipped`` and left in the outbox), never dropped.
+        """
+        key = str(handler_key or "").strip()
+        if not key:
+            raise ValidationError("handler_key must not be empty")
+        self._handlers[key] = handler
 
     def dispatch(self, workspace_id: str | None = None,
                  limit: int = 100) -> dict:
@@ -199,7 +274,17 @@ class Dispatcher:
         errors: list[str] = []
         for event in self._log.pending(workspace_id, limit):
             handlers = list(self._subscribers.get(event["type"], []))
-            if not handlers:
+            subscriptions = subscriptions_for_event(self._ctx, event)
+            resolved = [
+                (subscription, self._handlers[subscription.handler_key])
+                for subscription in subscriptions
+                if subscription.handler_key in self._handlers
+            ]
+            unresolved = [
+                subscription for subscription in subscriptions
+                if subscription.handler_key not in self._handlers
+            ]
+            if not handlers and not subscriptions:
                 # no subscriber is not a delivery: record that honestly
                 # instead of stamping the outbox as if it were consumed
                 skipped += 1
@@ -208,18 +293,36 @@ class Dispatcher:
             try:
                 for handler in handlers:
                     handler(dict(event))
+                for _subscription, handler in resolved:
+                    handler(dict(event))
             except Exception as exc:  # a subscriber's failure must not lose the event
                 failed += 1
                 self._log.mark_failed(event, str(exc))
                 errors.append(f"{event['type']}: {exc}")
                 if event.get("dead_lettered_at"):
                     dead += 1
-            else:
-                delivered += 1
-                names = ",".join(sorted(
-                    getattr(handler, "__name__", type(handler).__name__)
-                    for handler in handlers))
-                self._log.mark_dispatched(event, delivery="delivered",
-                                          consumer=names)
+                continue
+            if unresolved:
+                # A matching subscription has no registered handler yet.  The
+                # event is deferred, not consumed: it stays pending so the
+                # handler can still receive it after registration.  (Delivery
+                # is at-least-once, so handlers must stay idempotent by
+                # event_id; inline handlers that already ran may run again.)
+                skipped += 1
+                event["last_error"] = (
+                    "no handler registered for subscription(s): "
+                    + ", ".join(sorted(
+                        subscription.handler_key for subscription in unresolved))
+                )
+                self._ctx.repo.put("event", event["workspace_id"],
+                                   event["id"], event)
+                continue
+            delivered += 1
+            names = [getattr(handler, "__name__", type(handler).__name__)
+                     for handler in handlers]
+            names += [f"{subscription.name}:{subscription.handler_key}"
+                      for subscription, _handler in resolved]
+            self._log.mark_dispatched(event, delivery="delivered",
+                                      consumer=",".join(sorted(names)))
         return {"dispatched": delivered, "failed": failed,
                 "skipped": skipped, "dead_lettered": dead, "errors": errors}

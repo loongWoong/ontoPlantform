@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from ..domain.application.model import Application, QuerySpec, View
+from ..domain.application.spec import ApplicationSpec, InteractionSpec
 from ..domain.governance.model import transition
 from ..errors import NotFoundError, ValidationError
 from .common import (
@@ -356,6 +357,9 @@ class CloneApplication(_AppMixin):
                      for key, query in source.queries.items()},
             capabilities=list(source.capabilities),
             agents=[dict(agent) for agent in source.agents],
+            # interactions are declarative references (id/kind/capability), so
+            # copying the dicts is enough - no live runtime state to duplicate
+            interactions=[dict(item) for item in source.interactions],
             objective=dict(source.objective),
             lifecycle="draft",
             created_at=now,
@@ -411,6 +415,62 @@ class AddAgent(_AppMixin):
         })
         app.updated_at = self._ctx.clock()
         self._ctx.save("application", app.to_dict())
+        return app.to_dict()
+
+
+class AddInteraction(_AppMixin):
+    """Declare an operation surface (action/workflow/form/agent) on a draft app.
+
+    The app stores a declarative ``InteractionSpec`` only: capability execution,
+    workflow state and approval enforcement stay in the runtime/security
+    domains (docs/analysis/ontology-driven-application-architecture.md §3.3).
+    """
+
+    def __init__(self, ctx: ApplicationContext) -> None:
+        self._ctx = ctx
+
+    def __call__(self, workspace_id: str, app_id: str, actor: str,
+                 interaction_id: str, kind: str, title: str = "",
+                 capability_id: str = "", config: dict | None = None,
+                 permissions: dict | None = None,
+                 approval: dict | None = None) -> dict:
+        self._ctx.require(actor, workspace_id, "editor")
+        app = self._load(self._ctx, workspace_id, app_id)
+        self._assert_editable(app)
+        for label, value in (("config", config),
+                             ("permissions", permissions),
+                             ("approval", approval)):
+            if value is not None and not isinstance(value, dict):
+                raise ValidationError(f"interaction {label} must be a dict")
+        interaction = InteractionSpec(
+            id=str(interaction_id or "").strip(),
+            kind=str(kind or "").strip(),
+            title=str(title or ""),
+            capability_id=str(capability_id or "").strip(),
+            config=dict(config or {}),
+            permissions=dict(permissions or {}),
+            approval=dict(approval or {}),
+        )
+        problems = interaction.validate()
+        if problems:
+            raise ValidationError("; ".join(problems))
+        if any(str(item.get("id")) == interaction.id
+               for item in app.interactions):
+            raise ValidationError(
+                f"interaction {interaction.id!r} already exists")
+        if interaction.capability_id:
+            capability = self._ctx.must_get(
+                "capability", workspace_id, interaction.capability_id)
+            if capability.get("lifecycle") != "published":
+                raise ValidationError(
+                    "only published capabilities can back an interaction")
+        app.interactions.append(interaction.to_dict())
+        app.updated_at = self._ctx.clock()
+        self._ctx.save("application", app.to_dict())
+        self._ctx.audit_event(
+            actor, workspace_id, "application.add_interaction", app_id,
+            {"interaction_id": interaction.id, "kind": interaction.kind,
+             "capability_id": interaction.capability_id})
         return app.to_dict()
 
 
@@ -624,6 +684,36 @@ class GetApplication(_AppMixin):
         return self._ctx.must_get("application", workspace_id, app_id)
 
 
+class GetApplicationSpec(_AppMixin):
+    """Read the application as one ApplicationSpec plus advisory diagnostics.
+
+    This is the "what would this app be" view for consoles/CI: dangling
+    object types, queries and capabilities are reported as data instead of
+    raising, so an editor can show every problem at once.  Publish remains the
+    hard gate; this use case never mutates and never fails on bad references.
+    """
+
+    def __init__(self, ctx: ApplicationContext) -> None:
+        self._ctx = ctx
+
+    def __call__(self, workspace_id: str, app_id: str, actor: str) -> dict:
+        self._ctx.require(actor, workspace_id, "viewer")
+        app = self._load(self._ctx, workspace_id, app_id)
+        spec = ApplicationSpec.from_application(app)
+        ontology = active_ontology_row(self._ctx, workspace_id)
+        # Judge capabilities against the *published* set: an interaction can
+        # only execute a published capability (AddInteraction enforces it), so
+        # a capability that was later unpublished shows up as a diagnostic.
+        capability_ids = {
+            str(row["id"])
+            for row in self._ctx.repo.list("capability", workspace_id)
+            if row.get("lifecycle") == "published" and row.get("id")
+        }
+        diagnostics = spec.diagnostics(ontology, capability_ids)
+        return {"spec": spec.to_dict(), "diagnostics": diagnostics,
+                "valid": not diagnostics}
+
+
 class DeleteApplication:
     """Delete the application aggregate; runtime state and audit stay intact."""
 
@@ -710,6 +800,31 @@ class RemoveAgent(_AppMixin):
         self._ctx.save("application", app.to_dict())
         self._ctx.audit_event(actor, workspace_id, "application.remove_agent",
                               app_id, {"alias": alias})
+        return app.to_dict()
+
+
+class RemoveInteraction(_AppMixin):
+    """Remove one declared operation surface from a draft application."""
+
+    def __init__(self, ctx: ApplicationContext) -> None:
+        self._ctx = ctx
+
+    def __call__(self, workspace_id: str, app_id: str, interaction_id: str,
+                 actor: str) -> dict:
+        self._ctx.require(actor, workspace_id, "editor")
+        app = self._load(self._ctx, workspace_id, app_id)
+        self._assert_editable(app)
+        index = next((i for i, item in enumerate(app.interactions)
+                      if str(item.get("id")) == interaction_id), None)
+        if index is None:
+            raise NotFoundError(
+                f"interaction not found: {interaction_id!r}")
+        app.interactions.pop(index)
+        app.updated_at = self._ctx.clock()
+        self._ctx.save("application", app.to_dict())
+        self._ctx.audit_event(
+            actor, workspace_id, "application.remove_interaction", app_id,
+            {"interaction_id": interaction_id})
         return app.to_dict()
 
 

@@ -467,7 +467,7 @@ examples/traffic/demo.py       # design.txt §48 完整业务实例
 ```bash
 cd ontology-guide
 pnpm install
-pnpm docs:dev      # 本地预览 http://localhost:5173/
+pnpm docs:dev      # 监听 0.0.0.0：本机 localhost，局域网 http://<本机IP>:5173/
 pnpm docs:build    # 构建到 ontology-guide/docs/.vitepress/dist
 ```
 

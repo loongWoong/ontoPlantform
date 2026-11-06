@@ -1,0 +1,239 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1705.00" height="1317.00" viewBox="0 0 1705.00 1317.00" aria-label="Ontology-driven application architecture · target vs. current implementation" font-family="ui-sans-serif, system-ui, &quot;PingFang SC&quot;, &quot;Microsoft YaHei&quot;, sans-serif">
+  <rect x="0.00" y="0.00" width="1705.00" height="1317.00" rx="0.00" fill="#fffdf8" stroke="none" />
+  <defs>
+    <pattern id="md-grid" width="10.00" height="10.00" patternUnits="userSpaceOnUse">
+      <path d="M0 0H10M0 0V10" fill="none" stroke="#999999" stroke-opacity="0.1" stroke-width="2" />
+    </pattern>
+  </defs>
+  <rect x="0.00" y="0.00" width="1705.00" height="1317.00" rx="0.00" fill="url(#md-grid)" stroke="none" />
+  <g data-shape="group">
+    <path d="M 175.00 134.00 A 14.00 14.00 0 0 1 189.00 120.00 L 1474.00 120.00 A 14.00 14.00 0 0 1 1488.00 134.00 L 1488.00 250.00 A 14.00 14.00 0 0 1 1474.00 264.00 L 189.00 264.00 A 14.00 14.00 0 0 1 175.00 250.00 L 175.00 134.00 Z" fill="none" stroke="#1d4ed8" stroke-dasharray="6 5" stroke-width="1.5" />
+    <text x="189.00" y="142.20" fill="#1e3a8a" font-family="inherit" font-size="12" font-weight="600">应用表达与交互层</text>
+  </g>
+  <g data-shape="group">
+    <path d="M 371.50 358.00 A 14.00 14.00 0 0 1 385.50 344.00 L 1277.50 344.00 A 14.00 14.00 0 0 1 1291.50 358.00 L 1291.50 474.00 A 14.00 14.00 0 0 1 1277.50 488.00 L 385.50 488.00 A 14.00 14.00 0 0 1 371.50 474.00 L 371.50 358.00 Z" fill="none" stroke="#5b21b6" stroke-dasharray="6 5" stroke-width="1.5" />
+    <text x="385.50" y="366.20" fill="#4c1d95" font-family="inherit" font-size="12" font-weight="600">AI 应用规划层</text>
+  </g>
+  <g data-shape="group">
+    <path d="M 80.00 582.00 A 14.00 14.00 0 0 1 94.00 568.00 L 1569.00 568.00 A 14.00 14.00 0 0 1 1583.00 582.00 L 1583.00 698.00 A 14.00 14.00 0 0 1 1569.00 712.00 L 94.00 712.00 A 14.00 14.00 0 0 1 80.00 698.00 L 80.00 582.00 Z" fill="none" stroke="#047857" stroke-dasharray="6 5" stroke-width="1.5" />
+    <text x="94.00" y="590.20" fill="#064e3b" font-family="inherit" font-size="12" font-weight="600">业务运行时层</text>
+  </g>
+  <g data-shape="group">
+    <path d="M 124.50 806.00 A 14.00 14.00 0 0 1 138.50 792.00 L 1524.50 792.00 A 14.00 14.00 0 0 1 1538.50 806.00 L 1538.50 922.00 A 14.00 14.00 0 0 1 1524.50 936.00 L 138.50 936.00 A 14.00 14.00 0 0 1 124.50 922.00 L 124.50 806.00 Z" fill="none" stroke="#b45309" stroke-dasharray="6 5" stroke-width="1.5" />
+    <text x="138.50" y="814.20" fill="#78350f" font-family="inherit" font-size="12" font-weight="600">业务语义模型层</text>
+  </g>
+  <g data-shape="group">
+    <path d="M 373.00 1030.00 A 14.00 14.00 0 0 1 387.00 1016.00 L 1276.00 1016.00 A 14.00 14.00 0 0 1 1290.00 1030.00 L 1290.00 1254.00 A 14.00 14.00 0 0 1 1276.00 1268.00 L 387.00 1268.00 A 14.00 14.00 0 0 1 373.00 1254.00 L 373.00 1030.00 Z" fill="none" stroke="#0f766e" stroke-dasharray="6 5" stroke-width="1.5" />
+    <text x="387.00" y="1038.20" fill="#134e4a" font-family="inherit" font-size="12" font-weight="600">横向支撑能力 · 横切所有层（Port / 契约）</text>
+  </g>
+  <g data-shape="node">
+    <path d="M 215.00 170.00 A 10.00 10.00 0 0 1 225.00 160.00 L 326.00 160.00 A 10.00 10.00 0 0 1 336.00 170.00 L 336.00 214.00 A 10.00 10.00 0 0 1 326.00 224.00 L 225.00 224.00 A 10.00 10.00 0 0 1 215.00 214.00 L 215.00 170.00 Z" fill="#d1fae5" stroke="#047857" stroke-width="1.5" />
+    <text x="275.50" y="188.40" fill="#064e3b" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">Graph</text>
+    <text x="275.50" y="204.00" fill="#064e3b" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">关系图 · 已实现</text>
+  </g>
+  <g data-shape="node">
+    <path d="M 378.00 170.00 A 10.00 10.00 0 0 1 388.00 160.00 L 489.00 160.00 A 10.00 10.00 0 0 1 499.00 170.00 L 499.00 214.00 A 10.00 10.00 0 0 1 489.00 224.00 L 388.00 224.00 A 10.00 10.00 0 0 1 378.00 214.00 L 378.00 170.00 Z" fill="#ffffff" stroke="#b45309" stroke-width="1.5" />
+    <text x="438.50" y="188.40" fill="#78350f" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">Dashboard</text>
+    <text x="438.50" y="204.00" fill="#78350f" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">组合视图 · 部分</text>
+  </g>
+  <g data-shape="node">
+    <path d="M 541.00 170.00 A 10.00 10.00 0 0 1 551.00 160.00 L 665.00 160.00 A 10.00 10.00 0 0 1 675.00 170.00 L 675.00 214.00 A 10.00 10.00 0 0 1 665.00 224.00 L 551.00 224.00 A 10.00 10.00 0 0 1 541.00 214.00 L 541.00 170.00 Z" fill="#ffffff" stroke="#b45309" stroke-width="1.5" />
+    <text x="608.00" y="188.40" fill="#78350f" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">Timeline</text>
+    <text x="608.00" y="204.00" fill="#78350f" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">时间线视角 · 部分</text>
+  </g>
+  <g data-shape="node">
+    <path d="M 717.00 170.00 A 10.00 10.00 0 0 1 727.00 160.00 L 868.00 160.00 A 10.00 10.00 0 0 1 878.00 170.00 L 878.00 214.00 A 10.00 10.00 0 0 1 868.00 224.00 L 727.00 224.00 A 10.00 10.00 0 0 1 717.00 214.00 L 717.00 170.00 Z" fill="#ffffff" stroke="#b45309" stroke-width="1.5" />
+    <text x="797.50" y="188.40" fill="#78350f" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">Digital Twin</text>
+    <text x="797.50" y="204.00" fill="#78350f" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">2.5D / 3D 场景 · 部分</text>
+  </g>
+  <g data-shape="node">
+    <path d="M 920.00 170.00 A 10.00 10.00 0 0 1 930.00 160.00 L 1031.00 160.00 A 10.00 10.00 0 0 1 1041.00 170.00 L 1041.00 214.00 A 10.00 10.00 0 0 1 1031.00 224.00 L 930.00 224.00 A 10.00 10.00 0 0 1 920.00 214.00 L 920.00 170.00 Z" fill="#ffffff" stroke="#b45309" stroke-width="1.5" />
+    <text x="980.50" y="188.40" fill="#78350f" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">Workflow</text>
+    <text x="980.50" y="204.00" fill="#78350f" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">流程执行 · 部分</text>
+  </g>
+  <g data-shape="node">
+    <path d="M 1083.00 170.00 A 10.00 10.00 0 0 1 1093.00 160.00 L 1221.00 160.00 A 10.00 10.00 0 0 1 1231.00 170.00 L 1231.00 214.00 A 10.00 10.00 0 0 1 1221.00 224.00 L 1093.00 224.00 A 10.00 10.00 0 0 1 1083.00 214.00 L 1083.00 170.00 Z" fill="#ffffff" stroke="#b45309" stroke-width="1.5" />
+    <text x="1157.00" y="188.40" fill="#78350f" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">Form</text>
+    <text x="1157.00" y="204.00" fill="#78350f" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">能力参数表单 · 部分</text>
+  </g>
+  <g data-shape="node">
+    <path d="M 1273.00 170.00 A 10.00 10.00 0 0 1 1283.00 160.00 L 1438.00 160.00 A 10.00 10.00 0 0 1 1448.00 170.00 L 1448.00 214.00 A 10.00 10.00 0 0 1 1438.00 224.00 L 1283.00 224.00 A 10.00 10.00 0 0 1 1273.00 214.00 L 1273.00 170.00 Z" fill="#d1fae5" stroke="#047857" stroke-width="1.5" />
+    <text x="1360.50" y="188.40" fill="#064e3b" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">Agent UI</text>
+    <text x="1360.50" y="204.00" fill="#064e3b" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">AI 助手 / 轨迹 · 已实现</text>
+  </g>
+  <g data-shape="node">
+    <path d="M 411.50 394.00 A 10.00 10.00 0 0 1 421.50 384.00 L 602.50 384.00 A 10.00 10.00 0 0 1 612.50 394.00 L 612.50 438.00 A 10.00 10.00 0 0 1 602.50 448.00 L 421.50 448.00 A 10.00 10.00 0 0 1 411.50 438.00 L 411.50 394.00 Z" fill="#ffffff" stroke="#b45309" stroke-width="1.5" />
+    <text x="512.00" y="412.40" fill="#78350f" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">Intent Understanding</text>
+    <text x="512.00" y="428.00" fill="#78350f" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">L3 关键词 + 可选 LLM · 部分</text>
+  </g>
+  <g data-shape="node">
+    <path d="M 654.50 394.00 A 10.00 10.00 0 0 1 664.50 384.00 L 819.50 384.00 A 10.00 10.00 0 0 1 829.50 394.00 L 829.50 438.00 A 10.00 10.00 0 0 1 819.50 448.00 L 664.50 448.00 A 10.00 10.00 0 0 1 654.50 438.00 L 654.50 394.00 Z" fill="#ffffff" stroke="#b45309" stroke-width="1.5" />
+    <text x="742.00" y="412.40" fill="#78350f" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">Application Planner</text>
+    <text x="742.00" y="428.00" fill="#78350f" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">Smart UI 范围内 · 部分</text>
+  </g>
+  <g data-shape="node">
+    <path d="M 871.50 394.00 A 10.00 10.00 0 0 1 881.50 384.00 L 1015.50 384.00 A 10.00 10.00 0 0 1 1025.50 394.00 L 1025.50 438.00 A 10.00 10.00 0 0 1 1015.50 448.00 L 881.50 448.00 A 10.00 10.00 0 0 1 871.50 438.00 L 871.50 394.00 Z" fill="#d1fae5" stroke="#047857" stroke-width="1.5" />
+    <text x="948.50" y="412.40" fill="#064e3b" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">View Blueprint</text>
+    <text x="948.50" y="428.00" fill="#064e3b" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">v1.0 / v1.1 · 已实现</text>
+  </g>
+  <g data-shape="node">
+    <path d="M 1067.50 394.00 A 10.00 10.00 0 0 1 1077.50 384.00 L 1241.50 384.00 A 10.00 10.00 0 0 1 1251.50 394.00 L 1251.50 438.00 A 10.00 10.00 0 0 1 1241.50 448.00 L 1077.50 448.00 A 10.00 10.00 0 0 1 1067.50 438.00 L 1067.50 394.00 Z" fill="#ffffff" stroke="#b45309" stroke-width="1.5" />
+    <text x="1159.50" y="412.40" fill="#78350f" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">Interaction Planning</text>
+    <text x="1159.50" y="428.00" fill="#78350f" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">L4 编译输出 · 部分</text>
+  </g>
+  <g data-shape="node">
+    <path d="M 120.00 618.00 A 10.00 10.00 0 0 1 130.00 608.00 L 245.00 608.00 A 10.00 10.00 0 0 1 255.00 618.00 L 255.00 662.00 A 10.00 10.00 0 0 1 245.00 672.00 L 130.00 672.00 A 10.00 10.00 0 0 1 120.00 662.00 L 120.00 618.00 Z" fill="#dbeafe" stroke="#1e40af" stroke-width="1.5" />
+    <text x="187.50" y="636.40" fill="#1e3a8a" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">Object Runtime</text>
+    <text x="187.50" y="652.00" fill="#1e3a8a" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">Kernel · 已实现</text>
+  </g>
+  <g data-shape="node">
+    <path d="M 297.00 618.00 A 10.00 10.00 0 0 1 307.00 608.00 L 430.00 608.00 A 10.00 10.00 0 0 1 440.00 618.00 L 440.00 662.00 A 10.00 10.00 0 0 1 430.00 672.00 L 307.00 672.00 A 10.00 10.00 0 0 1 297.00 662.00 L 297.00 618.00 Z" fill="#dbeafe" stroke="#1e40af" stroke-width="1.5" />
+    <text x="368.50" y="636.40" fill="#1e3a8a" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">Relation Engine</text>
+    <text x="368.50" y="652.00" fill="#1e3a8a" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">Kernel · 已实现</text>
+  </g>
+  <g data-shape="node">
+    <path d="M 482.00 618.00 A 10.00 10.00 0 0 1 492.00 608.00 L 667.00 608.00 A 10.00 10.00 0 0 1 677.00 618.00 L 677.00 662.00 A 10.00 10.00 0 0 1 667.00 672.00 L 492.00 672.00 A 10.00 10.00 0 0 1 482.00 662.00 L 482.00 618.00 Z" fill="#dbeafe" stroke="#1e40af" stroke-width="1.5" />
+    <text x="579.50" y="636.40" fill="#1e3a8a" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">Query Engine</text>
+    <text x="579.50" y="652.00" fill="#1e3a8a" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">Kernel + 语义查询 · 已实现</text>
+  </g>
+  <g data-shape="node">
+    <path d="M 719.00 618.00 A 10.00 10.00 0 0 1 729.00 608.00 L 830.00 608.00 A 10.00 10.00 0 0 1 840.00 618.00 L 840.00 662.00 A 10.00 10.00 0 0 1 830.00 672.00 L 729.00 672.00 A 10.00 10.00 0 0 1 719.00 662.00 L 719.00 618.00 Z" fill="#dbeafe" stroke="#1e40af" stroke-width="1.5" />
+    <text x="779.50" y="636.40" fill="#1e3a8a" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">State Engine</text>
+    <text x="779.50" y="652.00" fill="#1e3a8a" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">Kernel · 已实现</text>
+  </g>
+  <g data-shape="node">
+    <path d="M 882.00 618.00 A 10.00 10.00 0 0 1 892.00 608.00 L 1053.00 608.00 A 10.00 10.00 0 0 1 1063.00 618.00 L 1063.00 662.00 A 10.00 10.00 0 0 1 1053.00 672.00 L 892.00 672.00 A 10.00 10.00 0 0 1 882.00 662.00 L 882.00 618.00 Z" fill="#d1fae5" stroke="#047857" stroke-width="1.5" />
+    <text x="972.50" y="636.40" fill="#064e3b" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">Action Engine</text>
+    <text x="972.50" y="652.00" fill="#064e3b" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">能力调用 / 账本 · 已实现</text>
+  </g>
+  <g data-shape="node">
+    <path d="M 1105.00 618.00 A 10.00 10.00 0 0 1 1115.00 608.00 L 1290.00 608.00 A 10.00 10.00 0 0 1 1300.00 618.00 L 1300.00 662.00 A 10.00 10.00 0 0 1 1290.00 672.00 L 1115.00 672.00 A 10.00 10.00 0 0 1 1105.00 662.00 L 1105.00 618.00 Z" fill="#ffffff" stroke="#b45309" stroke-width="1.5" />
+    <text x="1202.50" y="636.40" fill="#78350f" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">Event Engine</text>
+    <text x="1202.50" y="652.00" fill="#78350f" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">Outbox / Dispatcher · 部分</text>
+  </g>
+  <g data-shape="node">
+    <path d="M 1342.00 618.00 A 10.00 10.00 0 0 1 1352.00 608.00 L 1533.00 608.00 A 10.00 10.00 0 0 1 1543.00 618.00 L 1543.00 662.00 A 10.00 10.00 0 0 1 1533.00 672.00 L 1352.00 672.00 A 10.00 10.00 0 0 1 1342.00 662.00 L 1342.00 618.00 Z" fill="#d1fae5" stroke="#047857" stroke-width="1.5" />
+    <text x="1442.50" y="636.40" fill="#064e3b" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">Permission Engine</text>
+    <text x="1442.50" y="652.00" fill="#064e3b" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">PDP / ReBAC / ABAC · 已实现</text>
+  </g>
+  <g data-shape="node">
+    <path d="M 164.50 842.00 A 10.00 10.00 0 0 1 174.50 832.00 L 329.50 832.00 A 10.00 10.00 0 0 1 339.50 842.00 L 339.50 886.00 A 10.00 10.00 0 0 1 329.50 896.00 L 174.50 896.00 A 10.00 10.00 0 0 1 164.50 886.00 L 164.50 842.00 Z" fill="#d1fae5" stroke="#047857" stroke-width="1.5" />
+    <text x="252.00" y="860.40" fill="#064e3b" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">Object</text>
+    <text x="252.00" y="876.00" fill="#064e3b" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">ObjectTypeSpec · 已实现</text>
+  </g>
+  <g data-shape="node">
+    <path d="M 381.50 842.00 A 10.00 10.00 0 0 1 391.50 832.00 L 532.50 832.00 A 10.00 10.00 0 0 1 542.50 842.00 L 542.50 886.00 A 10.00 10.00 0 0 1 532.50 896.00 L 391.50 896.00 A 10.00 10.00 0 0 1 381.50 886.00 L 381.50 842.00 Z" fill="#d1fae5" stroke="#047857" stroke-width="1.5" />
+    <text x="462.00" y="860.40" fill="#064e3b" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">Attribute</text>
+    <text x="462.00" y="876.00" fill="#064e3b" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">PropertySpec · 已实现</text>
+  </g>
+  <g data-shape="node">
+    <path d="M 584.50 842.00 A 10.00 10.00 0 0 1 594.50 832.00 L 735.50 832.00 A 10.00 10.00 0 0 1 745.50 842.00 L 745.50 886.00 A 10.00 10.00 0 0 1 735.50 896.00 L 594.50 896.00 A 10.00 10.00 0 0 1 584.50 886.00 L 584.50 842.00 Z" fill="#d1fae5" stroke="#047857" stroke-width="1.5" />
+    <text x="665.00" y="860.40" fill="#064e3b" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">Relation</text>
+    <text x="665.00" y="876.00" fill="#064e3b" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">RelationSpec · 已实现</text>
+  </g>
+  <g data-shape="node">
+    <path d="M 787.50 842.00 A 10.00 10.00 0 0 1 797.50 832.00 L 898.50 832.00 A 10.00 10.00 0 0 1 908.50 842.00 L 908.50 886.00 A 10.00 10.00 0 0 1 898.50 896.00 L 797.50 896.00 A 10.00 10.00 0 0 1 787.50 886.00 L 787.50 842.00 Z" fill="#d1fae5" stroke="#047857" stroke-width="1.5" />
+    <text x="848.00" y="860.40" fill="#064e3b" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">State</text>
+    <text x="848.00" y="876.00" fill="#064e3b" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">状态机 · 已实现</text>
+  </g>
+  <g data-shape="node">
+    <path d="M 950.50 842.00 A 10.00 10.00 0 0 1 960.50 832.00 L 1108.50 832.00 A 10.00 10.00 0 0 1 1118.50 842.00 L 1118.50 886.00 A 10.00 10.00 0 0 1 1108.50 896.00 L 960.50 896.00 A 10.00 10.00 0 0 1 950.50 886.00 L 950.50 842.00 Z" fill="#ffffff" stroke="#b45309" stroke-width="1.5" />
+    <text x="1034.50" y="860.40" fill="#78350f" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">Behavior</text>
+    <text x="1034.50" y="876.00" fill="#78350f" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">Capability 契约 · 部分</text>
+  </g>
+  <g data-shape="node">
+    <path d="M 1160.50 842.00 A 10.00 10.00 0 0 1 1170.50 832.00 L 1298.50 832.00 A 10.00 10.00 0 0 1 1308.50 842.00 L 1308.50 886.00 A 10.00 10.00 0 0 1 1298.50 896.00 L 1170.50 896.00 A 10.00 10.00 0 0 1 1160.50 886.00 L 1160.50 842.00 Z" fill="#ffffff" stroke="#be123c" stroke-width="1.5" />
+    <text x="1234.50" y="860.40" fill="#881337" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">Rule</text>
+    <text x="1234.50" y="876.00" fill="#881337" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">仅 UI 规则包 · 缺口</text>
+  </g>
+  <g data-shape="node">
+    <path d="M 1350.50 842.00 A 10.00 10.00 0 0 1 1360.50 832.00 L 1488.50 832.00 A 10.00 10.00 0 0 1 1498.50 842.00 L 1498.50 886.00 A 10.00 10.00 0 0 1 1488.50 896.00 L 1360.50 896.00 A 10.00 10.00 0 0 1 1350.50 886.00 L 1350.50 842.00 Z" fill="#ffffff" stroke="#b45309" stroke-width="1.5" />
+    <text x="1424.50" y="860.40" fill="#78350f" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">Event</text>
+    <text x="1424.50" y="876.00" fill="#78350f" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">平台事件目录 · 部分</text>
+  </g>
+  <g data-shape="node">
+    <path d="M 413.00 1066.00 A 10.00 10.00 0 0 1 423.00 1056.00 L 638.00 1056.00 A 10.00 10.00 0 0 1 648.00 1066.00 L 648.00 1110.00 A 10.00 10.00 0 0 1 638.00 1120.00 L 423.00 1120.00 A 10.00 10.00 0 0 1 413.00 1110.00 L 413.00 1066.00 Z" fill="#d1fae5" stroke="#047857" stroke-width="1.5" />
+    <text x="530.50" y="1084.40" fill="#064e3b" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">数据连接</text>
+    <text x="530.50" y="1100.00" fill="#064e3b" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">DataSource / Projection · 已实现</text>
+  </g>
+  <g data-shape="node">
+    <path d="M 690.00 1066.00 A 10.00 10.00 0 0 1 700.00 1056.00 L 848.00 1056.00 A 10.00 10.00 0 0 1 858.00 1066.00 L 858.00 1110.00 A 10.00 10.00 0 0 1 848.00 1120.00 L 700.00 1120.00 A 10.00 10.00 0 0 1 690.00 1110.00 L 690.00 1066.00 Z" fill="#d1fae5" stroke="#047857" stroke-width="1.5" />
+    <text x="774.00" y="1084.40" fill="#064e3b" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">语义查询</text>
+    <text x="774.00" y="1100.00" fill="#064e3b" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">SemanticIndex · 已实现</text>
+  </g>
+  <g data-shape="node">
+    <path d="M 900.00 1066.00 A 10.00 10.00 0 0 1 910.00 1056.00 L 1044.00 1056.00 A 10.00 10.00 0 0 1 1054.00 1066.00 L 1054.00 1110.00 A 10.00 10.00 0 0 1 1044.00 1120.00 L 910.00 1120.00 A 10.00 10.00 0 0 1 900.00 1110.00 L 900.00 1066.00 Z" fill="#d1fae5" stroke="#047857" stroke-width="1.5" />
+    <text x="977.00" y="1084.40" fill="#064e3b" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">权限治理</text>
+    <text x="977.00" y="1100.00" fill="#064e3b" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">Security 域 · 已实现</text>
+  </g>
+  <g data-shape="node">
+    <path d="M 1096.00 1066.00 A 10.00 10.00 0 0 1 1106.00 1056.00 L 1240.00 1056.00 A 10.00 10.00 0 0 1 1250.00 1066.00 L 1250.00 1110.00 A 10.00 10.00 0 0 1 1240.00 1120.00 L 1106.00 1120.00 A 10.00 10.00 0 0 1 1096.00 1110.00 L 1096.00 1066.00 Z" fill="#ffffff" stroke="#b45309" stroke-width="1.5" />
+    <text x="1173.00" y="1084.40" fill="#78350f" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">可观测性</text>
+    <text x="1173.00" y="1100.00" fill="#78350f" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">Metrics / SLO · 部分</text>
+  </g>
+  <g data-shape="node">
+    <path d="M 459.50 1174.00 A 10.00 10.00 0 0 1 469.50 1164.00 L 583.50 1164.00 A 10.00 10.00 0 0 1 593.50 1174.00 L 593.50 1218.00 A 10.00 10.00 0 0 1 583.50 1228.00 L 469.50 1228.00 A 10.00 10.00 0 0 1 459.50 1218.00 L 459.50 1174.00 Z" fill="#ffffff" stroke="#b45309" stroke-width="1.5" />
+    <text x="526.50" y="1192.40" fill="#78350f" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">事件订阅</text>
+    <text x="526.50" y="1208.00" fill="#78350f" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">Dispatcher · 部分</text>
+  </g>
+  <g data-shape="node">
+    <path d="M 635.50 1174.00 A 10.00 10.00 0 0 1 645.50 1164.00 L 800.50 1164.00 A 10.00 10.00 0 0 1 810.50 1174.00 L 810.50 1218.00 A 10.00 10.00 0 0 1 800.50 1228.00 L 645.50 1228.00 A 10.00 10.00 0 0 1 635.50 1218.00 L 635.50 1174.00 Z" fill="#d1fae5" stroke="#047857" stroke-width="1.5" />
+    <text x="723.00" y="1192.40" fill="#064e3b" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">审计</text>
+    <text x="723.00" y="1208.00" fill="#064e3b" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">Audit / 变更流 · 已实现</text>
+  </g>
+  <g data-shape="node">
+    <path d="M 852.50 1174.00 A 10.00 10.00 0 0 1 862.50 1164.00 L 1010.50 1164.00 A 10.00 10.00 0 0 1 1020.50 1174.00 L 1020.50 1218.00 A 10.00 10.00 0 0 1 1010.50 1228.00 L 862.50 1228.00 A 10.00 10.00 0 0 1 852.50 1218.00 L 852.50 1174.00 Z" fill="#d1fae5" stroke="#047857" stroke-width="1.5" />
+    <text x="936.50" y="1192.40" fill="#064e3b" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">组件协议</text>
+    <text x="936.50" y="1208.00" fill="#064e3b" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">Smart UI 插件 · 已实现</text>
+  </g>
+  <g data-shape="node">
+    <path d="M 1062.50 1174.00 A 10.00 10.00 0 0 1 1072.50 1164.00 L 1193.50 1164.00 A 10.00 10.00 0 0 1 1203.50 1174.00 L 1203.50 1218.00 A 10.00 10.00 0 0 1 1193.50 1228.00 L 1072.50 1228.00 A 10.00 10.00 0 0 1 1062.50 1218.00 L 1062.50 1174.00 Z" fill="#ffffff" stroke="#b45309" stroke-width="1.5" />
+    <text x="1133.00" y="1192.40" fill="#78350f" font-family="inherit" font-size="13" font-weight="600" text-anchor="middle">运行时扩展</text>
+    <text x="1133.00" y="1208.00" fill="#78350f" font-family="inherit" font-size="11" opacity="0.7" text-anchor="middle">插件 / 沙箱 · 部分</text>
+  </g>
+  <g data-shape="edge">
+    <path d="M 595.20 264.00 L 595.20 294.00 A 10.00 10.00 0 0 0 605.20 304.00 L 655.90 304.00 A 10.00 10.00 0 0 1 665.90 314.00 L 665.90 337.00" fill="none" stroke="#b45309" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
+    <path d="M 665.90 344.00 L 662.75 337.00 L 669.05 337.00 Z" fill="#b45309" stroke="#b45309" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
+  </g>
+  <g data-shape="edge">
+    <path d="M 997.10 344.00 L 997.10 314.00 A 10.00 10.00 0 0 1 1007.10 304.00 L 1057.80 304.00 A 10.00 10.00 0 0 0 1067.80 294.00 L 1067.80 271.00" fill="none" stroke="#5b21b6" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
+    <path d="M 1067.80 264.00 L 1070.95 271.00 L 1064.65 271.00 Z" fill="#5b21b6" stroke="#5b21b6" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
+  </g>
+  <g data-shape="edge">
+    <path d="M 831.50 488.00 L 831.50 561.00" fill="none" stroke="#5b21b6" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
+    <path d="M 831.50 568.00 L 828.35 561.00 L 834.65 561.00 Z" fill="#5b21b6" stroke="#5b21b6" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
+  </g>
+  <g data-shape="edge">
+    <path d="M 831.50 712.00 L 831.50 785.00" fill="none" stroke="#047857" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
+    <path d="M 831.50 792.00 L 828.35 785.00 L 834.65 785.00 Z" fill="#047857" stroke="#047857" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
+  </g>
+  <g data-shape="edge">
+    <path d="M 1106.60 1016.00 L 1106.60 986.00 A 10.00 10.00 0 0 1 1116.60 976.00 L 1245.70 976.00 A 10.00 10.00 0 0 0 1255.70 966.00 L 1255.70 943.00" fill="none" stroke="#0f766e" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
+    <path d="M 1255.70 936.00 L 1258.85 943.00 L 1252.55 943.00 Z" fill="#0f766e" stroke="#0f766e" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
+  </g>
+  <g data-shape="label-box">
+    <rect x="563.90" y="296.60" width="133.30" height="14.80" rx="4.00" fill="#fffdf8" stroke="none" />
+    <text x="630.50" y="307.90" fill="#78350f" font-family="inherit" font-size="11" text-anchor="middle">自然语言意图 · 反馈</text>
+  </g>
+  <g data-shape="label-box">
+    <rect x="962.50" y="296.60" width="140.00" height="14.80" rx="4.00" fill="#fffdf8" stroke="none" />
+    <text x="1032.50" y="307.90" fill="#4c1d95" font-family="inherit" font-size="11" text-anchor="middle">Blueprint · 交互方案</text>
+  </g>
+  <g data-shape="label-box">
+    <rect x="768.20" y="520.60" width="126.60" height="14.80" rx="4.00" fill="#fffdf8" stroke="none" />
+    <text x="831.50" y="531.90" fill="#4c1d95" font-family="inherit" font-size="11" text-anchor="middle">编译 · 发布 · 回放</text>
+  </g>
+  <g data-shape="label-box">
+    <rect x="768.20" y="744.60" width="126.60" height="14.80" rx="4.00" fill="#fffdf8" stroke="none" />
+    <text x="831.50" y="755.90" fill="#064e3b" font-family="inherit" font-size="11" text-anchor="middle">读取 · 执行 · 状态</text>
+  </g>
+  <g data-shape="label-box">
+    <rect x="1081.10" y="968.60" width="200.30" height="14.80" rx="4.00" fill="#fffdf8" stroke="none" />
+    <text x="1181.20" y="979.90" fill="#134e4a" font-family="inherit" font-size="11" text-anchor="middle">数据映射 · 查询 · 权限 · 审计</text>
+  </g>
+  <text x="120.00" y="31.40" fill="#111827" font-family="inherit" font-size="21" font-weight="600">Ontology-Driven Application Architecture</text>
+  <text x="120.00" y="52.20" fill="#475569" font-family="inherit" font-size="12">五层目标架构 × 现有实现 · 合理性评估与映射 · 2026-11</text>
+  <text x="1584.00" y="27.90" fill="#475569" font-family="inherit" font-size="11" text-anchor="end" xml:space="preserve"><tspan font-weight="400.00" fill="#064e3b">● 已实现</tspan><tspan font-weight="400.00">   </tspan><tspan font-weight="400.00" fill="#78350f">◐ 部分实现</tspan><tspan font-weight="400.00">   </tspan><tspan font-weight="400.00" fill="#881337">○ 主要缺口</tspan><tspan font-weight="400.00">   </tspan><tspan font-weight="400.00" fill="#1e3a8a">◆ Kernel 提供</tspan></text>
+  <text x="1584.00" y="47.50" fill="#64748b" font-family="inherit" font-size="10" text-anchor="end">图例 = 现有实现成熟度，不代表目标架构优先级</text>
+</svg>
