@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import copy
+
 from ..domain.application.model import Application, QuerySpec, View
 from ..domain.application.spec import ApplicationSpec, InteractionSpec
 from ..domain.governance.model import transition
@@ -358,9 +360,11 @@ class CloneApplication(_AppMixin):
             capabilities=list(source.capabilities),
             agents=[dict(agent) for agent in source.agents],
             # interactions are declarative references (id/kind/capability), so
-            # copying the dicts is enough - no live runtime state to duplicate
-            interactions=[dict(item) for item in source.interactions],
+            # a clone is an independent draft: nested interaction config must
+            # not alias the source application (same reason as ui_artifact)
+            interactions=copy.deepcopy(source.interactions),
             objective=dict(source.objective),
+            ui_artifact=copy.deepcopy(source.ui_artifact),
             lifecycle="draft",
             created_at=now,
             updated_at=now,
@@ -626,6 +630,40 @@ class PublishApplication(_AppMixin):
                 problems.append(
                     f"application agent {alias or '<missing alias>'}: goal must "
                     "not be empty")
+        # InteractionSpec is an operation surface: publishing promises every
+        # declared interaction is executable.  Each problem names the
+        # interaction so a console can point at the exact row, and all rows are
+        # checked before raising (no fix-one-retry loop).
+        seen_interaction_ids: set[str] = set()
+        for index, raw in enumerate(app.interactions):
+            if not isinstance(raw, dict):
+                problems.append(f"interaction[{index}]: must be an object")
+                continue
+            interaction = InteractionSpec.from_dict(raw)
+            interaction_id = interaction.id.strip()
+            label = (f"interaction {interaction_id!r}" if interaction_id
+                     else f"interaction[{index}]")
+            if interaction_id:
+                if interaction_id in seen_interaction_ids:
+                    problems.append(f"{label}: duplicate interaction id")
+                seen_interaction_ids.add(interaction_id)
+            for issue in interaction.validate():
+                already_labeled = (
+                    interaction_id
+                    and issue.startswith(f"interaction {interaction.id!r}:"))
+                problems.append(issue if already_labeled else f"{label}: {issue}")
+            if interaction.kind in ("action", "form"):
+                capability_id = interaction.capability_id.strip()
+                if capability_id:
+                    row = capabilities.get(capability_id)
+                    if row is None:
+                        problems.append(
+                            f"{label}: capability {capability_id!r} "
+                            "does not exist")
+                    elif row.get("lifecycle") != "published":
+                        problems.append(
+                            f"{label}: capability {capability_id!r} is not "
+                            f"published (lifecycle {row.get('lifecycle')!r})")
         return problems
 
     def __call__(self, workspace_id: str, app_id: str, actor: str) -> dict:

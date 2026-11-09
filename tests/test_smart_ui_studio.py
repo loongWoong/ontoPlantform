@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import json
 import time
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -260,7 +261,8 @@ def test_table_filter_semantics_support_bool_and_relative_time():
     assert _table_match("true", "eq", True)
     assert not _table_match("false", "eq", True)
     assert _table_match("True", "ne", False)
-    assert _table_match("2026-11-01T10:00:00+00:00", "gte", "-7d")
+    recent = (datetime.now(timezone.utc) - timedelta(days=3)).isoformat()
+    assert _table_match(recent, "gte", "-7d")
     assert not _table_match("2020-01-01T10:00:00+00:00", "gte", "-7d")
     assert _table_match("3", "in", [3, 4])
     assert _table_match("济南西", "contains", "济南")

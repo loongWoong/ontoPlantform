@@ -18,7 +18,11 @@ Two kinds of events share this machinery:
 Subscriptions are either in-process, registered by ``Dispatcher.subscribe``
 (platform lifecycle events) or declared as ``event_subscription`` documents
 that filter a contract's payload and name an in-process handler through
-``Dispatcher.subscribe_key``.
+``Dispatcher.subscribe_key``.  P2.2 adds durable dispatch state: an
+``event_handler`` registry row (see :mod:`onto_platform.application.
+event_handlers`) names which worker serves a ``handler_key``, and one
+``event_delivery`` row per (event, handler) is CAS-claimed before it runs, so
+multiple workers sharing one database never execute the same handler twice.
 """
 
 from __future__ import annotations
@@ -26,8 +30,18 @@ from __future__ import annotations
 from typing import Callable
 
 from ..domain.event import EventContract, EventSubscription, matching_subscriptions
-from ..errors import NotFoundError, ValidationError
+from ..errors import (
+    ConcurrencyConflictError,
+    NotFoundError,
+    ValidationError,
+)
 from .common import ApplicationContext
+from .event_handlers import (
+    DeliveryTracker,
+    HandlerRegistry,
+    Transport,
+    send_http_handler,
+)
 
 
 #: Catalogue: every event type the platform may emit, with its envelope
@@ -100,6 +114,40 @@ def _due(event: dict, now: str) -> bool:
     if clock.tzinfo is None:
         clock = clock.replace(tzinfo=timezone.utc)
     return due <= clock
+
+
+def _lease_expiry(now: str, lease_seconds: int) -> str:
+    from datetime import datetime, timedelta, timezone
+
+    try:
+        base = datetime.fromisoformat(now)
+    except ValueError:  # pragma: no cover - clock contract
+        base = datetime.now(timezone.utc)
+    if base.tzinfo is None:
+        base = base.replace(tzinfo=timezone.utc)
+    return (base + timedelta(seconds=lease_seconds)).isoformat(
+        timespec="seconds")
+
+
+def _leased(event: dict, now: str) -> bool:
+    """True while another worker's claim lease has not expired."""
+    from datetime import datetime, timezone
+
+    if not event.get("claimed_by"):
+        return False
+    value = event.get("lease_expires_at")
+    if not value:
+        return False
+    try:
+        expiry = datetime.fromisoformat(value)
+        clock = datetime.fromisoformat(now)
+    except ValueError:
+        return False
+    if expiry.tzinfo is None:
+        expiry = expiry.replace(tzinfo=timezone.utc)
+    if clock.tzinfo is None:
+        clock = clock.replace(tzinfo=timezone.utc)
+    return expiry > clock
 
 
 def subscriptions_for_event(ctx: ApplicationContext,
@@ -188,6 +236,9 @@ class EventLog:
             "dispatched_at": None,
             "attempts": 0,
             "last_error": None,
+            "claimed_by": None,
+            "claimed_at": None,
+            "lease_expires_at": None,
         }
         if contract is not None:
             event["contract"] = contract.name
@@ -209,8 +260,51 @@ class EventLog:
             if not e.get("dispatched_at")
             and not e.get("dead_lettered_at")
             and _due(e, now)
+            and not _leased(e, now)
         ]
         return rows[:limit]
+
+    def claim(self, event: dict, worker_id: str,
+              lease_seconds: int = 30) -> dict | None:
+        """Claim one pending event for ``worker_id`` with an optimistic lease.
+
+        The outbox is ordinary versioned storage, so the claim is a
+        ``get_versioned`` + ``put_if_version`` compare-and-set: two workers
+        that race for the same row, only one wins.  A worker that crashes after
+        claiming leaves the lease behind; once it expires another worker can
+        claim the event again (at-least-once delivery).
+        """
+        worker_id = str(worker_id or "").strip()
+        if not worker_id:
+            raise ValidationError("worker_id must not be empty")
+        if isinstance(lease_seconds, bool) or not isinstance(lease_seconds, int):
+            raise ValidationError("lease_seconds must be an integer")
+        if lease_seconds < 1 or lease_seconds > 3600:
+            raise ValidationError(
+                f"lease_seconds must be between 1 and 3600, got {lease_seconds}")
+        workspace_id = event.get("workspace_id")
+        event_id = event.get("id") or event.get("event_id")
+        if not workspace_id or not event_id:
+            return None
+        got = self._ctx.repo.get_versioned("event", workspace_id, event_id)
+        if got is None:
+            return None
+        row, version = got
+        row = dict(row)
+        now = self._ctx.clock()
+        if row.get("dispatched_at") or row.get("dead_lettered_at"):
+            return None
+        if _leased(row, now) or not _due(row, now):
+            return None
+        row["claimed_by"] = worker_id
+        row["claimed_at"] = now
+        row["lease_expires_at"] = _lease_expiry(now, lease_seconds)
+        try:
+            self._ctx.repo.put_if_version(
+                "event", workspace_id, event_id, row, version)
+        except ConcurrencyConflictError:
+            return None
+        return row
 
     def dead_letters(self, workspace_id: str | None = None) -> list[dict]:
         return [e for e in self._ctx.repo.list("event", workspace_id)
@@ -223,11 +317,17 @@ class EventLog:
         if consumer is not None:
             event["consumer"] = consumer
         event["next_attempt_at"] = None
+        event["claimed_by"] = None
+        event["claimed_at"] = None
+        event["lease_expires_at"] = None
         self._ctx.repo.put("event", event["workspace_id"], event["id"], event)
 
     def mark_failed(self, event: dict, error: str) -> None:
         event["attempts"] = int(event.get("attempts") or 0) + 1
         event["last_error"] = error
+        event["claimed_by"] = None
+        event["claimed_at"] = None
+        event["lease_expires_at"] = None
         now = self._ctx.clock()
         if event["attempts"] >= MAX_DELIVERY_ATTEMPTS:
             event["dead_lettered_at"] = now
@@ -244,14 +344,33 @@ Subscriber = Callable[[dict], None]
 
 
 class Dispatcher:
-    """Delivers undispatched events to registered subscribers."""
+    """Delivers undispatched events to registered subscribers.
 
-    def __init__(self, ctx: ApplicationContext) -> None:
+    Legacy behaviour (``subscribe`` / ``subscribe_key``) is unchanged.  The
+    durable path resolves ``event_handler`` registry rows for the event type,
+    unions their ``handler_key`` values with matching ``event_subscription``
+    keys, and gives every key one ``event_delivery`` row.  A delivery is
+    CAS-claimed with a lease before it runs; an event is only stamped
+    ``dispatched_at`` when *all* of its delivery rows are terminal.  A key with
+    no local callback yet stays ``pending`` (never dropped), and delivery is
+    at-least-once, so handlers must be idempotent by ``event_id``.
+    """
+
+    def __init__(self, ctx: ApplicationContext,
+                 *, transport: Transport | None = None) -> None:
         self._ctx = ctx
         self._log = EventLog(ctx)
         self._subscribers: dict[str, list[Subscriber]] = {}
         #: ``handler_key -> handler`` registry used by event_subscription rows
         self._handlers: dict[str, Subscriber] = {}
+        #: workspace-scoped callbacks registered through ``register_handler``;
+        #: ``(None, key)`` keeps the P1 global fallback
+        self._local_handlers: dict[tuple[str | None, str], Subscriber] = {}
+        #: http deliveries are delivered through this transport; the default
+        #: is the signed stdlib POST in :func:`send_http_handler`
+        self._transport: Transport = transport or send_http_handler
+        self.registry = HandlerRegistry(ctx)
+        self.deliveries = DeliveryTracker(ctx)
 
     def subscribe(self, event_type: str, handler: Subscriber) -> None:
         self._subscribers.setdefault(event_type, []).append(handler)
@@ -268,61 +387,141 @@ class Dispatcher:
             raise ValidationError("handler_key must not be empty")
         self._handlers[key] = handler
 
+    def register_handler(self, handler_key: str, handler: Subscriber,
+                         workspace_id: str | None = None) -> None:
+        """Register a local callback for a durable ``event_handler`` row.
+
+        ``workspace_id`` scopes the callback to one workspace; ``None`` behaves
+        like :meth:`subscribe_key` (any workspace).  The registry row itself is
+        created through :meth:`HandlerRegistry.register`; this only says which
+        worker executes it.
+        """
+        key = str(handler_key or "").strip()
+        if not key:
+            raise ValidationError("handler_key must not be empty")
+        self._local_handlers[(workspace_id, key)] = handler
+
+    def _local_handler(self, workspace_id: str | None,
+                       handler_key: str) -> Subscriber | None:
+        scoped = self._local_handlers.get((workspace_id, handler_key))
+        if scoped is not None:
+            return scoped
+        return self._handlers.get(handler_key)
+
+    def _release_claim(self, event: dict, note: str) -> None:
+        """Give the outbox claim back so another worker can pick the event up."""
+        event = dict(event)
+        event["last_error"] = note
+        event["claimed_by"] = None
+        event["claimed_at"] = None
+        event["lease_expires_at"] = None
+        self._ctx.repo.put("event", event["workspace_id"], event["id"], event)
+
     def dispatch(self, workspace_id: str | None = None,
-                 limit: int = 100) -> dict:
+                 limit: int = 100, worker_id: str | None = None,
+                 lease_seconds: int = 30) -> dict:
         delivered, failed, skipped, dead = 0, 0, 0, 0
         errors: list[str] = []
-        for event in self._log.pending(workspace_id, limit):
+        for candidate in self._log.pending(workspace_id, limit):
+            event = candidate
+            if worker_id is not None:
+                event = self._log.claim(candidate, worker_id, lease_seconds)
+                if event is None:
+                    # another worker won the compare-and-set; not a failure
+                    continue
             handlers = list(self._subscribers.get(event["type"], []))
             subscriptions = subscriptions_for_event(self._ctx, event)
-            resolved = [
-                (subscription, self._handlers[subscription.handler_key])
-                for subscription in subscriptions
-                if subscription.handler_key in self._handlers
-            ]
-            unresolved = [
-                subscription for subscription in subscriptions
-                if subscription.handler_key not in self._handlers
-            ]
-            if not handlers and not subscriptions:
+            registered = self.registry.resolve(event)
+            keys = sorted(
+                {str(row["handler_key"]) for row in registered}
+                | {subscription.handler_key for subscription in subscriptions})
+            if not handlers and not keys:
                 # no subscriber is not a delivery: record that honestly
                 # instead of stamping the outbox as if it were consumed
                 skipped += 1
                 self._log.mark_dispatched(event, delivery="no_subscribers")
                 continue
+            rows_by_key = {str(row["handler_key"]): row for row in registered}
+            failures: list[str] = []
             try:
                 for handler in handlers:
                     handler(dict(event))
-                for _subscription, handler in resolved:
-                    handler(dict(event))
             except Exception as exc:  # a subscriber's failure must not lose the event
+                failures.append(f"{event['type']}: {exc}")
+            executed: list[str] = []
+            for key in keys:
+                current = self.deliveries.get_or_create(
+                    event["workspace_id"], event["id"], key)
+                if current.get("status") in ("delivered", "dead"):
+                    # terminal deliveries never execute again
+                    continue
+                row = rows_by_key.get(key)
+                local = self._local_handler(event["workspace_id"], key)
+                http_row = row is not None and row.get("kind") == "http"
+                if local is None and not http_row:
+                    # this worker cannot serve the key (yet): keep it pending
+                    continue
+                claimed = self.deliveries.claim(
+                    current, worker_id or "local", lease_seconds)
+                if claimed is None:
+                    # another worker holds a live lease on this delivery
+                    continue
+                try:
+                    if local is not None:
+                        local(dict(event))
+                    else:
+                        self._transport({
+                            "handler_key": key,
+                            "url": str(row.get("endpoint") or ""),
+                            "secret": str(row.get("secret") or ""),
+                            "event": dict(event),
+                        })
+                except Exception as exc:
+                    failures.append(f"{event['type']}:{key}: {exc}")
+                    self.deliveries.mark_failed(
+                        claimed, worker_id or "local", str(exc))
+                    errors.append(f"{event['type']}:{key}: {exc}")
+                    break
+                self.deliveries.mark_delivered(claimed, worker_id or "local")
+                executed.append(key)
+            rows = self.deliveries.for_event(
+                event["workspace_id"], event["id"])
+            all_terminal = all(
+                row.get("status") in ("delivered", "dead") for row in rows)
+            if failures:
                 failed += 1
-                self._log.mark_failed(event, str(exc))
-                errors.append(f"{event['type']}: {exc}")
+                self._log.mark_failed(event, "; ".join(failures))
                 if event.get("dead_lettered_at"):
                     dead += 1
                 continue
-            if unresolved:
-                # A matching subscription has no registered handler yet.  The
-                # event is deferred, not consumed: it stays pending so the
-                # handler can still receive it after registration.  (Delivery
-                # is at-least-once, so handlers must stay idempotent by
-                # event_id; inline handlers that already ran may run again.)
+            if not keys:
+                # legacy path: only in-process subscribers, nothing durable
+                delivered += 1
+                names = [getattr(handler, "__name__", type(handler).__name__)
+                         for handler in handlers]
+                self._log.mark_dispatched(
+                    event, delivery="delivered",
+                    consumer=",".join(sorted(names)) or None)
+                continue
+            if not all_terminal:
+                # a delivery is still pending (no local callback / live lease)
+                # or waiting for another worker: defer the event, never drop it
                 skipped += 1
-                event["last_error"] = (
-                    "no handler registered for subscription(s): "
-                    + ", ".join(sorted(
-                        subscription.handler_key for subscription in unresolved))
-                )
-                self._ctx.repo.put("event", event["workspace_id"],
-                                   event["id"], event)
+                waiting = [str(row.get("handler_key")) for row in rows
+                           if row.get("status") not in ("delivered", "dead")]
+                self._release_claim(
+                    event, "awaiting handler(s): " + ", ".join(sorted(waiting)))
                 continue
             delivered += 1
             names = [getattr(handler, "__name__", type(handler).__name__)
                      for handler in handlers]
+            names += [f"handler:{key}" for key in executed
+                      if key not in {sub.handler_key
+                                     for sub in subscriptions}]
             names += [f"{subscription.name}:{subscription.handler_key}"
-                      for subscription, _handler in resolved]
+                      for subscription in subscriptions
+                      if subscription.handler_key in executed]
             self._log.mark_dispatched(event, delivery="delivered",
-                                      consumer=",".join(sorted(names)))
+                                      consumer=",".join(sorted(names)) or None)
         return {"dispatched": delivered, "failed": failed,
                 "skipped": skipped, "dead_lettered": dead, "errors": errors}

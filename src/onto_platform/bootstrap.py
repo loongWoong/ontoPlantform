@@ -13,6 +13,8 @@ kernel itself is imported lazily by the gateway when first needed.
 
 from __future__ import annotations
 
+import os
+import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -65,9 +67,12 @@ from .application.data_usecases import (
     UpdateDataSource,
     UpdateProjection,
 )
+from .application.digital_twin import DigitalTwinService
 from .application.execution_ledger import ExecutionLedger
 from .application.controller import DriftController
 from .application.scheduler import Scheduler
+from .application.event_bridge import EventBridgeService
+from .application.event_schema_registry import SchemaRegistry
 from .application.event_usecases import (
     CreateEventContract,
     DeleteEventSubscription,
@@ -125,7 +130,9 @@ from .application.security import (
     WebhookService,
 )
 from .application.smartui.builtin import build_default_host
+from .application.smartui.eval_set import EvalSetUseCases
 from .application.smartui.host import PluginHost
+from .application.smartui.sandbox import SandboxUseCases
 from .application.state_usecases import StateUseCases
 from .application.workflow_usecases import WorkflowUseCases
 from .application.verifier import (
@@ -213,6 +220,10 @@ class Platform:
     #: Smart-UI contribution registry; built-in plugins are registered by the
     #: composition root so a Platform never depends on a concrete adapter.
     smartui: PluginHost
+    #: stable identity for outbox claims; shared by scheduler + HTTP drain so a
+    #: second process cannot lease the same event while this one is handling it
+    worker_id: str = field(
+        default_factory=lambda: f"platform-{os.getpid()}-{uuid.uuid4().hex[:8]}")
     #: long-running slow loop; started explicitly by the HTTP adapter (or a
     #: test) so building a Platform never opens a background thread
     scheduler: Scheduler | None = None
@@ -230,6 +241,18 @@ class Platform:
     scim: "SCIMService | None" = None
     exports: "ExportService | None" = None
     webhooks: "WebhookService | None" = None
+    #: P2.6 event interoperability: append-only payload schema versions and
+    #: configured external bridges that reuse the webhook delivery ledger.
+    event_schemas: "SchemaRegistry | None" = None
+    event_bridges: "EventBridgeService | None" = None
+    #: P2.3 opt-in subprocess execution for signed external UI plugins; the
+    #: in-process PluginHost trust boundary is unchanged.
+    plugin_sandbox: "SandboxUseCases | None" = None
+    #: P2.4 replayable Smart-UI generation evaluation sets (read-only replay).
+    eval_sets: "EvalSetUseCases | None" = None
+    #: read-only digital twin: live snapshots, relation propagation policies
+    #: and counterfactual simulation.  Never writes kernel objects.
+    digital_twin: "DigitalTwinService | None" = None
     policy_drafts: "PolicyDraftService | None" = None
     async_tasks: "AsyncTaskService | None" = None
     tenants: "TenantService | None" = None
@@ -239,8 +262,9 @@ class Platform:
     def start_scheduler(self, poll_seconds: float = 1.0) -> Scheduler:
         if self.scheduler is None:
             self.scheduler = Scheduler(self.ctx)
-            self.scheduler.every("outbox.dispatch", 5.0,
-                                 lambda: self.dispatcher.dispatch())
+            self.scheduler.every(
+                "outbox.dispatch", 5.0,
+                lambda: self.dispatcher.dispatch(worker_id=self.worker_id))
             # Webhook delivery is independent of the transactional outbox:
             # an event can be marked dispatched for in-process subscribers
             # while still owing a signed, masked delivery to external hooks.
@@ -584,6 +608,14 @@ def build_platform(config: PlatformConfig | None = None) -> Platform:
     platform.exports = ExportService(ctx, platform.security)
     platform.webhooks = WebhookService(ctx, platform.security,
                                        dispatcher=platform.dispatcher)
+    # P2 interoperability services.  They are composed after the facade so
+    # they share the same repository, audit trail, webhook ledger and runtime
+    # gateways; none of them introduces a new dependency or background thread.
+    platform.event_schemas = SchemaRegistry(ctx)
+    platform.event_bridges = EventBridgeService(ctx, platform.webhooks)
+    platform.plugin_sandbox = SandboxUseCases(ctx)
+    platform.eval_sets = EvalSetUseCases(ctx).bind_platform(platform)
+    platform.digital_twin = DigitalTwinService(ctx)
     platform.policy_drafts = PolicyDraftService(ctx, security_service)
     platform.async_tasks = AsyncTaskService(
         ctx, security_service, scheduler=lambda: platform.scheduler,

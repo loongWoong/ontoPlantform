@@ -56,13 +56,44 @@ use cases the CLI uses - no domain logic here.
     POST /api/workspaces/{wid}/rules                   {name,object_type,condition,...}
     POST /api/workspaces/{wid}/rules/{rid}/publish
     POST /api/workspaces/{wid}/rules/evaluate          {object_type?|refs?}
+    POST /api/workspaces/{wid}/rules/simulate          {ref, changes}
     GET  /api/workspaces/{wid}/event-contracts?lifecycle=   {"contracts":[...]}
     POST /api/workspaces/{wid}/event-contracts         {name,aggregate_kind,payload_schema,...}
     POST /api/workspaces/{wid}/event-contracts/{name}/publish
     GET  /api/workspaces/{wid}/event-subscriptions     {"subscriptions":[...]}
     POST /api/workspaces/{wid}/event-subscriptions     {name,event_type,filter?,handler_key,...}
     DELETE /api/workspaces/{wid}/event-subscriptions/{sid}
+    GET  /api/workspaces/{wid}/event-handlers          {"handlers":[...]} (durable registry)
+    POST /api/workspaces/{wid}/event-handlers          {handler_key,event_types,kind,...}
+    POST /api/workspaces/{wid}/event-handlers/{key}/heartbeat|pause|activate
+    GET  /api/workspaces/{wid}/security/webhooks/deliveries
+    GET  /api/workspaces/{wid}/security/webhooks/dead-letters
+    POST /api/workspaces/{wid}/security/webhooks/deliveries/{id}/replay
     POST /api/workspaces/{wid}/events/emit             {event_type,aggregate_kind,aggregate_id,payload}
+    # P2.3-P2.6 production surfaces (subprocess sandbox, replayable eval,
+    # event schema registry + bridge, digital twin)
+    POST /api/workspaces/{wid}/plugins/sandbox/run     {package_dir,signature,entrypoint?,payload?}
+    GET  /api/workspaces/{wid}/eval-sets               {"evalSets":[...]}
+    POST /api/workspaces/{wid}/eval-sets               {name,cases,...}
+    GET  /api/workspaces/{wid}/eval-sets/{id}
+    POST /api/workspaces/{wid}/eval-sets/{id}/replay
+    DELETE /api/workspaces/{wid}/eval-sets/{id}
+    GET  /api/workspaces/{wid}/event-schemas?event_type=
+    GET  /api/workspaces/{wid}/event-schemas/{event_type}?version=
+    POST /api/workspaces/{wid}/event-schemas           {event_type,version,payload_schema}
+    POST /api/workspaces/{wid}/event-schemas/compatibility {event_type,payload_schema}
+    GET  /api/workspaces/{wid}/event-bridges           {"bridges":[...]}
+    POST /api/workspaces/{wid}/event-bridges           {name,event_types,url,...}
+    GET  /api/workspaces/{wid}/event-bridges/{id}
+    POST /api/workspaces/{wid}/event-bridges/{id}      {url?,event_types?,active?,...}
+    POST /api/workspaces/{wid}/event-bridges/{id}/pause|activate|dispatch
+    DELETE /api/workspaces/{wid}/event-bridges/{id}
+    GET  /api/workspaces/{wid}/twin/snapshot?ref=&depth=&direction=
+    GET  /api/workspaces/{wid}/twin/policies
+    POST /api/workspaces/{wid}/twin/policies           {name,source_type,relation,target_field,...}
+    DELETE /api/workspaces/{wid}/twin/policies/{id}
+    POST /api/workspaces/{wid}/twin/simulate           {ref,changes,depth?,policy_ids?}
+    POST /api/workspaces/{wid}/twin/scenarios          {ref,scenarios,depth?}
     GET  /api/workspaces/{wid}/applications/{aid}/spec
     POST /api/workspaces/{wid}/applications/{aid}/interactions
     DELETE /api/workspaces/{wid}/applications/{aid}/interactions/{iid}
@@ -541,6 +572,8 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
                 raise ValidationError("workspace id is required")
             if rest[:2] == ["ontology", "workflow"]:
                 return self._workflow_delete(wid, rest[2:], query)
+            if rest[:1] in (["twin"], ["event-bridges"], ["eval-sets"]):
+                return self._delete_p2(wid, rest, user)
             if len(rest) == 3 and rest[0] == "security" \
                     and rest[1] == "bindings":
                 return self._send(200, platform.security.delete_binding(
@@ -755,6 +788,179 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
             except Exception as exc:  # pragma: no cover
                 return self._error(exc)
 
+        # ------------------------------------------------------- P2 surfaces
+
+        def _get_p2(self, wid: str, rest: list[str], query: dict,
+                    user: str) -> None:
+            """Read-only P2.4/P2.6/twin routes grouped by resource."""
+            if rest == ["twin", "snapshot"]:
+                service = self._require_service(platform.digital_twin,
+                                                "digital twin")
+                return self._send(200, service.snapshot(
+                    wid, user, str(query.get("ref") or ""),
+                    depth=self._query_int(query, "depth", 1),
+                    direction=str(query.get("direction") or "out"),
+                    max_nodes=self._query_int(query, "max_nodes", 500)))
+            if rest == ["twin", "policies"]:
+                service = self._require_service(platform.digital_twin,
+                                                "digital twin")
+                return self._send(200, {"policies":
+                                        service.list_policies(wid, user)})
+            if rest == ["event-schemas"]:
+                service = self._require_service(platform.event_schemas,
+                                                "event schema registry")
+                return self._send(200, {"schemas": service.list(
+                    wid, user, event_type=query.get("event_type"))})
+            if len(rest) == 2 and rest[0] == "event-schemas":
+                service = self._require_service(platform.event_schemas,
+                                                "event schema registry")
+                return self._send(200, service.get(
+                    wid, user, rest[1],
+                    version=self._query_int(query, "version", 0) or None))
+            if rest == ["event-bridges"]:
+                service = self._require_service(platform.event_bridges,
+                                                "event bridge")
+                return self._send(200, {"bridges": service.list(wid, user)})
+            if len(rest) == 2 and rest[0] == "event-bridges":
+                service = self._require_service(platform.event_bridges,
+                                                "event bridge")
+                return self._send(200, service.get(wid, user, rest[1]))
+            if rest == ["eval-sets"]:
+                service = self._require_service(platform.eval_sets,
+                                                "generation eval sets")
+                return self._send(200, {"evalSets": service.list(wid, user)})
+            if len(rest) == 2 and rest[0] == "eval-sets":
+                service = self._require_service(platform.eval_sets,
+                                                "generation eval sets")
+                return self._send(200, service.get(wid, user, rest[1]))
+            raise ValidationError(f"no route for {'/'.join(rest)}")
+
+        def _post_p2(self, wid: str, rest: list[str], body: dict,
+                     user: str) -> None:
+            if rest == ["plugins", "sandbox", "run"]:
+                service = self._require_service(platform.plugin_sandbox,
+                                                "plugin sandbox")
+                result = service.run_package(
+                    wid, user, body["package_dir"], str(body.get("signature")
+                                                        or ""),
+                    entrypoint=str(body.get("entrypoint") or "run"),
+                    payload=body.get("payload"),
+                    timeout_seconds=float(body.get("timeout_seconds")
+                                          or 10),
+                    memory_limit_mb=int(body.get("memory_limit_mb") or 256))
+                return self._send(200, result.as_dict())
+            if rest == ["eval-sets"]:
+                service = self._require_service(platform.eval_sets,
+                                                "generation eval sets")
+                kwargs = {}
+                if "status" in body:
+                    kwargs["status"] = body["status"]
+                return self._send(201, service.create(
+                    wid, user, str(body.get("name") or ""),
+                    body.get("cases") or [],
+                    description=str(body.get("description") or ""),
+                    baseline_id=(str(body.get("baseline_id") or "") or None),
+                    **kwargs))
+            if len(rest) == 3 and rest[0] == "eval-sets" \
+                    and rest[2] == "replay":
+                service = self._require_service(platform.eval_sets,
+                                                "generation eval sets")
+                return self._send(200, service.replay(wid, user, rest[1]))
+            if rest == ["event-schemas"]:
+                service = self._require_service(platform.event_schemas,
+                                                "event schema registry")
+                return self._send(201, service.register(
+                    wid, user, str(body.get("event_type") or ""),
+                    body.get("version", 1), body.get("payload_schema") or {},
+                    description=str(body.get("description") or ""),
+                    compatibility=str(body.get("compatibility")
+                                      or "backward")))
+            if rest == ["event-schemas", "compatibility"]:
+                service = self._require_service(platform.event_schemas,
+                                                "event schema registry")
+                return self._send(200, service.compatibility(
+                    wid, user, str(body.get("event_type") or ""),
+                    body.get("payload_schema") or {},
+                    from_version=body.get("from_version")))
+            if rest == ["event-bridges"]:
+                service = self._require_service(platform.event_bridges,
+                                                "event bridge")
+                return self._send(201, service.create(
+                    wid, user, str(body.get("name") or ""),
+                    body.get("event_types") or [], str(body.get("url") or ""),
+                    str(body.get("secret") or ""),
+                    field_map=body.get("field_map"),
+                    include_envelope=bool(body.get("include_envelope", True)),
+                    active=bool(body.get("active", True))))
+            if len(rest) == 2 and rest[0] == "event-bridges":
+                service = self._require_service(platform.event_bridges,
+                                                "event bridge")
+                fields = ("name", "event_types", "url", "secret", "field_map",
+                          "include_envelope", "active")
+                kwargs = {key: body[key] for key in fields if key in body}
+                return self._send(200, service.update(
+                    wid, user, rest[1], **kwargs))
+            if len(rest) == 3 and rest[0] == "event-bridges" \
+                    and rest[2] in ("pause", "activate", "dispatch"):
+                service = self._require_service(platform.event_bridges,
+                                                "event bridge")
+                if rest[2] == "dispatch":
+                    return self._send(200, service.dispatch(wid))
+                return self._send(200, service.update(
+                    wid, user, rest[1], active=(rest[2] == "activate")))
+            if rest == ["twin", "policies"]:
+                service = self._require_service(platform.digital_twin,
+                                                "digital twin")
+                return self._send(201, service.set_policy(
+                    wid, user, str(body.get("name") or ""),
+                    str(body.get("source_type") or ""),
+                    str(body.get("relation") or ""),
+                    str(body.get("target_field") or ""),
+                    source_field=str(body.get("source_field") or ""),
+                    mode=str(body.get("mode") or "copy"),
+                    factor=float(body.get("factor", 1.0)),
+                    active=bool(body.get("active", True))))
+            if rest == ["twin", "simulate"]:
+                service = self._require_service(platform.digital_twin,
+                                                "digital twin")
+                return self._send(200, service.simulate(
+                    wid, user, str(body.get("ref") or ""),
+                    body.get("changes") or {},
+                    depth=self._query_int(body, "depth", 1),
+                    policy_ids=body.get("policy_ids")))
+            if rest == ["twin", "scenarios"]:
+                service = self._require_service(platform.digital_twin,
+                                                "digital twin")
+                return self._send(200, service.scenarios(
+                    wid, user, str(body.get("ref") or ""),
+                    body.get("scenarios") or [],
+                    depth=self._query_int(body, "depth", 1)))
+            raise ValidationError(f"no route for {'/'.join(rest)}")
+
+        def _delete_p2(self, wid: str, rest: list[str], user: str) -> None:
+            if len(rest) == 3 and rest[0] == "twin" \
+                    and rest[1] == "policies":
+                service = self._require_service(platform.digital_twin,
+                                                "digital twin")
+                return self._send(200, service.delete_policy(wid, user,
+                                                             rest[2]))
+            if len(rest) == 2 and rest[0] == "event-bridges":
+                service = self._require_service(platform.event_bridges,
+                                                "event bridge")
+                return self._send(200, service.delete(wid, user, rest[1]))
+            if len(rest) == 2 and rest[0] == "eval-sets":
+                service = self._require_service(platform.eval_sets,
+                                                "generation eval sets")
+                return self._send(200, service.delete(wid, user, rest[1]))
+            raise ValidationError(f"no route for {'/'.join(rest)}")
+
+        @staticmethod
+        def _require_service(service, label: str):
+            if service is None:
+                raise NotFoundError(f"{label} is not available in this "
+                                    "deployment")
+            return service
+
         def _serve_web(self, parts: list[str]) -> None:
             """Serve the built React console from ``web/dist``.
 
@@ -915,6 +1121,17 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
                 rows = platform.webhooks.list_webhooks(wid, actor=user)
                 return self._send(200, [{**row, "secret": "***"}
                                         for row in rows])
+            if rest == ["webhooks", "deliveries"]:
+                rows = platform.webhooks.list_deliveries(
+                    wid, webhook_id=query.get("webhook"),
+                    status=query.get("status"),
+                    limit=self._query_int(query, "limit", 100), actor=user)
+                return self._send(200, {"deliveries": rows})
+            if rest == ["webhooks", "dead-letters"]:
+                rows = platform.webhooks.dead_letters(
+                    wid, actor=user,
+                    limit=self._query_int(query, "limit", 100))
+                return self._send(200, {"deliveries": rows})
             if rest == ["async", "tasks"]:
                 platform.ctx.require_action(user, wid, "security.read")
                 rows = platform.async_tasks.list_tasks(wid)
@@ -951,6 +1168,9 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
                 return self._workflow_get(wid, rest[2:], query, user)
             if rest[:1] == ["standards"]:
                 return self._get_standards(wid, rest[1:], query, user)
+            if rest[:1] in (["twin"], ["event-schemas"], ["event-bridges"],
+                            ["eval-sets"]):
+                return self._get_p2(wid, rest, query, user)
             if rest == ["runtime"]:
                 return self._send(200, platform.ontologies.describe_runtime(wid, actor=user))
             if rest == ["datasources"]:
@@ -1017,6 +1237,14 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
                 if not studio_enabled():
                     raise NotFoundError("smart-UI Studio is disabled")
                 return self._send(200, list_drafts(platform, wid, user))
+            if rest == ["smart-ui", "eval"]:
+                from ..application.smartui.eval import generation_eval
+                return self._send(200, generation_eval(
+                    platform, wid, user,
+                    baseline_id=str(query.get("baseline") or "") or None))
+            if rest == ["smart-ui", "sbom"]:
+                platform.ctx.require(user, wid, "viewer")
+                return self._send(200, platform.smartui.sbom())
             if rest == ["applications"]:
                 return self._send(200, platform.applications.list(wid, actor=user))
             if rest == ["rules"]:
@@ -1033,6 +1261,18 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
                                         .list_subscriptions(
                                             wid, user,
                                             event_type=query.get("event_type"))})
+            if rest == ["event-handlers"]:
+                platform.ctx.require_action(user, wid, "security.manage")
+                rows = platform.dispatcher.registry.list(wid)
+                return self._send(200, {"handlers": [
+                    {**row, "secret": "***"} for row in rows]})
+            if len(rest) == 2 and rest[0] == "event-handlers":
+                platform.ctx.require_action(user, wid, "security.manage")
+                row = platform.dispatcher.registry.get(wid, rest[1])
+                if row is None:
+                    raise NotFoundError(
+                        f"event handler not found: {rest[1]!r}")
+                return self._send(200, {**row, "secret": "***"})
             if rest == ["releases"]:
                 return self._send(200, platform.releases.list(wid, user))
             if rest == ["metrics"]:
@@ -1665,6 +1905,10 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
                     event_types=body.get("event_types"),
                     secret=body.get("secret"), active=body.get("active"))
                 return self._send(200, {**hook, "secret": "***"})
+            if len(rest) == 4 and rest[0] == "webhooks" \
+                    and rest[1] == "deliveries" and rest[3] == "replay":
+                return self._send(200, platform.webhooks.replay_delivery(
+                    wid, user, rest[2]))
             if len(rest) == 3 and rest[0] == "webhooks" \
                     and rest[2] == "delete":
                 return self._send(200, platform.webhooks.delete_webhook(
@@ -1704,6 +1948,9 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
                     actor=user))
             if rest[:1] == ["security"]:
                 return self._post_security(wid, rest[1:], body, user)
+            if rest[:1] in (["twin"], ["event-schemas"], ["event-bridges"],
+                            ["eval-sets"], ["plugins"]):
+                return self._post_p2(wid, rest, body, user)
             if rest == ["llm-config"]:
                 return self._send(200, platform.llm_config.put(wid, user, body))
             if rest == ["llm-config", "check"]:
@@ -1808,7 +2055,8 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
                 return self._send(200, platform.releases.rollback(
                     wid, user, to_release_id=body.get("release_id")))
             if rest == ["events", "dispatch"]:
-                return self._send(200, platform.dispatcher.dispatch(wid))
+                return self._send(200, platform.dispatcher.dispatch(
+                    wid, worker_id=platform.worker_id))
             if rest == ["controller", "act"]:
                 return self._send(200, platform.controller.act(
                     wid, user, accept=bool(body.get("accept", True))))
@@ -1913,14 +2161,18 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
                     platform, wid, user, rest[2], body))
             # ---- P1 rules / business events (contracts, subscriptions, emit)
             if rest == ["rules"]:
+                # Aggregate rules carry their definition in ``aggregate`` and
+                # ignore ``condition``; legacy constraint rules are unchanged.
                 return self._send(200, platform.rules.create(
                     wid, user, body["name"], body["object_type"],
-                    body["condition"],
+                    body.get("condition"),
                     description=body.get("description", ""),
                     severity=body.get("severity", "error"),
                     when=body.get("when"),
                     message=body.get("message", ""),
-                    priority=body.get("priority", 100)))
+                    priority=body.get("priority", 100),
+                    kind=str(body.get("kind") or "constraint"),
+                    aggregate=body.get("aggregate")))
             if len(rest) == 3 and rest[0] == "rules" and rest[2] == "publish":
                 return self._send(200, platform.rules.publish(
                     wid, user, rest[1]))
@@ -1928,6 +2180,11 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
                 return self._send(200, platform.rules.evaluate(
                     wid, user, object_type=body.get("object_type"),
                     refs=body.get("refs"),
+                    include_drafts=bool(body.get("include_drafts", False)),
+                    index=bool(body.get("index", False))))
+            if rest == ["rules", "simulate"]:
+                return self._send(200, platform.rules.simulate(
+                    wid, user, body["ref"], body["changes"],
                     include_drafts=bool(body.get("include_drafts", False))))
             if rest == ["event-contracts"]:
                 try:
@@ -1952,6 +2209,30 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
                     filter=body.get("filter"),
                     handler_key=body.get("handler_key", ""),
                     enabled=body.get("enabled", True)))
+            if rest == ["event-handlers"]:
+                platform.ctx.require_action(user, wid, "security.manage")
+                row = platform.dispatcher.registry.register(
+                    wid, str(body.get("handler_key") or ""),
+                    body.get("event_types") or [],
+                    actor=user,
+                    kind=str(body.get("kind") or "in_process"),
+                    endpoint=str(body.get("endpoint") or ""),
+                    secret=str(body.get("secret") or ""),
+                    active=body.get("active", True),
+                    lease_seconds=int(body.get("lease_seconds") or 30))
+                return self._send(200, {**row, "secret": "***"})
+            if len(rest) == 3 and rest[0] == "event-handlers" \
+                    and rest[2] in ("heartbeat", "pause", "activate"):
+                platform.ctx.require_action(user, wid, "security.manage")
+                registry = platform.dispatcher.registry
+                if rest[2] == "heartbeat":
+                    row = registry.heartbeat(
+                        wid, rest[1], worker_id=str(body.get("worker_id") or ""))
+                elif rest[2] == "pause":
+                    row = registry.pause(wid, rest[1])
+                else:
+                    row = registry.activate(wid, rest[1])
+                return self._send(200, {**row, "secret": "***"})
             if rest == ["events", "emit"]:
                 return self._send(200, platform.business_events.emit(
                     wid, user, body["event_type"], body["aggregate_kind"],

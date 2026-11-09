@@ -8,6 +8,8 @@ operator-installed code goes through the explicit external trust boundary.
 
 from __future__ import annotations
 
+import hashlib
+import json
 from dataclasses import dataclass
 from typing import Any, Iterable
 
@@ -18,6 +20,7 @@ from .contracts import (
     PluginManifest,
 )
 from .descriptors import EngineDescriptorRegistry
+from .external import external_plugins_enabled
 from .packs import WorkspacePack, WorkspacePackCatalog
 from .renderers import RendererRegistry
 
@@ -217,6 +220,46 @@ class PluginHost:
         if renderers:
             manifest = {**manifest, "renderers": renderers}
         return manifest
+
+    def sbom(self) -> dict[str, Any]:
+        """Deterministic software bill of materials for the plugin registry.
+
+        The report is an *inventory*, not a sandbox: it states explicitly that
+        contributions run in-process and exposes each manifest digest so an
+        operator can detect drift.  Runtime implementation objects are never
+        serialized (their ``repr`` could leak paths or secrets).
+        """
+        components: list[dict[str, Any]] = []
+        for record in sorted(
+                self._records.values(),
+                key=lambda item: (item.manifest.kind, item.manifest.id)):
+            manifest = record.manifest
+            canonical = json.dumps(
+                manifest.as_dict(), ensure_ascii=False, sort_keys=True,
+                separators=(",", ":"))
+            components.append({
+                "type": "library",
+                "name": manifest.id,
+                "version": manifest.version,
+                "kind": manifest.kind,
+                "apiVersion": manifest.api_version,
+                "builtin": manifest.builtin,
+                "enabled": bool(record.enabled),
+                "implemented": record.implementation is not None,
+                "permissions": list(manifest.permissions),
+                "manifestDigest": hashlib.sha256(
+                    canonical.encode("utf-8")).hexdigest(),
+            })
+        return {
+            "bomFormat": "OntoPlatform-SBOM",
+            "specVersion": "1.0",
+            "hostApiVersion": self.host_api_version,
+            "trustBoundary": "in-process",
+            "processIsolation": False,
+            "externalPluginsEnabled": external_plugins_enabled(),
+            "components": components,
+            "dependencies": [],
+        }
 
     def renderer_dicts(self) -> list[dict[str, Any]]:
         return self.renderers.as_dicts()

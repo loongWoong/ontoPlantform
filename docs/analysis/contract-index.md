@@ -190,6 +190,100 @@ envelope: id/event_id, type ∈ EVENT_CATALOG, event_version, ts, workspace_id, 
 
 * 不变式：`type` 不在闭集 `EVENT_CATALOG` 时拒绝（`ValidationError`）；`workspace_id` 必须存在；写入与业务状态同事务（outbox）。
 * 扩展（P1 已落地）：`EventLog.emit(..., contract=EventContract|None)` 先校验 `event_type` 与契约名一致、契约已发布、payload 匹配 `payload_schema`，再写 outbox；envelope 增加 `contract` 字段（业务事件名，平台生命周期事件不带）；`Dispatcher.subscribe_key(handler_key, handler)` + `subscriptions_for_event()` 支持声明式订阅的进程内分发。
+* 多 worker 认领（P2 已落地）：`EventLog.claim(event, worker_id, lease_seconds)` 用 `get_versioned` + `put_if_version` 做 CAS，写 `claimed_by/claimed_at/lease_expires_at`；`Dispatcher.dispatch(..., worker_id=)` 先认领再投递；`pending()` 跳过未过期租约。租约到期可被其它 worker 重认领（at-least-once）。
+* 持久 handler 与 per-key 投递（P2.2-C 已落地）：`event_handler` 注册表把 `handler_key` 从进程内 dict 提升为 workspace 级持久文档；`event_delivery` 账本按 `(event_id, handler_key)` 建唯一行并 CAS 认领；`Dispatcher` 取 registry ∪ subscription 的 key 并集，只有全部 delivery 终态（delivered/dead）才 `mark_dispatched`，无本地回调的 key 保持 pending 并释放事件 claim。投递仍是 at-least-once，handler 必须按 `event_id` 幂等；数据库队列不是 Kafka/NATS。
+
+### 2.10 `PluginSBOM` / `GenerationEval`（P2 观测面）
+
+落点：[`application/smartui/host.py`](../../src/onto_platform/application/smartui/host.py) `PluginHost.sbom`、[`application/smartui/eval.py`](../../src/onto_platform/application/smartui/eval.py) `generation_eval`。
+
+```
+PluginSBOM: bomFormat="OntoPlatform-SBOM", specVersion, hostApiVersion,
+            trustBoundary="in-process", processIsolation=false,
+            externalPluginsEnabled, components[], dependencies[]
+component: type, name, version, kind, apiVersion, builtin, enabled,
+           implemented, permissions[], manifestDigest(sha256 canonical JSON)
+
+GenerationEval: workspace_id, baselineId, current, baseline?, delta?
+current: count, byStatus{}, succeeded, failed, successRate,
+         duration{p50Ms,p95Ms,avgMs}, usage{promptTokens,completionTokens,totalTokens},
+         cost{total,currency}, views{total,average}, programHashCount
+delta: successRate, p95Ms, totalCost, avgViewCount
+```
+
+* SBOM 只序列化 manifest 摘要，**不序列化实现对象**；`processIsolation=false` 明确声明内置/已安装插件仍是进程内信任边界，SBOM 不是沙箱。P2.3 新增的 `SandboxUseCases.run_package` 是独立的可选子进程执行入口（结果不注册进 host），其强度见 §2.12。
+* GenerationEval 是只读聚合（`viewer`），质量指标以成功率代理；成本/延迟/用量来自既有 generation 记录，不改变生成管线。P2.4 的 `generation_eval_set` 在其上增加可回放评测集与加权评分（§2.12）。
+
+### 2.11 `WebhookDelivery` / `EventHandler` / `EventDelivery`（P2.2 生产边界）
+
+落点：[`application/security/webhook_delivery.py`](../../src/onto_platform/application/security/webhook_delivery.py)、[`application/security/distribution.py`](../../src/onto_platform/application/security/distribution.py)、[`application/event_handlers.py`](../../src/onto_platform/application/event_handlers.py)、[`application/events.py`](../../src/onto_platform/application/events.py)。
+
+```
+WebhookDelivery: id=whd_sha256(event_id|webhook_id), workspace_id, webhook_id, event_id,
+                 event_type, status(pending|delivered|failed|dead), attempts,
+                 lease_expires_at, lease_owner, next_attempt_at, last_status_code,
+                 last_error, response_excerpt, created_at, updated_at
+Webhook: +rate_limit_per_minute(int=60), +max_attempts(int=5),
+         +window_start, +window_count（固定窗口，CAS 更新）
+EventHandler: id, handler_key(workspace 内唯一), workspace_id, event_types[],
+              kind(in_process|http), endpoint, secret, active, version,
+              last_heartbeat_at, lease_seconds, created_by, created_at, updated_at,
+              last_worker?
+EventDelivery: id=sha256(event_id|handler_key), workspace_id, event_id, handler_key,
+               status(pending|delivered|failed|dead), attempts, lease_expires_at,
+               next_attempt_at, last_error, created_at, updated_at
+```
+
+* Webhook 状态机：`pending` → CAS lease → `delivered` | `failed`（退避）→ `dead`（attempts≥max）；事件 `webhook_delivered_at` 只在所有匹配 webhook 的 delivery 终态时写；`replay_delivery` 把 `dead/failed` 重置为 `pending` 并清事件 marker。
+* EventHandler：按 `handler_key` upsert（version 递增，不重复插行）；`resolve(event)` 只返回 active 且 `event_types` 匹配的行；`heartbeat` 刷新 `last_heartbeat_at`；http handler 必须 `endpoint`+`secret`，投递为 HMAC-SHA256 签名 POST。
+* 隔离与强度：租户边界是 **L1 仓储级**（`GovernedRepository` 拒绝伪造 tenant/workspace），不是进程/容器隔离；两套投递账本都解决“同一事件不被多个 worker 同时投递”，但都是 at-least-once，不提供 exactly-once 或跨表事务；`ctx.repo.raw` 是预留逃生口。
+
+### 2.12 P2.3–P2.6 与 Digital Twin 契约（2026-11-09）
+
+落点：[`application/smartui/sandbox.py`](../../src/onto_platform/application/smartui/sandbox.py)、[`application/smartui/eval_set.py`](../../src/onto_platform/application/smartui/eval_set.py)、[`application/event_schema_registry.py`](../../src/onto_platform/application/event_schema_registry.py)、[`application/event_bridge.py`](../../src/onto_platform/application/event_bridge.py)、[`application/digital_twin.py`](../../src/onto_platform/application/digital_twin.py)、[`application/rule_index.py`](../../src/onto_platform/application/rule_index.py)。
+
+```
+SandboxResult: ok, result, error, exit_code, timed_out, duration_ms,
+               stdout_excerpt, stderr_excerpt,
+               isolation{process, filesystem, environment, network},
+               resource_limits{cpuSeconds, addressSpaceMb, enforced, platform}
+EvalSet: id, workspace_id, name, description, status(draft|active), baseline_id,
+         cases[], created_by, created_at, updated_at, version
+EvalCase: id, name, generation_id?, question?, roles[], tags[],
+          max_duration_ms?, max_cost?, min_view_count?, expected_program_hash?
+GenerationEvalReplay: workspace_id, evalSetId, replayedAt,
+          summary{total,passed,failed,errors,passRate,score,grade,scoreDelta?,
+                  passRateDelta?}, cases[],
+          scoreModel{success:0.35,replay:0.25,latency:0.15,cost:0.15,views:0.10},
+          baseline?
+EventSchema: id=es_<event_type>_v<version>, workspace_id, event_type, version,
+             payload_schema{field:{type,required?,description?}}, compatibility,
+             description, created_by, created_at
+SchemaCompatibility: {compatible, mode(backward|forward|full|none),
+                      breaking[{field,reason}], added[], removed[], typeChanged[]}
+EventBridge: id, workspace_id, name, event_types[], url, webhook_id,
+             source_bridge_id?（webhook 侧反向引用）, field_map{external:payload.path},
+             include_envelope, active, created_by, created_at, updated_at
+TwinPolicy: id, workspace_id, name, source_type, relation, target_field,
+            source_field, mode(copy|scale|boolean|delta), factor, active, version,
+            created_by, created_at, updated_at
+TwinSnapshot: workspace_id, ref, depth, direction(out|in|both), nodes[],
+              edges[], stateHash, generatedAt, truncated, capabilities
+TwinSimulation: ref, object_type, object_id, depth, changes,
+                before/after{passed,violations[],total}, total_before/after,
+                resolved[], introduced[], changed[], changedCount,
+                policiesApplied[], stateHashBefore/After, noSideEffects
+TwinScenarios: root, scenarios[{name,score,summary,changedCount,ruleDelta}],
+               best, noSideEffects
+RuleFieldIndex stats: scanned, fields, values, rules_indexed, rules_scanned
+```
+
+* 沙箱 `isolation` 是**如实声明**：`process=true`、`filesystem="temporary-directory"`、`environment="allowlist"`、`network="not-enforced"`；`resource_limits.enforced` 在 Windows 为 false。子进程结果不是插件注册，`PluginHost` 的 `processIsolation=false` 仍描述内置/已安装插件。
+* 评测集 `score = 100 × Σ(通过维度权重)`；无约束维度按满分且 `checks[].passed=null`（skipped）；`summary.score` 为 case 均值（2 位小数），A≥90/B≥80/C≥70/D≥60/F<60；baseline 给出 `scoreDelta/passRateDelta`。
+* Schema Registry 版本不可变：同一 `(event_type,version)` 重复注册报错；backward 拒绝删字段/改类型/可选→必填/新增 required；forward 对称；full 取并集；none 跳过；`compatibility()` 不写库。
+* EventBridge 不实现重试：1 bridge 对应 1 个内部 webhook，投递状态全在 `webhook_delivery` 账本；`field_map` 是服务层 `transform`，尚未接入 webhook transport 的组装点。
+* Digital Twin 只读：`snapshot` 是调用时刻的 kernel 状态与关系 BFS（不是流式实时）；`simulate` 只在副本上叠加 changes 与 policy 传播并重算规则，`noSideEffects=true`，不写对象/关系、不持久化仿真；`stateHash` 是 nodes+edges 的 canonical JSON sha256。
+* 规则字段索引是 **per-evaluation 内存 posting list**，不持久化；`EvaluateRules(index=True)` 只对可索引的正向叶子裁剪，not/any/is_null/不可哈希/aggregate 回退全扫描，并返回 `index_stats`。
 
 ---
 
@@ -202,22 +296,27 @@ envelope: id/event_id, type ∈ EVENT_CATALOG, event_version, ts, workspace_id, 
 落点：`domain/rule/model.py`、`domain/rule/engine.py`、`application/rule_usecases.py`；状态：◆ P1 已落地（`test_rule_engine.py` 85、`test_rule_usecases.py` 43、REST 见 §4）。
 
 ```
-RuleSpec: id, workspace_id, name, description, object_type, kind="constraint",
+RuleSpec: id, workspace_id, name, description, object_type, kind(constraint|aggregate),
           severity(error|warning|info), condition{AST}, when{AST, 默认 {}}, message,
           priority(int=100), enabled(bool=True), lifecycle(draft|published|archived),
-          version(int), created_at, updated_at
+          version(int), created_at, updated_at, aggregate{...}|None
 condition AST: {"field","op","value"} | {"all":[...]} | {"any":[...]} | {"not":{...}}
-               field 支持 $id / $type / properties 名；op 支持 eq ne gt gte lt lte in not_in
+               field 支持 $id / $type / properties 名（含嵌套点路径，缺失/标量中段 = MISSING）；op 支持 eq ne gt gte lt lte in not_in
                contains not_contains is_null not_null starts_with ends_with
+aggregate: {relation, object_type, where?{AST}, metric(count|sum|avg|min|max|any|all),
+            field?, op, value}
 RuleViolation: rule_id, rule_name, object_type, object_id, severity, message, field, detail(dict)
 RuleEvaluation: passed, evaluated_rules(int), violations[dict], skipped(int)
+RuleFieldIndex.stats: scanned, fields, values, rules_indexed, rules_scanned
 ```
 
-* 常量（闭集）：`RULE_KINDS=("constraint",)`、`SEVERITIES`、`RULE_LIFECYCLES=("draft","published","archived")`、`OPERATORS`（14 个）、`LOGICAL_KEYS=("all","any","not")`、`SPECIAL_FIELDS=("$id","$type")`、`MAX_CONDITION_DEPTH=32`；AST 不可表达任意代码。
+* 常量（闭集）：`RULE_KINDS=("constraint","aggregate")`、`SEVERITIES`、`RULE_LIFECYCLES=("draft","published","archived")`、`OPERATORS`（14 个）、`METRICS=("count","sum","avg","min","max","any","all")`、`LOGICAL_KEYS=("all","any","not")`、`SPECIAL_FIELDS=("$id","$type")`、`MAX_CONDITION_DEPTH=32`；AST 不可表达任意代码。
 * 求值语义：纯函数、零依赖；按 `(priority, name, id)` 排序；只有 `severity="error"` 的 violation 让 `passed=False`；**缺失字段 = MISSING**（`is_null`/`not_null` 可判定，其它比较一律 False，不抛异常）。
-* 校验入口：`validate_condition` / `validate_rule_definition(rule, object_spec)`；引擎侧 `ensure_valid_condition` 在非法 AST 时抛 `ValidationError`。
-* 用例（`rule_usecases.py`）：Create/Update（draft only + 乐观锁）/Publish（重复发布幂等）/Disable/Delete（draft 删除、published 归档）/List/Evaluate；Evaluate 默认只取 published+enabled，返回 `passed/object_count/rule_count/violations/missing/by_severity/evaluated_rules/skipped`，审计 `rule.evaluate`。
-* REST（已实现）：`GET/POST /rules`、`POST /rules/{rid}/publish`、`POST /rules/evaluate`（详见 §4）。
+* 聚合语义（P2.5）：`aggregate` 规则的 `condition` 被忽略；对父对象经 `relation` 取 children，`where` 只对 child 求值；count/any/all 不需要 `field`，sum/avg/min/max 取数值字段（缺失/非数字跳过）；空集 count=0、sum=0、avg/min/max=MISSING、any=False、all=True；violation.field=`aggregate.<relation>`；`SimulateRuleChanges` 暂不支持 aggregate。
+* 字段索引（P2.5）：`application/rule_index.py` 一次扫描建内存 posting list；仅 eq/in/contains/starts_with/ends_with 正向叶子可裁剪，其余回退全扫描；`EvaluateRules(index=True)` 返回追加的 `index_stats`，旧键不变；索引不持久化、翻页每页重建。
+* 校验入口：`validate_condition` / `validate_aggregate` / `validate_rule_definition(rule, object_spec)`；引擎侧 `ensure_valid_condition` 在非法 AST 时抛 `ValidationError`。
+* 用例（`rule_usecases.py`）：Create（支持 `kind/aggregate`）/Update（draft only + 乐观锁）/Publish（重复发布幂等）/Disable/Delete（draft 删除、published 归档）/List/Evaluate/Simulate；Evaluate 默认只取 published+enabled，按对象 id 稳定分页（`limit` 默认 100、`offset`），返回 `passed/object_count/total_objects/evaluated_objects/offset/limit/has_more/next_offset/rule_count/violations/missing/by_severity/evaluated_rules/skipped`，审计 `rule.evaluate`；`object_count` 保持“总候选数”以兼容旧调用方，`violations/by_severity/evaluated_rules` 只统计当前页。`Simulate` 对单个对象应用顶层属性假设值并重算同一批规则，返回 `before/after/delta{resolved,introduced,changed}`，审计 `rule.simulate`，无副作用。
+* REST（已实现）：`GET/POST /rules`、`POST /rules/{rid}/publish`、`POST /rules/evaluate`（可传 `index`）、`POST /rules/simulate`（详见 §4）。
 
 ### 3.2 `EventContract`（task-19）
 
@@ -301,9 +400,9 @@ P1 收尾复核：上表判据全部通过（`grep` 证据与命令见 [`p1-impl
 
 ---
 
-## 4. REST 端点（P1 已实现，14 个）
+## 4. REST 端点（P1 已实现 14 个 + P2.1 增量 3 个 + P2.2 增量 9 个 + P2.3–P2.6/Twin 增量 24 个 + 2 个扩展）
 
-> 路径均挂载在 `/api/workspaces/{wid}` 下，`user` 由 API 鉴权注入；权限在 use case 内检查（viewer/editor）。成功统一返回 200；错误沿用既有 `_error` 映射（400/403/404/409/502 等）。实现见 [`interfaces/api.py`](../../src/onto_platform/interfaces/api.py)，契约测试见 `tests/test_architecture_api.py`。
+> 路径均挂载在 `/api/workspaces/{wid}` 下，`user` 由 API 鉴权注入；权限在 use case 内检查（viewer/editor）。成功统一返回 200；错误沿用既有 `_error` 映射（400/403/404/409/502 等）。实现见 [`interfaces/api.py`](../../src/onto_platform/interfaces/api.py)，契约测试见 `tests/test_architecture_api.py` 与 `tests/test_p2_*.py`。
 
 | # | Method | Path | 作用 | 权限 |
 |---|---|---|---|---|
@@ -321,8 +420,44 @@ P1 收尾复核：上表判据全部通过（`grep` 证据与命令见 [`p1-impl
 | 12 | GET | `/applications/{aid}/spec` | 返回 `{spec, diagnostics, valid}` | viewer |
 | 13 | POST | `/applications/{aid}/interactions` | 在 draft 应用上追加 InteractionSpec（能力须已发布） | editor |
 | 14 | DELETE | `/applications/{aid}/interactions/{iid}` | 从 draft 应用移除 interaction | editor |
+| 15 | POST | `/rules/simulate` | 规则级 what-if：`{ref, changes, include_drafts?}`，返回 `before/after/delta` | viewer |
+| 16 | GET | `/smart-ui/eval?baseline=` | 生成评分卡聚合；带 baseline 时返回 delta | viewer |
+| 17 | GET | `/smart-ui/sbom` | 插件 SBOM（manifest 摘要 + 进程内边界声明） | viewer |
+| 18 | GET | `/security/webhooks/deliveries?webhook=&status=&limit=` | 列出 per-(event,webhook) 投递账本 | security.manage |
+| 19 | GET | `/security/webhooks/dead-letters?limit=` | 列出 dead delivery | security.manage |
+| 20 | POST | `/security/webhooks/deliveries/{id}/replay` | dead/failed → pending，重开事件标记 | security.manage |
+| 21 | GET | `/event-handlers` | 列出持久 handler（secret 脱敏） | security.manage |
+| 22 | GET | `/event-handlers/{key}` | 读取单个持久 handler | security.manage |
+| 23 | POST | `/event-handlers` | 注册/更新 handler（handler_key/event_types/kind/endpoint/secret…） | security.manage |
+| 24 | POST | `/event-handlers/{key}/heartbeat` | 刷新 worker 存活时间 | security.manage |
+| 25 | POST | `/event-handlers/{key}/pause` | 暂停 handler（不参与 resolve） | security.manage |
+| 26 | POST | `/event-handlers/{key}/activate` | 恢复 handler | security.manage |
+| 27 | POST | `/plugins/sandbox/run` | 验签后在子进程执行外部插件（返回 SandboxResult） | editor |
+| 28 | GET | `/eval-sets` | 列出生成分评测集 | viewer |
+| 29 | POST | `/eval-sets` | 创建/同名更新评测集（cases 1–100） | editor |
+| 30 | GET | `/eval-sets/{id}` | 读取评测集 | viewer |
+| 31 | POST | `/eval-sets/{id}/replay` | 只读回放并返回加权评分/passRate/grade | viewer |
+| 32 | DELETE | `/eval-sets/{id}` | 删除评测集 | editor |
+| 33 | GET | `/event-schemas?event_type=` | 列出 payload schema 版本 | viewer |
+| 34 | GET | `/event-schemas/{event_type}?version=` | 读取指定/最高版本 | viewer |
+| 35 | POST | `/event-schemas` | 注册不可变 schema 版本（含兼容性检查） | editor |
+| 36 | POST | `/event-schemas/compatibility` | 干跑兼容性检查（不写库） | viewer |
+| 37 | GET | `/event-bridges` | 列出事件桥 | security.manage |
+| 38 | POST | `/event-bridges` | 创建事件桥 + 内部 webhook | security.manage |
+| 39 | GET | `/event-bridges/{id}` | 读取事件桥 | security.manage |
+| 40 | POST | `/event-bridges/{id}` | 更新 url/event_types/field_map/active 等 | security.manage |
+| 41 | POST | `/event-bridges/{id}/pause`、`/activate`、`/dispatch` | 停用/启用/触发投递（复用 webhook 账本） | security.manage |
+| 42 | DELETE | `/event-bridges/{id}` | 停用桥与内部 webhook（保留账本） | security.manage |
+| 43 | GET | `/twin/snapshot?ref=&depth=&direction=&max_nodes=` | 调用时刻实时状态 + 关系子图 + stateHash | viewer |
+| 44 | GET | `/twin/policies` | 列出传播策略 | viewer |
+| 45 | POST | `/twin/policies` | 创建/同名更新 copy/scale/boolean/delta 策略 | editor |
+| 46 | DELETE | `/twin/policies/{id}` | 删除传播策略 | editor |
+| 47 | POST | `/twin/simulate` | 反事实：changes + 关系传播 + 规则 delta（不写 kernel） | viewer |
+| 48 | POST | `/twin/scenarios` | 1–20 方案比较并按违规/改动排序 | viewer |
+| 49 | POST | `/rules/evaluate`（扩展） | 新增可选 `index`，返回 `index_stats` | viewer |
+| 50 | POST | `/rules`（扩展） | 新增可选 `kind/aggregate` | editor |
 
-路由消歧：`/rules/evaluate` 是字面路由，优先于 `/rules/{rid}/publish`；`event-contracts/{name}/publish` 支持带点号的事件名（如 `traffic.vehicle_ping`）；`events/emit` 与 `event-subscriptions` 分属“事件发布”和“订阅管理”两类资源，互不捕获。
+路由消歧：`/rules/evaluate`、`/rules/simulate` 是字面路由，优先于 `/rules/{rid}/publish`；`event-contracts/{name}/publish` 支持带点号的事件名（如 `traffic.vehicle_ping`）；`events/emit` 与 `event-subscriptions` 分属“事件发布”和“订阅管理”两类资源，互不捕获；`/security/webhooks/deliveries` 与 `/security/webhooks/{id}` 按 `deliveries` 字面优先，`/{id}/replay` 不被 `/{id}/delete` 捕获；P2.3–P2.6 路由按 `/twin`、`/event-schemas`、`/event-bridges`、`/eval-sets`、`/plugins` 前缀委派，`/event-schemas/compatibility` 为字面路由先于 `/event-schemas/{event_type}` 判定，`/twin/policies` 与 `/twin/snapshot|simulate|scenarios` 同级不冲突。
 
 ---
 
@@ -338,6 +473,12 @@ P1 收尾复核：上表判据全部通过（`grep` 证据与命令见 [`p1-impl
 | 租户级数据脱敏 / 密钥托管 / Schema 演进迁移 | 生产化范围（治理面），P1 只保持 `workspace_id`/`TenantContext` 边界 | 多租户生产部署前 | P2 |
 | Digital Twin 仿真（实时状态 + 仿真 + 反事实） | 现实现是空间场景渲染；命名降级为 Spatial/3D Scene | 有遥测接入与仿真模型时 | 未排期 |
 | 完整规则语言 / 推理 / 外部表达式 | 业务需要“可判定约束”，非通用表达式；P1 只做声明式 AST | 高频规则稳定后按需评估 | 未排期 |
+
+> P2 首轮（2026-11-09）已在低风险范围内落地：发布/克隆校验、规则分页与嵌套字段、租户/仓储越权回归、业务事件 webhook、事件认领租约、生成评分卡聚合、插件 SBOM、规则级 what-if。
+>
+> P2.2（2026-11-09）进一步落地：L1 租户仓储硬边界、webhook per-(event,webhook) 投递账本（配额/重试/死信/重放）、持久 `event_handler` 注册表与 per-key `event_delivery`、`PublishApplication` interactions 校验、`CloneApplication` 深拷贝 `ui_artifact`，并接入 §4 的 9 个 REST 路由。
+>
+> P2.3–P2.6 + Digital Twin（2026-11-09）已落地：L2 子进程沙箱（网络隔离仍未强制）、可回放生成评测集与加权评分、规则内存字段索引与跨对象/聚合规则、事件 Schema Registry 与事件桥（复用 webhook 账本）、只读 Digital Twin 快照/传播/反事实仿真，并接入 §4 的 24 个新 REST 路由与 2 个扩展。仍未做（部署层）：网络/容器级沙箱、进程级租户隔离、外部 broker/独立 Registry、持久规则索引、流式 Twin 遥测、bridge `field_map` 的 transport 出站接线；对应边界见 [`p1-implementation-status.md`](p1-implementation-status.md) §6.4。
 
 ---
 
@@ -370,6 +511,12 @@ P1 收尾复核：上表判据全部通过（`grep` 证据与命令见 [`p1-impl
 | `PolicyDecision` | `PolicyEvaluator.evaluate` + obligations 用例 | `tests/test_security_*` |
 | `ComponentManifest` | manifest 校验 + plugin lock 漂移检测 | `tests/test_smart_ui_plugins.py`、`test_smart_ui_studio.py` |
 | `AdapterManifest` | `adapter_contract_problems` / `requires_problems` | `tests/test_semantic_spi.py`、`test_semantic_registry.py` |
+| P2.3 `SandboxResult` | `run_python_plugin` 参数/上限校验 + `isolation/resource_limits` 审计 | `tests/test_p2_plugin_sandbox.py`（15） |
+| P2.4 `GenerationEvalSet/Replay` | `_normalize_cases` + replay 逐 case checks + `_score` | `tests/test_p2_eval_set.py`（11） |
+| P2.5 `RuleSpec.aggregate` / `RuleFieldIndex` | `validate_aggregate` / `validate_rule_definition` / `RuleFieldIndex.build` | `tests/test_p2_rule_index.py`（18）、`test_p2_rule_aggregate.py`（51） |
+| P2.6 `EventSchema` / `EventBridge` | `SchemaRegistry.register/compatibility` / `EventBridgeService.create/transform` | `tests/test_p2_event_schema_registry.py`（18）、`test_p2_event_bridge.py`（20） |
+| Digital Twin `TwinPolicy/TwinSnapshot/TwinSimulation` | `_validate_depth/direction/policy/changes` + `simulate` 副本语义 | `tests/test_p2_digital_twin.py`（45） |
+| P2 REST 接线 | `_get_p2/_post_p2/_delete_p2` 路由与 `_require_service` 守卫 | `tests/test_p2_advanced_api.py`（5） |
 
 ### 6.4 架构判据（可 grep 的检查）
 

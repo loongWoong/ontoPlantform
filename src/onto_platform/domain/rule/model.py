@@ -35,8 +35,27 @@ import copy
 from dataclasses import dataclass, field
 from dataclasses import field as dc_field
 
-#: P1 supports a single rule kind; a general rule language is a later step.
-RULE_KINDS: tuple[str, ...] = ("constraint",)
+#: Rule kinds: a plain single-object constraint, or a cross-object aggregate.
+RULE_KINDS: tuple[str, ...] = ("constraint", "aggregate")
+
+#: Aggregation metrics.  ``count``/``any``/``all`` do not need ``field``;
+#: ``sum``/``avg``/``min``/``max`` reduce a numeric child property.
+METRICS: tuple[str, ...] = ("count", "sum", "avg", "min", "max", "any", "all")
+
+#: Keys allowed in ``RuleSpec.aggregate`` (closed schema - no user code).
+AGGREGATE_KEYS: tuple[str, ...] = (
+    "relation",
+    "object_type",
+    "where",
+    "metric",
+    "field",
+    "op",
+    "value",
+)
+
+_NUMERIC_METRICS = frozenset({"count", "sum", "avg", "min", "max"})
+_FIELD_METRICS = frozenset({"sum", "avg", "min", "max"})
+_BOOLEAN_METRICS = frozenset({"any", "all"})
 
 #: Only an ``error`` violation fails an evaluation; warning/info are reported.
 SEVERITIES: tuple[str, ...] = ("error", "warning", "info")
@@ -127,9 +146,13 @@ class RuleSpec:
     version: int = 1
     created_at: str = ""
     updated_at: str = ""
+    #: Only used when ``kind == "aggregate"``; closed dict schema documented
+    #: by :func:`validate_aggregate`.  ``None`` on plain constraints keeps the
+    #: serialized row byte-compatible with pre-P2.5 storage.
+    aggregate: dict | None = None
 
     def to_dict(self) -> dict:
-        return {
+        data = {
             "id": self.id,
             "workspace_id": self.workspace_id,
             "name": self.name,
@@ -147,6 +170,11 @@ class RuleSpec:
             "created_at": self.created_at,
             "updated_at": self.updated_at,
         }
+        # Old constraint rows must round-trip with exactly their historical
+        # key set; only an aggregate definition adds the new key.
+        if self.aggregate is not None:
+            data["aggregate"] = copy.deepcopy(self.aggregate)
+        return data
 
     @classmethod
     def from_dict(cls, data: dict) -> "RuleSpec":
@@ -158,6 +186,7 @@ class RuleSpec:
         except (TypeError, ValueError):
             # keep the damaged value so validate_rule_definition can report it
             version = raw_version
+        raw_aggregate = data.get("aggregate")
         return cls(
             id=str(data.get("id") or ""),
             workspace_id=str(data.get("workspace_id") or ""),
@@ -176,6 +205,8 @@ class RuleSpec:
             version=version,
             created_at=str(data.get("created_at") or ""),
             updated_at=str(data.get("updated_at") or ""),
+            aggregate=(copy.deepcopy(raw_aggregate)
+                       if raw_aggregate is not None else None),
         )
 
 
@@ -310,11 +341,17 @@ def _validate_node(
         problems.append(f"{where}.field must be a non-empty property name")
     else:
         field_name = field_name.strip()
-        if (properties is not None and field_name not in SPECIAL_FIELDS
-                and field_name not in properties):
-            problems.append(
-                f"{where}.field {field_name!r} is not a property defined in "
-                "the current ontology")
+        if field_name not in SPECIAL_FIELDS:
+            segments = field_name.split(".")
+            if any(not segment for segment in segments):
+                problems.append(
+                    f"{where}.field {field_name!r} must be a property name or "
+                    "dotted path without empty segments")
+            elif (properties is not None
+                  and segments[0] not in properties):
+                problems.append(
+                    f"{where}.field {field_name!r} is not a property defined in "
+                    "the current ontology")
 
     op = node.get("op")
     if not isinstance(op, str) or op not in OPERATORS:
@@ -375,6 +412,122 @@ def validate_condition(
     return problems
 
 
+def _validate_aggregate_value(metric: str, op: str, value: object,
+                              where: str, problems: list[str]) -> None:
+    """Op-specific checks for the comparison value of an aggregate metric."""
+    if metric in _NUMERIC_METRICS:
+        if op in _LIST_OPERATORS:
+            if not isinstance(value, list):
+                problems.append(f"{where}.value must be a list for op {op!r}")
+            elif any(not _is_number(item) for item in value):
+                problems.append(
+                    f"{where}.value must be a list of numbers for metric "
+                    f"{metric!r} and op {op!r}")
+        elif op in _STRING_OPERATORS or op in _CONTAINS_OPERATORS:
+            problems.append(
+                f"{where}.op {op!r} cannot compare the numeric metric "
+                f"{metric!r}")
+        elif not _is_number(value):
+            problems.append(
+                f"{where}.value must be a number for metric {metric!r} and "
+                f"op {op!r}, got {value!r}")
+        return
+    if metric in _BOOLEAN_METRICS:
+        if op in _LIST_OPERATORS:
+            if not isinstance(value, list):
+                problems.append(f"{where}.value must be a list for op {op!r}")
+            elif any(not isinstance(item, bool) for item in value):
+                problems.append(
+                    f"{where}.value must be a list of booleans for metric "
+                    f"{metric!r} and op {op!r}")
+        elif op in ("eq", "ne"):
+            if not isinstance(value, bool):
+                problems.append(
+                    f"{where}.value must be a boolean for metric {metric!r} "
+                    f"and op {op!r}, got {value!r}")
+        else:
+            problems.append(
+                f"{where}.op {op!r} cannot compare the boolean metric "
+                f"{metric!r}")
+
+
+def validate_aggregate(aggregate: object, *,
+                       where: str = "aggregate") -> list[str]:
+    """Structural validation of a ``RuleSpec.aggregate`` definition.
+
+    The schema is closed: ``relation``/``object_type`` are non-empty names, the
+    metric and operator come from fixed sets, and the comparison ``value`` is
+    type-checked against the metric.  Child property existence cannot be
+    checked here (only the parent object spec is available at definition
+    time), so ``field`` is checked for shape only.
+    """
+    problems: list[str] = []
+    if not isinstance(aggregate, dict):
+        return [f"{where} must be an object"]
+    if not aggregate:
+        return [f"{where} must not be empty"]
+
+    unknown = sorted(set(aggregate) - set(AGGREGATE_KEYS))
+    if unknown:
+        problems.append(f"{where} has unknown fields {unknown}")
+
+    relation = aggregate.get("relation")
+    if not isinstance(relation, str) or not relation.strip():
+        problems.append(f"{where}.relation must be a non-empty string")
+    object_type = aggregate.get("object_type")
+    if not isinstance(object_type, str) or not object_type.strip():
+        problems.append(f"{where}.object_type must be a non-empty string")
+
+    metric = aggregate.get("metric")
+    if not isinstance(metric, str) or metric not in METRICS:
+        problems.append(
+            f"{where}.metric {metric!r} not in {list(METRICS)}")
+        metric = ""
+    op = aggregate.get("op")
+    if not isinstance(op, str) or op not in OPERATORS:
+        problems.append(
+            f"{where}.op {op!r} is not supported; expected one of "
+            f"{list(OPERATORS)}")
+        return problems
+
+    field_name = aggregate.get("field")
+    if metric in _FIELD_METRICS:
+        if not isinstance(field_name, str) or not field_name.strip():
+            problems.append(
+                f"{where}.field is required and must be a non-empty property "
+                f"name for metric {metric!r}")
+        else:
+            segments = field_name.strip().split(".")
+            if any(not segment for segment in segments):
+                problems.append(
+                    f"{where}.field {field_name!r} must be a property name or "
+                    "dotted path without empty segments")
+    elif field_name is not None and (
+            not isinstance(field_name, str) or not field_name.strip()):
+        problems.append(
+            f"{where}.field must be a non-empty property name when provided")
+
+    raw_where = aggregate.get("where")
+    if raw_where is not None:
+        problems.extend(
+            validate_condition(raw_where, properties=None,
+                               where=f"{where}.where"))
+
+    if op in _NULL_OPERATORS:
+        if "value" in aggregate and aggregate["value"] is not None:
+            problems.append(f"{where}.{op} does not take a value")
+        return problems
+
+    if "value" not in aggregate:
+        problems.append(f"{where}.op {op!r} requires a 'value'")
+        return problems
+
+    if metric:
+        _validate_aggregate_value(metric, op, aggregate["value"], where,
+                                  problems)
+    return problems
+
+
 def validate_rule_definition(rule: RuleSpec, object_spec: object | None) -> list[str]:
     """Validate one rule against the object type it targets.
 
@@ -432,9 +585,14 @@ def validate_rule_definition(rule: RuleSpec, object_spec: object | None) -> list
     else:
         properties = _property_names(object_spec)
 
-    problems.extend(
-        validate_condition(rule.condition, properties=properties,
-                          where="condition"))
+    if rule.kind == "aggregate":
+        # An aggregate rule's own condition is ignored by contract: the
+        # cross-object predicate lives in ``aggregate.where``.
+        problems.extend(validate_aggregate(rule.aggregate))
+    else:
+        problems.extend(
+            validate_condition(rule.condition, properties=properties,
+                              where="condition"))
 
     when = rule.when
     if when:
@@ -447,8 +605,10 @@ def validate_rule_definition(rule: RuleSpec, object_spec: object | None) -> list
 
 
 __all__ = [
+    "AGGREGATE_KEYS",
     "LOGICAL_KEYS",
     "MAX_CONDITION_DEPTH",
+    "METRICS",
     "MISSING",
     "OPERATORS",
     "RULE_KINDS",
@@ -458,6 +618,7 @@ __all__ = [
     "RuleEvaluation",
     "RuleSpec",
     "RuleViolation",
+    "validate_aggregate",
     "validate_condition",
     "validate_rule_definition",
 ]

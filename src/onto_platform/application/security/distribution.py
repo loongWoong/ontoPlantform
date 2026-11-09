@@ -33,16 +33,33 @@ import hashlib
 import hmac
 import inspect
 import io
+import ipaddress
 import json
+import os
 from copy import deepcopy
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Iterable, Mapping
 from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
 from ...domain.security.model import Resource
-from ...errors import AccessDeniedError, NotFoundError, ValidationError
+from ...errors import (
+    AccessDeniedError,
+    ConcurrencyConflictError,
+    NotFoundError,
+    ValidationError,
+)
 from .masking import MASKERS, apply_field_masks, validate_mask_spec
+from .webhook_delivery import (
+    DEFAULT_BACKOFF_BASE_SECONDS,
+    DEFAULT_LEASE_SECONDS,
+    DEFAULT_MAX_ATTEMPTS,
+    DEFAULT_RATE_LIMIT_PER_MINUTE,
+    WEBHOOK_DELIVERY_KIND,
+    WebhookDeliveryLedger,
+    iso,
+    parse_ts,
+)
 
 WEBHOOK_KIND = "webhook"
 DEFAULT_WEBHOOK_TIMEOUT = 5.0
@@ -404,6 +421,40 @@ def _status_code(result: Any) -> int:
         return 200
 
 
+#: Private/loopback targets are rejected by default: a webhook URL is
+#: tenant-supplied outbound traffic and must not become an SSRF pivot.  Tests
+#: and controlled deployments can opt in with ``ONTO_WEBHOOK_ALLOW_PRIVATE=1``.
+_PRIVATE_HOST_ENV = "ONTO_WEBHOOK_ALLOW_PRIVATE"
+
+
+def _allow_private_webhook_hosts() -> bool:
+    raw = os.environ.get(_PRIVATE_HOST_ENV, "")
+    return str(raw).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _reject_private_host(host: str) -> None:
+    host = host.strip().lower().rstrip(".")
+    if not host:
+        raise ValidationError("webhook url must include a host")
+    if host in {"localhost", "localhost.localdomain"} \
+            or host.endswith(".localhost"):
+        raise ValidationError(
+            "webhook url must not target localhost "
+            f"(set {_PRIVATE_HOST_ENV}=1 to allow)")
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        # A DNS name is not resolved here: resolving at validation time would
+        # add network I/O and DNS-rebinding risk is a deployment concern.
+        return
+    if address.is_loopback or address.is_private or address.is_link_local \
+            or address.is_reserved or address.is_unspecified \
+            or address.is_multicast:
+        raise ValidationError(
+            f"webhook url must not target a private address {host!r} "
+            f"(set {_PRIVATE_HOST_ENV}=1 to allow)")
+
+
 def _validate_url(url: Any) -> str:
     text = str(url or "").strip()
     if not text:
@@ -412,10 +463,16 @@ def _validate_url(url: Any) -> str:
     if parts.scheme not in ("http", "https") or not parts.netloc:
         raise ValidationError(
             f"webhook url must be an absolute http(s) URL, got {text!r}")
+    if parts.username is not None or parts.password is not None:
+        raise ValidationError("webhook url must not contain userinfo")
+    host = parts.hostname or ""
+    if not _allow_private_webhook_hosts():
+        _reject_private_host(host)
     return text
 
 
-def _validate_event_types(event_types: Any) -> list[str]:
+def _validate_event_types(event_types: Any, ctx: Any = None,
+                          workspace_id: str | None = None) -> list[str]:
     # Imported lazily: ``events`` imports ``common``, which imports the security
     # package; a module-level import here would be circular.
     from ..events import EVENT_CATALOG
@@ -429,12 +486,34 @@ def _validate_event_types(event_types: Any) -> list[str]:
             raise ValidationError("event_types entries must be non-empty strings")
         name = event_type.strip()
         if name not in EVENT_CATALOG:
-            raise ValidationError(f"unknown event type: {name!r}")
+            # P1 business events are declared per workspace; a webhook may
+            # subscribe to one only after its contract is published.
+            contract = None
+            if ctx is not None and workspace_id:
+                contract = ctx.repo.get("event_contract", workspace_id, name)
+            if contract is None:
+                raise ValidationError(f"unknown event type: {name!r}")
+            if contract.get("lifecycle") != "published":
+                raise ValidationError(
+                    f"event contract {name!r} is not published")
         if name not in normalized:
             normalized.append(name)
     if not normalized:
         raise ValidationError("event_types must not be empty")
     return normalized
+
+
+def _positive_int(value: Any, name: str, default: int) -> int:
+    """Validate an optional positive-integer webhook setting."""
+    if value is None:
+        return int(default)
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValidationError(f"{name} must be an integer") from exc
+    if parsed < 1:
+        raise ValidationError(f"{name} must be at least 1")
+    return parsed
 
 
 def _recursive_mask(value: Any, specs: Mapping[str, dict]) -> Any:
@@ -460,7 +539,10 @@ class WebhookService:
 
     def __init__(self, ctx: Any, security: Any = None, dispatcher: Any = None,
                  *, transport: Transport | None = None,
-                 timeout: float = DEFAULT_WEBHOOK_TIMEOUT) -> None:
+                 timeout: float = DEFAULT_WEBHOOK_TIMEOUT,
+                 lease_seconds: float = DEFAULT_LEASE_SECONDS,
+                 backoff_base_seconds: float = DEFAULT_BACKOFF_BASE_SECONDS
+                 ) -> None:
         self.ctx = ctx
         self.security = security
         #: Kept for composition compatibility; the service does not require a
@@ -470,6 +552,11 @@ class WebhookService:
         self.transport: Transport = transport or _urllib_transport
         self.timeout = float(timeout)
         self._clock = _clock_of(ctx)
+        self.lease_seconds = max(1.0, float(lease_seconds))
+        self.backoff_base_seconds = max(0.0, float(backoff_base_seconds))
+        #: Unique per worker: identifies the holder of a delivery lease.
+        self.worker_id = f"whd_worker_{_new_id(ctx, 'w')}"
+        self.ledger = WebhookDeliveryLedger(ctx, clock=self._clock)
 
     # ---- authorization / storage helpers ---------------------------------
 
@@ -532,14 +619,17 @@ class WebhookService:
         return deepcopy(dict(row))
 
     def create_webhook(self, workspace_id: str, actor: str, url: str,
-                       event_types: list[str], secret: str = "") -> dict:
+                       event_types: list[str], secret: str = "",
+                       *, rate_limit_per_minute: int | None = None,
+                       max_attempts: int | None = None) -> dict:
         self._require_manage(actor, workspace_id)
         now = self._clock()
         row = {
             "id": _new_id(self.ctx, "wh"),
             "workspace_id": workspace_id,
             "url": _validate_url(url),
-            "event_types": _validate_event_types(event_types),
+            "event_types": _validate_event_types(
+                event_types, self.ctx, workspace_id),
             "secret": str(secret or ""),
             "active": True,
             "created_by": actor,
@@ -548,6 +638,14 @@ class WebhookService:
             "last_delivery_at": None,
             "last_error": None,
             "delivery_count": 0,
+            "rate_limit_per_minute": _positive_int(
+                rate_limit_per_minute, "rate_limit_per_minute",
+                DEFAULT_RATE_LIMIT_PER_MINUTE),
+            "max_attempts": _positive_int(
+                max_attempts, "max_attempts", DEFAULT_MAX_ATTEMPTS),
+            # Fixed-window quota state (CAS-updated by the dispatcher).
+            "window_start": None,
+            "window_count": 0,
         }
         self.ctx.repo.put(WEBHOOK_KIND, workspace_id, row["id"], row)
         self._audit(actor, workspace_id, "webhook.created", row["id"],
@@ -558,7 +656,9 @@ class WebhookService:
                        *, url: str | None = None,
                        event_types: list[str] | None = None,
                        secret: str | None = None,
-                       active: bool | None = None) -> dict:
+                       active: bool | None = None,
+                       rate_limit_per_minute: int | None = None,
+                       max_attempts: int | None = None) -> dict:
         self._require_manage(actor, workspace_id)
         row = self.ctx.repo.get(WEBHOOK_KIND, workspace_id, webhook_id)
         if row is None:
@@ -567,11 +667,19 @@ class WebhookService:
         if url is not None:
             row["url"] = _validate_url(url)
         if event_types is not None:
-            row["event_types"] = _validate_event_types(event_types)
+            row["event_types"] = _validate_event_types(
+                event_types, self.ctx, workspace_id)
         if secret is not None:
             row["secret"] = str(secret or "")
         if active is not None:
             row["active"] = bool(active)
+        if rate_limit_per_minute is not None:
+            row["rate_limit_per_minute"] = _positive_int(
+                rate_limit_per_minute, "rate_limit_per_minute",
+                DEFAULT_RATE_LIMIT_PER_MINUTE)
+        if max_attempts is not None:
+            row["max_attempts"] = _positive_int(
+                max_attempts, "max_attempts", DEFAULT_MAX_ATTEMPTS)
         row["updated_at"] = self._clock()
         self.ctx.repo.put(WEBHOOK_KIND, workspace_id, webhook_id, row)
         self._audit(actor, workspace_id, "webhook.updated", webhook_id,
@@ -648,17 +756,173 @@ class WebhookService:
         except Exception:  # pragma: no cover - fail closed on mask errors
             return minimal
 
+    # ---- delivery ledger --------------------------------------------------
+
+    def list_deliveries(self, workspace_id: str, webhook_id: str | None = None,
+                        status: str | None = None, limit: int = 100, *,
+                        actor: str | None = None) -> list[dict]:
+        """List per-(event, webhook) delivery rows, newest first.
+
+        ``actor`` is optional for internal workers; a caller-supplied actor
+        must hold ``security.manage`` (delivery rows are operational telemetry
+        for a tenant's outbound traffic).
+        """
+        if actor is not None:
+            self._require_manage(actor, workspace_id)
+        return self.ledger.list(workspace_id, webhook_id=webhook_id,
+                                status=status, limit=limit)
+
+    def dead_letters(self, workspace_id: str, *, actor: str | None = None,
+                     limit: int = 100) -> list[dict]:
+        """Return deliveries that exhausted ``max_attempts``."""
+        if actor is not None:
+            self._require_manage(actor, workspace_id)
+        return self.ledger.dead(workspace_id, limit=limit)
+
+    def replay_delivery(self, workspace_id: str, actor: str,
+                        delivery_id: str) -> dict:
+        """Reopen a ``dead``/``failed`` delivery and re-arm its event.
+
+        A terminal ``dead`` delivery counts as settled for the event marker, so
+        replaying also clears ``webhook_delivered_at``: the next dispatch pass
+        may attempt the event again.  The attempt counter restarts at zero.
+        """
+        self._require_manage(actor, workspace_id)
+        row = self.ledger.get(workspace_id, delivery_id)
+        if row is None:
+            raise NotFoundError(
+                f"webhook delivery not found: {delivery_id!r}")
+        if row.get("status") not in ("dead", "failed"):
+            raise ValidationError(
+                "only dead or failed deliveries can be replayed "
+                f"(current status {row.get('status')!r})")
+        replayed = self._reopen_delivery(workspace_id, delivery_id)
+        self._reopen_event(workspace_id, replayed)
+        self._audit(actor, workspace_id, "webhook.delivery_replayed",
+                    delivery_id,
+                    {"webhook_id": replayed.get("webhook_id"),
+                     "event_id": replayed.get("event_id"),
+                     "attempts": row.get("attempts")})
+        return replayed
+
+    def _reopen_delivery(self, workspace_id: str, delivery_id: str) -> dict:
+        now = self._clock()
+        fallback: dict = {}
+        for _ in range(8):
+            got = self.ctx.repo.get_versioned(
+                WEBHOOK_DELIVERY_KIND, workspace_id, delivery_id)
+            if got is None:
+                raise NotFoundError(
+                    f"webhook delivery not found: {delivery_id!r}")
+            row, version = got
+            row = dict(row)
+            fallback = deepcopy(row)
+            if row.get("status") not in ("dead", "failed"):
+                return fallback
+            updated = deepcopy(row)
+            updated.update({
+                "status": "pending",
+                "attempts": 0,
+                "next_attempt_at": None,
+                "lease_expires_at": None,
+                "lease_owner": None,
+                "last_error": None,
+                "response_excerpt": None,
+                "updated_at": now,
+            })
+            try:
+                self.ctx.repo.put_if_version(
+                    WEBHOOK_DELIVERY_KIND, workspace_id, delivery_id,
+                    updated, version)
+                return updated
+            except ConcurrencyConflictError:
+                continue
+        return fallback
+
+    def _reopen_event(self, workspace_id: str, delivery: Mapping[str, Any]
+                      ) -> None:
+        event_doc_id = str(delivery.get("event_doc_id")
+                           or delivery.get("event_id") or "")
+        if not event_doc_id:
+            return
+        current = self.ctx.repo.get("event", workspace_id, event_doc_id)
+        if current is None:
+            return
+        row = deepcopy(dict(current))
+        row.pop("webhook_delivered_at", None)
+        self.ctx.repo.put("event", workspace_id, event_doc_id, row)
+
+    def _mark_event_delivered(self, workspace_id: str,
+                              event: Mapping[str, Any]) -> None:
+        event_doc_id = str(event.get("id") or event.get("event_id") or "")
+        if not event_doc_id:
+            return
+        current = self.ctx.repo.get("event", workspace_id, event_doc_id)
+        row = (deepcopy(dict(current)) if current is not None
+               else deepcopy(dict(event)))
+        if row.get("webhook_delivered_at"):
+            return
+        row["webhook_delivered_at"] = self._clock()
+        self.ctx.repo.put("event", workspace_id, event_doc_id, row)
+
+    def _reserve_quota(self, workspace_id: str, hook: Mapping[str, Any],
+                       now: str) -> tuple[bool, dict | None]:
+        """Reserve one fixed-window slot for ``hook`` via CAS.
+
+        Returns ``(allowed, latest_row)``.  ``False`` means the per-minute
+        quota is exhausted (or the hook was deleted mid-flight); the caller
+        must not call the transport and leaves the delivery pending.
+        """
+        hook_id = str(hook.get("id") or "")
+        now_dt = parse_ts(now) or datetime.now(timezone.utc)
+        latest: dict | None = None
+        for _ in range(8):
+            got = self.ctx.repo.get_versioned(
+                WEBHOOK_KIND, workspace_id, hook_id)
+            if got is None:
+                return False, None
+            row, version = got
+            row = dict(row)
+            latest = deepcopy(row)
+            limit = _positive_int(row.get("rate_limit_per_minute"),
+                                  "rate_limit_per_minute",
+                                  DEFAULT_RATE_LIMIT_PER_MINUTE)
+            window_start = parse_ts(row.get("window_start"))
+            count = int(row.get("window_count") or 0)
+            if window_start is None or (now_dt - window_start) \
+                    >= timedelta(seconds=60):
+                window_start = now_dt
+                count = 0
+            if count >= limit:
+                return False, latest
+            updated = deepcopy(row)
+            updated["window_start"] = iso(window_start)
+            updated["window_count"] = count + 1
+            updated["updated_at"] = now
+            try:
+                self.ctx.repo.put_if_version(
+                    WEBHOOK_KIND, workspace_id, hook_id, updated, version)
+                return True, updated
+            except ConcurrencyConflictError:
+                continue
+        return False, latest
+
     # ---- delivery ---------------------------------------------------------
 
     def dispatch_webhooks(self, workspace_id: str | None = None,
                           limit: int = 50, *, actor: str | None = None) -> dict:
         """POST undispatched events to matching active webhooks.
 
-        Return counts are per (event, webhook) delivery, except ``skipped``
-        which counts events with no matching active subscription.  Webhook
-        statistics are written back; the outbox fields are left untouched and
-        only an independent ``webhook_delivered_at`` marker is added once every
-        matching webhook accepted the event.
+        Every ``(event, webhook)`` pair owns a ``webhook_delivery`` row.  The
+        dispatcher claims that row with a lease (CAS, so multiple workers can
+        share one repository without double-delivering), applies the per-hook
+        fixed-window quota, then records the outcome: ``delivered``, ``failed``
+        with exponential backoff, or ``dead`` after ``max_attempts``.
+        ``skipped`` keeps its old meaning (events with no matching active
+        subscription); ``throttled``/``dead_lettered`` are added only when
+        non-zero so legacy exact-shape callers keep working.  The event's
+        ``webhook_delivered_at`` marker is written only once every matching
+        delivery is terminal; the outbox fields stay untouched.
         """
         try:
             limit = int(limit)
@@ -672,7 +936,7 @@ class WebhookService:
         )
         pending = [row for row in events
                    if not row.get("webhook_delivered_at")]
-        delivered = failed = skipped = 0
+        delivered = failed = skipped = throttled = dead_lettered = 0
         errors: list[str] = []
         hooks_cache: dict[str, list[dict]] = {}
         attempted = 0
@@ -682,7 +946,8 @@ class WebhookService:
             # are only skipped remain pending for a later subscription.
             if attempted >= max(0, limit):
                 break
-            target_workspace = str(event.get("workspace_id") or workspace_id or "")
+            target_workspace = str(
+                event.get("workspace_id") or workspace_id or "")
             event_id = str(event.get("event_id") or event.get("id") or "")
             event_type = str(event.get("type") or "")
             hooks = hooks_cache.get(target_workspace)
@@ -699,40 +964,88 @@ class WebhookService:
                 continue
             attempted += 1
             delivery_actor = actor or str(event.get("actor") or "system")
-            masked_event = self.mask_event(target_workspace, delivery_actor,
-                                           event)
-            body = json.dumps(masked_event, ensure_ascii=False, sort_keys=True,
-                              default=str).encode("utf-8")
-            event_ok = True
+            body = None
+            all_terminal = True
             for hook in matching:
                 hook_id = str(hook.get("id") or "")
+                delivery = self.ledger.get_or_create(
+                    target_workspace, hook_id, event)
+                if delivery.get("status") in ("delivered", "dead"):
+                    continue
+                now = self._clock()
+                allowed, hook_row = self._reserve_quota(
+                    target_workspace, hook, now)
+                if not allowed:
+                    # Quota exhausted (or the hook vanished mid-flight): keep
+                    # the delivery pending and do not touch the transport.
+                    if hook_row is not None:
+                        throttled += 1
+                    all_terminal = False
+                    continue
+                claimed = self.ledger.claim(
+                    target_workspace, str(delivery["id"]), self.worker_id,
+                    self.lease_seconds)
+                if claimed is None:
+                    # Another worker holds a live lease, or the retry backoff
+                    # has not elapsed: leave the event pending.
+                    all_terminal = False
+                    continue
+                if body is None:
+                    masked_event = self.mask_event(
+                        target_workspace, delivery_actor, event)
+                    body = json.dumps(
+                        masked_event, ensure_ascii=False, sort_keys=True,
+                        default=str).encode("utf-8")
+                status: int | None = None
                 try:
-                    status = self._deliver(hook, event_type, event_id, body)
+                    status = self._deliver(
+                        hook_row or hook, event_type, event_id, body)
                     if status >= 400:
                         raise RuntimeError(f"HTTP {status}")
                 except Exception as exc:
                     failed += 1
-                    event_ok = False
                     message = str(exc) or type(exc).__name__
                     errors.append(f"{event_id}:{hook_id}: {message}")
+                    max_attempts = _positive_int(
+                        (hook_row or hook).get("max_attempts"),
+                        "max_attempts", DEFAULT_MAX_ATTEMPTS)
+                    updated = self.ledger.finish(
+                        target_workspace, str(delivery["id"]),
+                        delivered=False, status_code=status, error=message,
+                        max_attempts=max_attempts,
+                        backoff_base_seconds=self.backoff_base_seconds)
+                    if updated is not None \
+                            and updated.get("status") == "dead":
+                        dead_lettered += 1
+                    else:
+                        # Still retriable: the event owes this hook, so it
+                        # must not get the terminal marker yet.
+                        all_terminal = False
                     self._record_delivery(hook, target_workspace, ok=False,
                                           error=message, event_id=event_id,
                                           event_type=event_type,
                                           actor=delivery_actor)
                 else:
                     delivered += 1
+                    self.ledger.finish(
+                        target_workspace, str(delivery["id"]),
+                        delivered=True, status_code=status)
                     self._record_delivery(hook, target_workspace, ok=True,
                                           error="", event_id=event_id,
                                           event_type=event_type,
                                           actor=delivery_actor)
-            if event_ok:
+            if all_terminal:
                 # Independent marker: keep the transactional outbox contract
-                # (dispatched_at / attempts / next_attempt_at) intact.
-                event["webhook_delivered_at"] = self._clock()
-                self.ctx.repo.put("event", target_workspace,
-                                  str(event.get("id") or event_id), event)
-        return {"delivered": delivered, "failed": failed,
-                "skipped": skipped, "errors": errors}
+                # (dispatched_at / attempts / next_attempt_at) intact.  Only
+                # written after *every* matching delivery is terminal.
+                self._mark_event_delivered(target_workspace, event)
+        result = {"delivered": delivered, "failed": failed,
+                  "skipped": skipped, "errors": errors}
+        if throttled:
+            result["throttled"] = throttled
+        if dead_lettered:
+            result["dead_lettered"] = dead_lettered
+        return result
 
     def _deliver(self, hook: Mapping[str, Any], event_type: str,
                  event_id: str, body: bytes) -> int:
@@ -753,18 +1066,32 @@ class WebhookService:
                          ok: bool, error: str, event_id: str, event_type: str,
                          actor: str) -> None:
         hook_id = str(hook.get("id") or "")
-        current = self.ctx.repo.get(WEBHOOK_KIND, workspace_id, hook_id)
-        if current is None:  # deleted mid-flight: nothing to update
+        updated = False
+        # CAS so a concurrent quota reservation cannot be lost.
+        for _ in range(8):
+            got = self.ctx.repo.get_versioned(
+                WEBHOOK_KIND, workspace_id, hook_id)
+            if got is None:  # deleted mid-flight: nothing to update
+                return
+            current, version = got
+            current = deepcopy(dict(current))
+            now = self._clock()
+            if ok:
+                current["delivery_count"] = int(
+                    current.get("delivery_count") or 0) + 1
+                current["last_delivery_at"] = now
+                current["last_error"] = None
+            else:
+                current["last_error"] = error[:500]
+            try:
+                self.ctx.repo.put_if_version(
+                    WEBHOOK_KIND, workspace_id, hook_id, current, version)
+            except ConcurrencyConflictError:
+                continue
+            updated = True
+            break
+        if not updated:  # pragma: no cover - extreme contention
             return
-        current = deepcopy(dict(current))
-        now = self._clock()
-        if ok:
-            current["delivery_count"] = int(current.get("delivery_count") or 0) + 1
-            current["last_delivery_at"] = now
-            current["last_error"] = None
-        else:
-            current["last_error"] = error[:500]
-        self.ctx.repo.put(WEBHOOK_KIND, workspace_id, hook_id, current)
         self._audit(actor, workspace_id,
                     "webhook.delivered" if ok else "webhook.delivery_failed",
                     event_id,

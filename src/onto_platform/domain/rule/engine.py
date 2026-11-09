@@ -20,6 +20,7 @@ from .model import (
     RuleEvaluation,
     RuleSpec,
     RuleViolation,
+    validate_aggregate,
     validate_condition,
 )
 
@@ -41,7 +42,17 @@ def _field_value(obj: dict, field_name: str) -> object:
     properties = obj.get("properties")
     if not isinstance(properties, dict):
         return MISSING
-    return properties.get(field_name, MISSING)
+    if "." not in field_name:
+        return properties.get(field_name, MISSING)
+    # Dotted paths address nested JSON properties (``address.city``).  A
+    # missing segment, or a scalar encountered mid-path, is MISSING - never an
+    # exception - so sparse data keeps the documented missing-field semantics.
+    current: object = properties
+    for segment in field_name.split("."):
+        if not isinstance(current, dict) or segment not in current:
+            return MISSING
+        current = current[segment]
+    return current
 
 
 def _is_number(value: object) -> bool:
@@ -75,18 +86,14 @@ def _compare_numeric(op: str, actual: object, expected: object) -> bool:
     return actual <= expected
 
 
-def _evaluate_node(node: dict, obj: dict) -> bool:
-    """Evaluate one (already validated) AST node."""
-    if "all" in node:
-        return all(_evaluate_node(item, obj) for item in node["all"])
-    if "any" in node:
-        return any(_evaluate_node(item, obj) for item in node["any"])
-    if "not" in node:
-        return not _evaluate_node(node["not"], obj)
+def _apply_operator(op: str, actual: object, expected: object) -> bool:
+    """Apply one (already validated) leaf operator.
 
-    actual = _field_value(obj, node["field"])
-    op = node["op"]
-
+    ``MISSING`` follows the documented rule semantics: null checks understand
+    it, all other operators return False.  Aggregate evaluation never calls
+    this helper with ``MISSING`` (an empty reduction is reported as "no
+    violation" before comparison).
+    """
     if op == "is_null":
         return actual is MISSING or actual is None
     if op == "not_null":
@@ -96,7 +103,6 @@ def _evaluate_node(node: dict, obj: dict) -> bool:
         # does not fire for an object that does not carry the property.
         return False
 
-    expected = node.get("value")
     if op == "eq":
         return actual == expected
     if op == "ne":
@@ -122,7 +128,28 @@ def _evaluate_node(node: dict, obj: dict) -> bool:
     raise ValidationError(f"unsupported rule operator {op!r}")
 
 
+def _evaluate_node(node: dict, obj: dict) -> bool:
+    """Evaluate one (already validated) AST node."""
+    if "all" in node:
+        return all(_evaluate_node(item, obj) for item in node["all"])
+    if "any" in node:
+        return any(_evaluate_node(item, obj) for item in node["any"])
+    if "not" in node:
+        return not _evaluate_node(node["not"], obj)
+
+    return _apply_operator(node["op"], _field_value(obj, node["field"]),
+                           node.get("value"))
+
+
 def _raise_for_conditions(rule: RuleSpec) -> None:
+    if rule.kind == "aggregate":
+        problems = validate_aggregate(rule.aggregate)
+        if rule.when:
+            problems.extend(validate_condition(rule.when, where="when"))
+        if problems:
+            raise ValidationError(
+                "invalid aggregate rule: " + "; ".join(problems))
+        return
     problems = validate_condition(rule.condition, where="condition")
     if rule.when:
         problems.extend(validate_condition(rule.when, where="when"))
@@ -237,6 +264,132 @@ def evaluate_rule(rule: RuleSpec, obj: dict) -> RuleEvaluation:
     return _evaluate_rule_core(rule, obj)
 
 
+def _aggregate_spec(rule: RuleSpec) -> dict:
+    """Validated ``rule.aggregate`` or a clean :class:`ValidationError`."""
+    problems = validate_aggregate(rule.aggregate)
+    if problems:
+        raise ValidationError(
+            "invalid aggregate rule: " + "; ".join(problems))
+    return rule.aggregate or {}
+
+
+def _aggregate_reduction(metric: str, field_name: str,
+                         children: list[dict]) -> object:
+    """Reduce the (already ``where``-filtered) children for one metric."""
+    if metric == "count":
+        return len(children)
+    values = [_field_value(child, field_name) for child in children]
+    numbers = [value for value in values if _is_number(value)]
+    if metric == "sum":
+        return sum(numbers)
+    if not numbers:  # avg/min/max over an empty set are MISSING
+        return MISSING
+    if metric == "avg":
+        return sum(numbers) / len(numbers)
+    if metric == "min":
+        return min(numbers)
+    return max(numbers)
+
+
+def evaluate_aggregate_rule(
+    rule: RuleSpec,
+    obj: dict,
+    children: Iterable[dict],
+    *,
+    relation: str | None = None,
+) -> RuleEvaluation | None:
+    """Evaluate one cross-object aggregate rule for one parent object.
+
+    Returns ``None`` unless ``rule.kind == "aggregate"`` (constraint rules are
+    the caller's business).  ``children`` are the objects reached through the
+    rule's relation; the use-case layer resolves them via the gateway, while
+    this function stays pure.
+
+    Semantics (closed contract):
+
+    * ``count``/``sum``/``avg``/``min``/``max`` reduce the children matched by
+      ``where`` (or all children when ``where`` is absent); ``sum`` over an
+      empty set is ``0``, ``avg``/``min``/``max`` are ``MISSING`` and therefore
+      never fire.
+    * ``any``/``all`` are existential/universal checks of ``where`` over all
+      children: empty -> ``False``/``True`` respectively.
+    * The reduction is compared with ``value`` using the same 14 operators as
+      a leaf condition.  ``MISSING`` never fires (not even for ``ne``).
+    """
+    if rule.kind != "aggregate":
+        return None
+    _require_object(obj)
+    if not rule.enabled:
+        return RuleEvaluation(passed=True, evaluated_rules=0, violations=[],
+                              skipped=1)
+    if rule.when and not _evaluate_node(rule.when, obj):
+        return RuleEvaluation(passed=True, evaluated_rules=0, violations=[],
+                              skipped=1)
+
+    spec = _aggregate_spec(rule)
+    metric = spec["metric"]
+    op = spec["op"]
+    expected = spec.get("value")
+    label = f"aggregate.{relation or spec['relation']}"
+    children = [child for child in children if isinstance(child, dict)]
+    where = spec.get("where")
+
+    if metric in ("any", "all"):
+        matched = ([_evaluate_node(where, child) for child in children]
+                   if where is not None else [True] * len(children))
+        actual: object = any(matched) if metric == "any" else all(matched)
+    else:
+        selected = ([child for child in children
+                     if _evaluate_node(where, child)]
+                    if where is not None else children)
+        actual = _aggregate_reduction(
+            metric, str(spec.get("field") or ""), selected)
+
+    if actual is MISSING:
+        # Empty avg/min/max: the rule cannot assert anything about "unknown",
+        # so it does not fire (mirrors the missing-property semantics).
+        return RuleEvaluation(passed=True, evaluated_rules=1, violations=[],
+                              skipped=0)
+    if not _apply_operator(op, actual, expected):
+        return RuleEvaluation(passed=True, evaluated_rules=1, violations=[],
+                              skipped=0)
+
+    message = rule.message.strip() if isinstance(rule.message, str) else ""
+    if not message:
+        message = (f"{metric} of {label} is {actual!r}, expected {op} "
+                   f"{expected!r}")
+    object_type = (rule.object_type
+                   if isinstance(rule.object_type, str) and rule.object_type
+                   else str(obj.get("type") or ""))
+    detail = {
+        "priority": rule.priority,
+        "kind": "aggregate",
+        "aggregate": copy.deepcopy(spec),
+        "relation": relation or spec["relation"],
+        "metric": metric,
+        "op": op,
+        "expected": copy.deepcopy(expected),
+        "actual": copy.deepcopy(actual),
+        "children": len(children),
+    }
+    violation = RuleViolation(
+        rule_id=rule.id,
+        rule_name=rule.name,
+        object_type=object_type,
+        object_id=str(obj.get("id") or ""),
+        severity=rule.severity,
+        message=message,
+        field=label,
+        detail=detail,
+    )
+    return RuleEvaluation(
+        passed=rule.severity != "error",
+        evaluated_rules=1,
+        violations=[violation.to_dict()],
+        skipped=0,
+    )
+
+
 def evaluate_rules(rules: Iterable[RuleSpec], obj: dict) -> RuleEvaluation:
     """Evaluate rules in ``(priority, name, id)`` order against one object.
 
@@ -265,6 +418,7 @@ def evaluate_rules(rules: Iterable[RuleSpec], obj: dict) -> RuleEvaluation:
 
 __all__ = [
     "ensure_valid_condition",
+    "evaluate_aggregate_rule",
     "evaluate_condition",
     "evaluate_rule",
     "evaluate_rules",

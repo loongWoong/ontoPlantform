@@ -10,7 +10,7 @@
 >
 > 配套图：[`docs/analysis/ontology-driven-application-architecture.svg`](../analysis/ontology-driven-application-architecture.svg)（只表达现状成熟度，不作为优先级依据）
 >
-> 实施进展：见 §6（P1，2026-11-06 回填；全量测试 1033 passed）
+> 实施进展：见 §6（P1，2026-11-06；P2 首轮，2026-11-09；全量测试 1082 passed）
 
 ---
 
@@ -283,6 +283,21 @@ P1 在本 ADR 的 §2.3 边界与 §2.4 保留清单内完成：只新增契约�
 
 * 生产化：租户/工作空间隔离的进程级强制、外部 webhook 投递、插件沙箱/进程隔离/SBOM、AI 生成评估闭环（成本/延迟/质量）、Digital Twin 仿真、跨 worker durable handler（当前 `Dispatcher` 订阅为进程内）。
 * 上述各项保持 §4 非目标口径；技术取舍仍以 plan-v2 ADR-1…9 为准。
+
+### 6.5 P2 首轮进展（2026-11-09，不改变 §2.3 边界）
+
+| 能力 | 本轮落地 | 明确不做 |
+|---|---|---|
+| 应用发布/克隆 | 发布校验全部 interactions；clone 复制 `ui_artifact` 与 interactions | 历史数据回填 |
+| 租户/工作空间 | `GovernedRepository` 跨 workspace 拒绝 + 真实回归；webhook 接受已发布业务事件 | 进程/数据库级隔离 |
+| 事件多 worker | `EventLog.claim` CAS + 租约，scheduler/HTTP drain 使用稳定 worker id | handler 注册持久化、跨进程路由 |
+| 规则规模 | 稳定分页 + 嵌套属性点路径 | 条件字段索引、跨对象规则 |
+| 生成评估 | `/smart-ui/eval` 聚合（成功率/延迟/token/成本/浏览/基线 delta） | 可回放评测集与质量模型 |
+| 插件 SBOM | `/smart-ui/sbom` 确定性 manifest 摘要，声明进程内边界 | 沙箱/进程隔离 |
+| Digital Twin | 仅 `/rules/simulate` 单对象规则级 what-if | 实时状态/传播/完整仿真 |
+| 外部投递 | 业务事件 webhook 签名投递回归 | 事件桥/Schema Registry |
+
+测试：`python -m pytest -q` → **1082 passed**（2026-11-09，0 failed）。SBOM 是清单不是隔离证明，webhook 是投递通道不是事件桥；不得把本轮能力表述为生产级沙箱或完整 Digital Twin。
 
 ---
 
