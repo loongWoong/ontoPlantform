@@ -27,6 +27,9 @@ INDICATORS = (
     "controller_proposals_total",
     "controller_proposals_rejected",
     "schema_fingerprint_mismatches",
+    "ask_total",
+    "agent_runs_total",
+    "capability_invocations_total",
 )
 
 
@@ -83,6 +86,7 @@ class WorkspaceMetrics:
             "projections_total": len(ctx.repo.list("projection", workspace_id)),
             "changes_total": _last_change_seq(ctx, workspace_id),
             **_controller_counters(ctx, workspace_id),
+            **_usage(ctx, workspace_id),
         }
         return {
             "workspace_id": workspace_id,
@@ -190,6 +194,34 @@ def _controller_counters(ctx: ApplicationContext, workspace_id: str) -> dict:
         "controller_proposals_rejected": rejected,
         "schema_fingerprint_mismatches": mismatches,
     }
+
+
+def _usage(ctx: ApplicationContext, workspace_id: str) -> dict:
+    """Usage-driven adoption counters (audit-event sourced, all-time).
+
+    These answer "is anyone actually using this semantic world": how many
+    times a business question was asked, a goal-agent was run, and a
+    capability changed the world.  They complement the windowed SLO (which
+    measures how *well* the runtime behaves, not how *much* it is used).
+    """
+    try:
+        audits = ctx.audit.list(workspace_id)
+    except Exception:
+        audits = []
+    counters = {
+        "ask_total": 0,
+        "agent_runs_total": 0,
+        "capability_invocations_total": 0,
+    }
+    for entry in audits:
+        action = entry.get("action")
+        if action == "intelligence.ask":
+            counters["ask_total"] += 1
+        elif action == "intelligence.agent":
+            counters["agent_runs_total"] += 1
+        elif action == "capability.invoke":
+            counters["capability_invocations_total"] += 1
+    return counters
 
 
 def _data_quality(ctx: ApplicationContext, workspace_id: str) -> dict:

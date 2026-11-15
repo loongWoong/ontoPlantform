@@ -1567,6 +1567,15 @@ export interface WorkflowScope {
   out_of_scope: string[];
   actors: string[];
   decisions: string[];
+  metrics: WorkflowValueMetric[];
+}
+
+export interface WorkflowValueMetric {
+  name: string;
+  unit: string;
+  baseline: number | null;
+  target: number | null;
+  owner: string;
 }
 
 export interface WorkflowTarget {
@@ -1647,6 +1656,7 @@ export interface WorkflowCq {
   priority: WorkflowCqPriority;
   source: string;
   rationale: string;
+  owner: string;
   expected: WorkflowCqExpected;
   query: WorkflowCqQuery;
   model_refs: string[];
@@ -1720,6 +1730,7 @@ export interface WorkflowRunResult {
   question: string;
   priority: WorkflowCqPriority;
   type: string;
+  owner?: string;
   expected: WorkflowCqExpected;
   query: WorkflowCqQuery;
   engine?: string;
@@ -1790,6 +1801,7 @@ export interface WorkflowTraceRow {
   question: string;
   type: string;
   priority: WorkflowCqPriority;
+  owner?: string;
   model_refs: string[];
   sample_refs: string[];
   query: WorkflowCqQuery;
@@ -1836,6 +1848,38 @@ export interface WorkflowOverview {
   rounds: WorkflowRound[];
   active_round_id: string;
   round: WorkflowDetail | null;
+}
+
+export interface WorkflowResponsibility {
+  code: string;
+  question: string;
+  priority: WorkflowCqPriority;
+  owner: string;
+  status: WorkflowCqStatus | "open";
+  detail: string;
+}
+
+export interface WorkflowValueMetricView {
+  name: string;
+  unit: string;
+  owner: string;
+  baseline: number | null;
+  target: number | null;
+  actual: number | null;
+  attainment: number | null;
+  readings: number;
+  last_at: string | null;
+}
+
+export interface WorkflowOversight {
+  round_id: string;
+  round_name: string;
+  round_seq: number;
+  status: WorkflowRoundStatus;
+  steps: WorkflowStep[];
+  responsibility: WorkflowResponsibility[];
+  value_metrics: WorkflowValueMetricView[];
+  publish_check: WorkflowPublishCheck;
 }
 
 export interface WorkflowCheckResult {
@@ -2094,6 +2138,10 @@ export interface Api {
   workflowPublishCheck(wid: string, roundId: string): Promise<WorkflowPublishCheck>;
   workflowTraceMatrix(wid: string, roundId: string): Promise<{ round_id: string; rows: WorkflowTraceRow[] }>;
   workflowReport(wid: string, roundId: string): Promise<WorkflowReport>;
+  workflowOversight(wid: string, roundId: string): Promise<WorkflowOversight>;
+  recordWorkflowMetricReading(wid: string, roundId: string, body: {
+    metric: string; value: number; note?: string;
+  }): Promise<WorkflowRound>;
 
   members(wid: string): Promise<Member[]>;
   addMember(wid: string, member: string, role: string): Promise<Member>;
@@ -2428,6 +2476,8 @@ export const api: Api = {
   workflowPublishCheck: (wid, rid) => call(ws(wid, `/ontology/workflow/rounds/${encodeURIComponent(rid)}/publish-check`)),
   workflowTraceMatrix: (wid, rid) => call(ws(wid, `/ontology/workflow/rounds/${encodeURIComponent(rid)}/trace-matrix`)),
   workflowReport: (wid, rid) => call(ws(wid, `/ontology/workflow/rounds/${encodeURIComponent(rid)}/report`)),
+  workflowOversight: (wid, rid) => call(ws(wid, `/ontology/workflow/rounds/${encodeURIComponent(rid)}/oversight`)),
+  recordWorkflowMetricReading: (wid, rid, body) => post(ws(wid, `/ontology/workflow/rounds/${encodeURIComponent(rid)}/metrics/readings`), body),
 
   members: wid => call(ws(wid, "/members")),
   addMember: (wid, member, role) => post(ws(wid, "/members"), { member, role }),

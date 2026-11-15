@@ -1,0 +1,4 @@
+﻿code,question,priority,type,expected_kind,expected_value,expected_operator,expected_rows,expected_ordered,expected_note,query_kind,object_type,relation,direction,ref,filters,limit,model_refs,sample_refs,source,rationale,notes
+CQ-001,一辆车从入口到出口经过哪些门架,P0,competency,rows_contain,,,"[{""id"":""G001""}]",,,fixture,Gantry,,out,,,200,"Vehicle,Gantry",sample-001,收费规则文档 3.2 节,验证门架序列建模,
+CQ-002,收费站对象应至少有多少条,P1,validation,row_count,2,gte,,,,fixture,TollStation,,out,,,200,TollStation,sample-001,访谈,验证样例覆盖,
+CQ-003,拥堵判定口径是否被业务认可,P1,scoping,manual,,,,,业务负责人确认判定口径,fixture,,,,,,,TollStation,,业务访谈,人工判定,

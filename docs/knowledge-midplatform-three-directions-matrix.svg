@@ -1,0 +1,131 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 840" font-family="PingFang SC, Microsoft YaHei, Helvetica Neue, Arial, sans-serif">
+  <style>
+    .title { font-size:22px; font-weight:700; fill:#0f172a; }
+    .sub { font-size:13px; fill:#64748b; }
+    .hdr { font-size:15px; font-weight:700; fill:#ffffff; }
+    .hdrsub { font-size:11px; fill:rgba(255,255,255,0.9); }
+    .dim { font-size:14px; font-weight:600; fill:#334155; }
+    .cell { font-size:13px; fill:#1e293b; }
+    .cellmuted { font-size:12px; fill:#64748b; }
+    .foot { font-size:12.5px; fill:#64748b; }
+  </style>
+
+  <rect width="1240" height="840" fill="#ffffff"/>
+
+  <text x="24" y="38" class="title">三个方向的差异：读者 × 时点 × 生效方式</text>
+  <text x="24" y="62" class="sub">本体建模「知识中台」定位具象化的三种落法对比 · 三者互补，非三选一</text>
+
+  <!-- table top -->
+  <!-- header -->
+  <rect x="20" y="90" width="170" height="64" fill="#334155"/>
+  <rect x="190" y="90" width="348" height="64" fill="#2563eb"/>
+  <rect x="538" y="90" width="348" height="64" fill="#059669"/>
+  <rect x="886" y="90" width="334" height="64" fill="#d97706"/>
+
+  <text x="38" y="124" class="hdr">维度</text>
+  <text x="208" y="120" class="hdr">① 写进仓库文档</text>
+  <text x="208" y="141" class="hdrsub">共识底稿 · 常驻资产</text>
+  <text x="556" y="120" class="hdr">② 责任矩阵 + 验收基线</text>
+  <text x="556" y="141" class="hdrsub">执行抓手 · 逐期滚动</text>
+  <text x="904" y="120" class="hdr">③ 领导 10 页提纲</text>
+  <text x="904" y="141" class="hdrsub">向上对齐 · 一次性沟通</text>
+
+  <!-- rows -->
+  <g font-size="13">
+    <!-- row 1 读者 -->
+    <rect x="20" y="154" width="170" height="92" fill="#f1f5f9"/>
+    <rect x="190" y="154" width="348" height="92" fill="#ffffff"/>
+    <rect x="538" y="154" width="348" height="92" fill="#f8fafc"/>
+    <rect x="886" y="154" width="334" height="92" fill="#ffffff"/>
+    <text x="38" y="203" class="dim">读者 / 受众</text>
+    <text x="208" y="192" class="cell">团队 · 后来者 · 对外合作方</text>
+    <text x="208" y="214" class="cellmuted">（持续引用、长期读者）</text>
+    <text x="556" y="192" class="cell">项目执行层：PM / 业务方 /</text>
+    <text x="556" y="214" class="cell">知识工程师</text>
+    <text x="904" y="192" class="cell">高层决策者</text>
+    <text x="904" y="214" class="cellmuted">（拍板、给预算的人）</text>
+
+    <!-- row 2 载体 -->
+    <rect x="20" y="246" width="170" height="92" fill="#f1f5f9"/>
+    <rect x="190" y="246" width="348" height="92" fill="#ffffff"/>
+    <rect x="538" y="246" width="348" height="92" fill="#f8fafc"/>
+    <rect x="886" y="246" width="334" height="92" fill="#ffffff"/>
+    <text x="38" y="295" class="dim">载体与形态</text>
+    <text x="208" y="284" class="cell">版本化的正式文档</text>
+    <text x="208" y="306" class="cellmuted">（仓库内定位专题页）</text>
+    <text x="556" y="284" class="cell">可填写的模板表，字段对齐</text>
+    <text x="556" y="306" class="cell">平台 CQ / 范围卡 / 评审结构</text>
+    <text x="904" y="284" class="cell">10 页沟通提纲</text>
+    <text x="904" y="306" class="cellmuted">（可复用为汇报结构）</text>
+
+    <!-- row 3 抽象层级 -->
+    <rect x="20" y="338" width="170" height="92" fill="#f1f5f9"/>
+    <rect x="190" y="338" width="348" height="92" fill="#ffffff"/>
+    <rect x="538" y="338" width="348" height="92" fill="#f8fafc"/>
+    <rect x="886" y="338" width="334" height="92" fill="#ffffff"/>
+    <text x="38" y="387" class="dim">抽象层级</text>
+    <text x="208" y="376" class="cell">共识层：定义 + 四边界</text>
+    <text x="208" y="398" class="cellmuted">偏稳定、版本化</text>
+    <text x="556" y="376" class="cell">执行层：责任 + 验收基线</text>
+    <text x="556" y="398" class="cell">逐期滚动更新</text>
+    <text x="904" y="376" class="cell">决策层：价值 + 资源</text>
+    <text x="904" y="398" class="cellmuted">高度浓缩、一页结论</text>
+
+    <!-- row 4 使用时机 -->
+    <rect x="20" y="430" width="170" height="92" fill="#f1f5f9"/>
+    <rect x="190" y="430" width="348" height="92" fill="#ffffff"/>
+    <rect x="538" y="430" width="348" height="92" fill="#f8fafc"/>
+    <rect x="886" y="430" width="334" height="92" fill="#ffffff"/>
+    <text x="38" y="479" class="dim">使用时机</text>
+    <text x="208" y="468" class="cell">任何时候</text>
+    <text x="208" y="490" class="cellmuted">作为唯一口径持续引用</text>
+    <text x="556" y="468" class="cell">每期立项 / 对齐 / 验收时</text>
+    <text x="556" y="490" class="cell">填写</text>
+    <text x="904" y="468" class="cell">立项 · 要资源 · 月度汇报</text>
+    <text x="904" y="490" class="cellmuted">时</text>
+
+    <!-- row 5 生效方式 -->
+    <rect x="20" y="522" width="170" height="92" fill="#f1f5f9"/>
+    <rect x="190" y="522" width="348" height="92" fill="#ffffff"/>
+    <rect x="538" y="522" width="348" height="92" fill="#f8fafc"/>
+    <rect x="886" y="522" width="334" height="92" fill="#ffffff"/>
+    <text x="38" y="571" class="dim">生效方式</text>
+    <text x="208" y="560" class="cell">统一口径、消除重复解释</text>
+    <text x="208" y="582" class="cellmuted">（间接驱动）</text>
+    <text x="556" y="560" class="cell">字段 + 审计 + 硬门禁</text>
+    <text x="556" y="582" class="cellmuted">封死推脱空间（直接驱动）</text>
+    <text x="904" y="560" class="cell">赢得授权与预算</text>
+    <text x="904" y="582" class="cellmuted">（一次性、解锁资源）</text>
+
+    <!-- row 6 直接效果 -->
+    <rect x="20" y="614" width="170" height="92" fill="#f1f5f9"/>
+    <rect x="190" y="614" width="348" height="92" fill="#ffffff"/>
+    <rect x="538" y="614" width="348" height="92" fill="#f8fafc"/>
+    <rect x="886" y="614" width="334" height="92" fill="#ffffff"/>
+    <text x="38" y="663" class="dim">直接效果</text>
+    <text x="208" y="652" class="cell">定位不再漂移</text>
+    <text x="208" y="674" class="cellmuted">新人/合作方可自助理解</text>
+    <text x="556" y="652" class="cell">责任到人、验收可核对</text>
+    <text x="556" y="674" class="cellmuted">红灯指向具体 CQ + 证据</text>
+    <text x="904" y="652" class="cell">领导 10 分钟看懂</text>
+    <text x="904" y="674" class="cellmuted">省什么钱、拍什么板</text>
+
+    <!-- row 7 局限 -->
+    <rect x="20" y="706" width="170" height="92" fill="#f1f5f9"/>
+    <rect x="190" y="706" width="348" height="92" fill="#ffffff"/>
+    <rect x="538" y="706" width="348" height="92" fill="#f8fafc"/>
+    <rect x="886" y="706" width="334" height="92" fill="#ffffff"/>
+    <text x="38" y="755" class="dim">主要局限</text>
+    <text x="208" y="744" class="cell">文档不会自己推进</text>
+    <text x="208" y="766" class="cellmuted">需 ②③ 激活</text>
+    <text x="556" y="744" class="cell">不解决</text>
+    <text x="556" y="766" class="cellmuted">「领导为何给资源」</text>
+    <text x="904" y="744" class="cell">一次性</text>
+    <text x="904" y="766" class="cellmuted">不产生日常约束</text>
+  </g>
+
+  <line x1="20" y1="90" x2="1220" y2="90" stroke="#cbd5e1"/>
+  <rect x="20" y="90" width="1200" height="708" fill="none" stroke="#cbd5e1"/>
+
+  <text x="24" y="830" class="foot">读者、时点、生效方式各不相同，互为补充 —— 推荐顺序 ③ 赢授权 → ① 固共识 → ② 驱动执行（详见激活链条图）。</text>
+</svg>

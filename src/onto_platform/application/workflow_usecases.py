@@ -44,7 +44,7 @@ RUN = "workflow_run"
 REVIEW = "workflow_review"
 
 _MUTABLE_CQ = {"code", "question", "type", "priority", "source", "rationale",
-               "expected", "query", "model_refs", "sample_refs", "notes"}
+               "expected", "query", "model_refs", "sample_refs", "notes", "owner"}
 
 
 def _sort_newest(items: list[dict], key: str = "created_at") -> list[dict]:
@@ -704,6 +704,7 @@ class WorkflowUseCases:
             "question": cq.get("question"),
             "priority": cq.get("priority"),
             "type": cq.get("type"),
+            "owner": cq.get("owner") or "",
             "expected": expected,
             "query": cq.get("query") or {},
             "engine": engine,
@@ -1067,6 +1068,7 @@ class WorkflowUseCases:
                 "question": cq.get("question"),
                 "type": cq.get("type"),
                 "priority": cq.get("priority"),
+                "owner": cq.get("owner") or "",
                 "model_refs": cq.get("model_refs") or [],
                 "sample_refs": cq.get("sample_refs") or [],
                 "query": cq.get("query") or {},
@@ -1141,6 +1143,117 @@ class WorkflowUseCases:
             "steps": detail["steps"],
             "trace_matrix": detail["trace_matrix"],
             "publish_check": check,
+        }
+
+    # ------------------------------------------------------------------
+    # project control: value metrics + responsibility oversight
+    # ------------------------------------------------------------------
+
+    def record_metric_reading(self, workspace_id: str, actor: str,
+                              round_id: str, payload: dict) -> dict:
+        """Append an actual value for a declared value metric.
+
+        The metric itself is declared in ``scope.metrics`` (baseline ->
+        target); this records the "actual" side so progress is visible instead
+        of promised.  Readings are append-only and never invalidate CQ
+        evidence: they describe business value, not model correctness.
+        """
+        self._ctx.require(actor, workspace_id, "editor")
+        round_doc = self._round(workspace_id, round_id)
+        if round_doc.get("status") == "accepted":
+            raise ValidationError("accepted rounds are read-only")
+        payload = payload or {}
+        metric = str(payload.get("metric") or "").strip()
+        if not metric:
+            raise ValidationError("metric name is required")
+        declared = [m.get("name") for m in
+                    (round_doc.get("scope") or {}).get("metrics") or []]
+        if declared and metric not in declared:
+            raise ValidationError(
+                f"unknown metric {metric!r}; declare it in scope.metrics first")
+        value = payload.get("value")
+        if value is None or isinstance(value, bool) or \
+                not isinstance(value, (int, float)):
+            raise ValidationError("reading value must be a number")
+        readings = list(round_doc.get("value_readings") or [])
+        readings.append({
+            "metric": metric,
+            "value": float(value),
+            "at": self._ctx.clock(),
+            "by": actor,
+            "note": str(payload.get("note") or "")[:500],
+        })
+        round_doc["value_readings"] = readings[-100:]
+        round_doc["updated_at"] = self._ctx.clock()
+        self._ctx.save(ROUND, round_doc)
+        self._ctx.audit_event(
+            actor, workspace_id, "workflow.metric.reading", round_id,
+            {"metric": metric, "value": float(value)})
+        return round_doc
+
+    def oversight(self, workspace_id: str, actor: str, round_id: str) -> dict:
+        """Project-control view: responsibility + value + gate + progress.
+
+        Distinct from the runtime SLO/objective loop: it answers who owns each
+        CQ, whether the business value metrics are moving from baseline toward
+        target, and why the publish gate is red.  Read-only; a GET must never
+        append a reading or open a todo.
+        """
+        self._ctx.require(actor, workspace_id, "viewer")
+        detail = self.detail(workspace_id, actor, round_id)
+        round_doc = detail["round"]
+        cqs = detail["cqs"]
+        runs = detail["runs"]
+        latest = runs[0] if runs else None
+        results = {row.get("cq_id"): row for row in
+                   ((latest or {}).get("results") or [])}
+        responsibility = []
+        for cq in cqs:
+            result = results.get(cq.get("id")) or {}
+            responsibility.append({
+                "code": cq.get("code"),
+                "question": cq.get("question"),
+                "priority": cq.get("priority"),
+                "owner": cq.get("owner") or "",
+                "status": result.get("status") or "open",
+                "detail": result.get("detail") or "",
+            })
+        metrics = (round_doc.get("scope") or {}).get("metrics") or []
+        readings = round_doc.get("value_readings") or []
+        value_metrics = []
+        for metric in metrics:
+            name = metric.get("name")
+            history = [r for r in readings if r.get("metric") == name]
+            latest_reading = history[-1] if history else None
+            actual = latest_reading.get("value") if latest_reading else None
+            baseline = metric.get("baseline")
+            target = metric.get("target")
+            attainment = None
+            if actual is not None and baseline is not None and target is not None \
+                    and target != baseline:
+                attainment = round((actual - baseline) / (target - baseline), 4)
+            elif actual is not None and target not in (None, 0):
+                attainment = round(actual / target, 4)
+            value_metrics.append({
+                "name": name,
+                "unit": metric.get("unit") or "",
+                "owner": metric.get("owner") or "",
+                "baseline": baseline,
+                "target": target,
+                "actual": actual,
+                "attainment": attainment,
+                "readings": len(history),
+                "last_at": latest_reading.get("at") if latest_reading else None,
+            })
+        return {
+            "round_id": round_id,
+            "round_name": round_doc.get("name"),
+            "round_seq": round_doc.get("seq"),
+            "status": round_doc.get("status"),
+            "steps": detail["steps"],
+            "responsibility": responsibility,
+            "value_metrics": value_metrics,
+            "publish_check": detail["publish_check"],
         }
 
 

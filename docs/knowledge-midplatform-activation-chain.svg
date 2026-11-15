@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 560" font-family="PingFang SC, Microsoft YaHei, Helvetica Neue, Arial, sans-serif">
+  <style>
+    .title { font-size:22px; font-weight:700; fill:#0f172a; }
+    .sub { font-size:13px; fill:#64748b; }
+    .step-no { font-size:30px; font-weight:700; fill:#ffffff; }
+    .step-name { font-size:18px; font-weight:700; fill:#0f172a; }
+    .block-label { font-size:12px; font-weight:600; fill:#94a3b8; }
+    .block-text { font-size:13px; fill:#1e293b; }
+    .fail { font-size:12.5px; fill:#b91c1c; }
+    .loop { font-size:13px; font-weight:600; fill:#475569; }
+  </style>
+
+  <rect width="1240" height="560" fill="#ffffff"/>
+
+  <text x="24" y="38" class="title">激活链条：③ → ① → ②，再闭环回到验收红灯</text>
+  <text x="24" y="62" class="sub">三个方向按顺序发力，各自防住一种失败模式；最后由平台的验收硬门禁回流迭代。</text>
+
+  <!-- arrow markers -->
+  <defs>
+    <marker id="a" markerWidth="10" markerHeight="10" refX="7" refY="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/></marker>
+    <marker id="al" markerWidth="10" markerHeight="10" refX="7" refY="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#b91c1c"/></marker>
+  </defs>
+
+  <!-- block 3 -->
+  <g>
+    <rect x="40" y="110" width="330" height="250" rx="12" fill="#fff7ed" stroke="#d97706" stroke-width="2"/>
+    <circle cx="80" cy="150" r="26" fill="#d97706"/>
+    <text x="80" y="161" class="step-no" text-anchor="middle">3</text>
+    <text x="122" y="158" class="step-name">领导 10 页提纲</text>
+    <text x="60" y="196" class="block-label">产出</text>
+    <text x="60" y="218" class="block-text">「这是省对账/取数/清洗的钱，</text>
+    <text x="60" y="238" class="block-text">不是花在建模上」+ 要拍什么板、</text>
+    <text x="60" y="258" class="block-text">给什么资源、90 天看到什么</text>
+    <text x="60" y="296" class="block-label">防住的失败</text>
+    <text x="60" y="318" class="fail">领导误判为技术项目 / 不给资源</text>
+    <text x="60" y="340" class="block-text" fill="#64748b">→ 解锁授权与预算</text>
+  </g>
+
+  <!-- arrow 3->1 -->
+  <line x1="370" y1="235" x2="430" y2="235" stroke="#94a3b8" stroke-width="2" marker-end="url(#a)"/>
+  <text x="400" y="222" class="block-label" text-anchor="middle">授权</text>
+
+  <!-- block 1 -->
+  <g>
+    <rect x="440" y="110" width="330" height="250" rx="12" fill="#eff6ff" stroke="#2563eb" stroke-width="2"/>
+    <circle cx="480" cy="150" r="26" fill="#2563eb"/>
+    <text x="480" y="161" class="step-no" text-anchor="middle">1</text>
+    <text x="522" y="158" class="step-name">仓库文档</text>
+    <text x="460" y="196" class="block-label">产出</text>
+    <text x="460" y="218" class="block-text">一句定义 + 四边界（是/不是表）</text>
+    <text x="460" y="238" class="block-text">+ 90 天路线 + 责任三方，版本化</text>
+    <text x="460" y="258" class="block-text">、可 review、作为唯一口径</text>
+    <text x="460" y="296" class="block-label">防住的失败</text>
+    <text x="460" y="318" class="fail">口径漂移 / 每次重新解释</text>
+    <text x="460" y="340" class="block-text" fill="#64748b">→ 固化为共同认知底座</text>
+  </g>
+
+  <!-- arrow 1->2 -->
+  <line x1="770" y1="235" x2="830" y2="235" stroke="#94a3b8" stroke-width="2" marker-end="url(#a)"/>
+  <text x="800" y="222" class="block-label" text-anchor="middle">口径</text>
+
+  <!-- block 2 -->
+  <g>
+    <rect x="840" y="110" width="360" height="250" rx="12" fill="#ecfdf5" stroke="#059669" stroke-width="2"/>
+    <circle cx="880" cy="150" r="26" fill="#059669"/>
+    <text x="880" y="161" class="step-no" text-anchor="middle">2</text>
+    <text x="922" y="158" class="step-name">责任矩阵 + 验收基线</text>
+    <text x="860" y="196" class="block-label">产出</text>
+    <text x="860" y="218" class="block-text">模板字段对齐平台 CQ / 范围卡 /</text>
+    <text x="860" y="238" class="block-text">评审：每条 CQ 有来源方与判定，</text>
+    <text x="860" y="258" class="block-text">每期有基线值 + 目标值 + 红灯</text>
+    <text x="860" y="296" class="block-label">防住的失败</text>
+    <text x="860" y="318" class="fail">业务方推脱 / 目标不可验收</text>
+    <text x="860" y="340" class="block-text" fill="#64748b">→ 直接驱动每日执行</text>
+  </g>
+
+  <!-- loop back -->
+  <path d="M 1200 360 C 1200 470, 620 470, 620 375" fill="none" stroke="#b91c1c" stroke-width="2" marker-end="url(#al)"/>
+  <text x="910" y="486" class="loop" fill="#b91c1c" text-anchor="middle">验收红灯（发布硬门禁）→ 回 ② 更新基线 → 反馈 ① → 必要时再向 ③ 汇报</text>
+
+  <text x="24" y="540" class="block-label">闭环：平台把「可验证」做成硬门禁 —— P0 CQ 100% + 总体达标 + 评审通过 + 证据新鲜，缺一不可发布；红灯指向具体 CQ 与干系人。</text>
+</svg>

@@ -5,7 +5,8 @@ import {
 } from "@phosphor-icons/react";
 import {
   api, type WorkflowCq, type WorkflowCqPreview, type WorkflowCqPriority,
-  type WorkflowDetail, type WorkflowReuse, type WorkflowSample,
+  type WorkflowDetail, type WorkflowOversight, type WorkflowReuse,
+  type WorkflowSample,
 } from "../api";
 import { usePlatform } from "../store";
 import {
@@ -24,6 +25,7 @@ type ScopeDraft = {
   in_scope: string;
   out_of_scope: string;
   actors: string;
+  metrics: string;
 };
 
 type CqDraft = {
@@ -31,6 +33,7 @@ type CqDraft = {
   question: string;
   priority: WorkflowCqPriority;
   type: string;
+  owner: string;
   expected_kind: string;
   expected_value: string;
   expected_operator: string;
@@ -72,7 +75,7 @@ type SampleDraft = {
 };
 
 const EMPTY_SCOPE: ScopeDraft = {
-  goal: "", summary: "", in_scope: "", out_of_scope: "", actors: "",
+  goal: "", summary: "", in_scope: "", out_of_scope: "", actors: "", metrics: "[]",
 };
 
 const EMPTY_TARGET: TargetDraft = {
@@ -113,6 +116,7 @@ function cqDraft(detail: WorkflowDetail | null, cq?: WorkflowCq): CqDraft {
   if (!cq) {
     return {
       code: "", question: "", priority: "P0", type: "competency",
+      owner: "",
       expected_kind: "row_count", expected_value: "1", expected_operator: "eq",
       expected_rows: "[]", query_kind: "fixture",
       query_object_type: firstType, query_relation: "",
@@ -126,6 +130,7 @@ function cqDraft(detail: WorkflowDetail | null, cq?: WorkflowCq): CqDraft {
     question: cq.question,
     priority: cq.priority,
     type: cq.type,
+    owner: cq.owner || "",
     expected_kind: expected.kind || "row_count",
     expected_value: String(expected.value ?? 1),
     expected_operator: expected.operator || "eq",
@@ -223,6 +228,11 @@ export function OntologyWorkflow({
     return map;
   }, [detail?.trace_matrix]);
 
+  const oversight = useLoad<WorkflowOversight | null>(
+    () => (wid && round ? api.workflowOversight(wid, round.id) : Promise.resolve(null)),
+    [wid, round?.id]);
+  const ov = oversight.data;
+
   const mutate = async (
     key: string, action: () => Promise<unknown>, done?: string,
     refreshOntology = false, onError?: (message: string) => void,
@@ -234,6 +244,7 @@ export function OntologyWorkflow({
       if (refreshOntology) await onRefresh();
       if (done) toast(done, "ok");
       load.reload();
+      oversight.reload();
     } catch (error) {
       const message = (error as Error).message || "操作失败";
       if (onError) onError(message);
@@ -241,6 +252,22 @@ export function OntologyWorkflow({
     } finally {
       setBusy("");
     }
+  };
+
+  /* ---- value metric readings ---- */
+  const [readingMetric, setReadingMetric] = useState("");
+  const [readingValue, setReadingValue] = useState("");
+  const recordReading = () => {
+    if (!round) return;
+    const value = Number(readingValue);
+    if (!readingMetric.trim()) { toast("填写指标名", "err"); return; }
+    if (!Number.isFinite(value)) { toast("实测值要是数字", "err"); return; }
+    void mutate("reading", async () => {
+      await api.recordWorkflowMetricReading(wid!, round.id, {
+        metric: readingMetric.trim(), value,
+      });
+      setReadingMetric(""); setReadingValue("");
+    }, "实测值已记录");
   };
 
   /* ---- scope ---- */
@@ -256,6 +283,7 @@ export function OntologyWorkflow({
       in_scope: joinRefs(value.in_scope),
       out_of_scope: joinRefs(value.out_of_scope),
       actors: joinRefs(value.actors),
+      metrics: JSON.stringify(value.metrics || [], null, 2),
     });
     setTarget(targetDraft(detail));
     setReuseSkipped(Boolean(round.reuse_skipped));
@@ -373,6 +401,7 @@ export function OntologyWorkflow({
         question: cqForm.question.trim(),
         priority: cqForm.priority,
         type: cqForm.type,
+        owner: cqForm.owner.trim(),
         expected: expected as unknown as WorkflowCq["expected"],
         query: query as unknown as WorkflowCq["query"],
         model_refs: splitRefs(cqForm.model_refs),
@@ -624,6 +653,46 @@ export function OntologyWorkflow({
         </div>
       </div>
 
+      <Card id="wf-oversight" title="管控看板" sub="责任到人 · 价值指标 · 门禁红灯；这一轮能不能交付，一目了然。"
+            aside={<Tag kind={ov?.publish_check?.ok ? "ok" : ov?.publish_check?.blockers?.length ? "err" : "warn"}>{ov ? (ov.publish_check.ok ? "可发布" : "有阻塞") : "…"}</Tag>}>
+        {ov && (
+          <>
+            {ov.value_metrics.length > 0 && (
+              <dl className="kv">
+                {ov.value_metrics.map(m => (
+                  <div className="kv-pair" key={m.name}>
+                    <dt>{m.name}{m.owner ? ` · ${m.owner}` : ""}</dt>
+                    <dd className="mono">
+                      基线 {m.baseline ?? "–"} → 目标 {m.target ?? "–"} · 实测 {m.actual ?? "–"}
+                      {m.attainment != null && ` · 达成 ${Math.round(m.attainment * 100)}%`}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            )}
+            {ov.responsibility.some(r => r.owner) && (
+              <div className="page-meta flush">
+                {ov.responsibility.filter(r => r.owner).map(r => (
+                  <span key={r.code}>{r.code} · {r.owner} <Tag kind={cqStatusKind(r.status)}>{cqStatusLabel(r.status)}</Tag></span>
+                ))}
+              </div>
+            )}
+            {!ov.value_metrics.length && !ov.responsibility.some(r => r.owner) && (
+              <p className="muted small">在「范围卡」里声明价值指标、给 CQ 标责任方后，这里会显示达成度与责任人。</p>
+            )}
+            {ov.value_metrics.length > 0 && (
+              <div className="btn-row flat">
+                <TextInput value={readingMetric} placeholder="指标名" aria-label="指标名"
+                           onChange={event => setReadingMetric(event.target.value)} />
+                <TextInput value={readingValue} placeholder="实测值" inputMode="decimal" aria-label="实测值"
+                           onChange={event => setReadingValue(event.target.value)} />
+                <Btn size="sm" variant="subtle" busy={busy === "reading"} onClick={recordReading}>记录实测</Btn>
+              </div>
+            )}
+          </>
+        )}
+      </Card>
+
       <div className="wf-steps" role="tablist" aria-label="本体工程流八步"
            onKeyDown={onStepTabKeyDown}>
         {detail.steps.map(step => {
@@ -673,6 +742,9 @@ export function OntologyWorkflow({
               <Field label="业务参与角色（逗号分隔）">
                 <TextInput value={scope.actors} onChange={event => setScope({ ...scope, actors: event.target.value })} />
               </Field>
+              <Field label="价值指标 JSON" top hint="先立基线再谈收益：[{&quot;name&quot;:&quot;对账差异笔数&quot;,&quot;unit&quot;:&quot;笔/月&quot;,&quot;baseline&quot;:120,&quot;target&quot;:10,&quot;owner&quot;:&quot;业务方甲&quot;}]">
+                <Area rows={3} value={scope.metrics} onChange={event => setScope({ ...scope, metrics: event.target.value })} />
+              </Field>
               <Field label="本轮 CQ 下限" hint="默认 5；达到下限才进入发布门禁。">
                 <TextInput value={target.min_cq} inputMode="numeric"
                            onChange={event => setTarget({ ...target, min_cq: event.target.value })} />
@@ -697,6 +769,7 @@ export function OntologyWorkflow({
                 out_of_scope: splitRefs(scope.out_of_scope),
                 actors: splitRefs(scope.actors),
                 decisions: round.scope?.decisions || [],
+                metrics: parseJsonRows(scope.metrics),
               },
               target: {
                 min_cq: targetNumber(target.min_cq, 5),
@@ -852,6 +925,9 @@ export function OntologyWorkflow({
                   </Field>
                   <Field label="来源"><TextInput value={cqForm.source} placeholder="业务方 / 需求单号"
                                                   onChange={event => setCqForm({ ...cqForm, source: event.target.value })} /></Field>
+                  <Field label="责任方" hint="谁对这条 CQ 的语义判定与验收负责；不写来源/责任方的 CQ 不进入通过率。">
+                    <TextInput value={cqForm.owner} placeholder="业务方姓名 / 团队"
+                               onChange={event => setCqForm({ ...cqForm, owner: event.target.value })} /></Field>
                   <Field label="问题（一句话，可被查询回答）" top>
                     <Area rows={2} value={cqForm.question} placeholder="V001 是否在浦东收费站通行过？"
                           onChange={event => setCqForm({ ...cqForm, question: event.target.value })} />

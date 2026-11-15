@@ -195,6 +195,63 @@ def sample_problems(sample: dict, ontology: dict | None) -> list[str]:
     return problems[:50]
 
 
+def _optional_number(value: Any) -> float | None:
+    if value is None or value == "":
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _metrics(raw: Any) -> list[dict]:
+    """Value metrics declared at scope time (plan: baseline -> target).
+
+    Each metric is a *business* value we can measure before and after, e.g.
+    "对账差异笔数" (baseline 120 -> target 10).  ``baseline``/``target`` may be
+    empty while the owner is still deciding; a missing value is simply ``None``
+    and never a number like ``0`` that would read as "already achieved".
+    """
+    if not isinstance(raw, list):
+        return []
+    out: list[dict] = []
+    for item in raw[:20]:
+        if not isinstance(item, dict):
+            continue
+        name = _text(item.get("name"), 120)
+        if not name:
+            continue
+        out.append({
+            "name": name,
+            "unit": _text(item.get("unit"), 40),
+            "baseline": _optional_number(item.get("baseline")),
+            "target": _optional_number(item.get("target")),
+            "owner": _text(item.get("owner"), 120),
+        })
+    return out
+
+
+def _readings(raw: Any) -> list[dict]:
+    """Append-only actual readings for the round's value metrics."""
+    if not isinstance(raw, list):
+        return []
+    out: list[dict] = []
+    for item in raw[-100:]:
+        if not isinstance(item, dict):
+            continue
+        metric = _text(item.get("metric"), 120)
+        if not metric:
+            continue
+        out.append({
+            "metric": metric,
+            "value": _optional_number(item.get("value")),
+            "at": _text(item.get("at"), 40),
+            "by": _text(item.get("by"), 120),
+            "note": _text(item.get("note"), 500),
+        })
+    return out
+
+
 def _scope(raw: Any) -> dict:
     if not isinstance(raw, dict):
         raw = {}
@@ -204,6 +261,7 @@ def _scope(raw: Any) -> dict:
         "out_of_scope": _string_list(raw.get("out_of_scope"), 60),
         "actors": _string_list(raw.get("actors"), 40),
         "decisions": _string_list(raw.get("decisions"), 60),
+        "metrics": _metrics(raw.get("metrics")),
     }
 
 
@@ -246,6 +304,7 @@ def normalize_round(raw: dict, *, workspace_id: str, round_id: str, seq: int,
         "status": status,
         "scope": _scope(raw.get("scope")),
         "target": _target(raw.get("target")),
+        "value_readings": _readings(raw.get("value_readings")),
         "reuse_skipped": bool(raw.get("reuse_skipped", False)),
         "validation": raw.get("validation") or {},
         "ontology_id": _text(raw.get("ontology_id"), 80),
@@ -286,6 +345,7 @@ def normalize_cq(raw: dict, *, workspace_id: str, round_id: str, cq_id: str,
         "priority": priority,
         "source": _text(raw.get("source"), 500),
         "rationale": _text(raw.get("rationale"), 2000),
+        "owner": _text(raw.get("owner"), 120),
         "expected": expected,
         "query": query,
         "model_refs": _string_list(raw.get("model_refs"), 40),

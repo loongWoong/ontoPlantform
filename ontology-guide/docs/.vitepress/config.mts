@@ -104,7 +104,15 @@ export default defineConfig({
               { text: '运营与生命周期', link: '/application/lifecycle' }
             ]
           },
-          { text: '落地路线图', link: '/adoption/' },
+          {
+            text: '落地路线图',
+            link: '/adoption/',
+            items: [
+              { text: '知识中台定位与落地', link: '/adoption/knowledge-midplatform' },
+              { text: '责任矩阵 + 验收基线模板', link: '/adoption/knowledge-midplatform-template' },
+              { text: '领导 10 页对齐提纲', link: '/adoption/knowledge-midplatform-pitch' }
+            ]
+          },
           { text: '端到端案例', link: '/examples/' }
         ]
       }

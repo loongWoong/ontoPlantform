@@ -1565,6 +1565,9 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
                 if tail == ["report"]:
                     return self._send(200, platform.workflow.report(
                         wid, user, round_id))
+                if tail == ["oversight"]:
+                    return self._send(200, platform.workflow.oversight(
+                        wid, user, round_id))
                 if len(tail) == 2 and tail[0] == "cqs" and tail[1] == "export":
                     return self._send(200, platform.workflow.export_cqs(
                         wid, user, round_id,
@@ -1618,6 +1621,9 @@ def build_handler(platform: Platform) -> type[BaseHTTPRequestHandler]:
                         wid, user, round_id, body))
                 if tail == ["reviews"]:
                     return self._send(200, platform.workflow.submit_review(
+                        wid, user, round_id, body))
+                if tail == ["metrics", "readings"]:
+                    return self._send(200, platform.workflow.record_metric_reading(
                         wid, user, round_id, body))
             raise ValidationError(f"no workflow route for {self.path}")
 

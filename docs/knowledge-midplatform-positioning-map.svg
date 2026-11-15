@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 940 700" font-family="PingFang SC, Microsoft YaHei, Helvetica Neue, Arial, sans-serif">
+  <style>
+    .title { font-size:22px; font-weight:700; fill:#0f172a; }
+    .sub { font-size:13px; fill:#64748b; }
+    .axis { font-size:13px; font-weight:600; fill:#475569; }
+    .quad { font-size:13px; fill:#94a3b8; }
+    .node-title { font-size:16px; font-weight:700; fill:#ffffff; }
+    .node-sub { font-size:12px; fill:rgba(255,255,255,0.92); }
+    .node-desc { font-size:12px; fill:#475569; }
+    .foot { font-size:13px; font-weight:600; fill:#0f172a; }
+  </style>
+
+  <rect width="940" height="700" fill="#ffffff"/>
+
+  <text x="24" y="38" class="title">三个方向的定位象限</text>
+  <text x="24" y="62" class="sub">X：面向读者（左＝决策/领导，右＝执行/业务方） · Y：生命周期（上＝一次性，下＝常驻滚动）</text>
+
+  <!-- plot area -->
+  <rect x="130" y="110" width="760" height="490" fill="#f8fafc" rx="8"/>
+  <line x1="510" y1="110" x2="510" y2="600" stroke="#cbd5e1" stroke-dasharray="4 4"/>
+  <line x1="130" y1="355" x2="890" y2="355" stroke="#cbd5e1" stroke-dasharray="4 4"/>
+
+  <!-- quadrant labels -->
+  <text x="150" y="135" class="quad">一次性 · 向上对齐（赢授权）</text>
+  <text x="540" y="135" class="quad">常驻 · 共识（定口径）</text>
+  <text x="150" y="585" class="quad">一次性 · 执行（不建议）</text>
+  <text x="540" y="585" class="quad">常驻 · 执行（驱动落地）</text>
+
+  <!-- axis labels -->
+  <text x="130" y="632" class="axis">◀ 面向决策 / 领导（向上沟通）</text>
+  <text x="890" y="632" class="axis" text-anchor="end">面向执行 / 业务方（向下落地）▶</text>
+  <text x="104" y="130" class="axis">一次性 ▲</text>
+  <text x="104" y="600" class="axis">常驻 ▼</text>
+
+  <!-- node 3 提纲 左上 -->
+  <circle cx="300" cy="215" r="46" fill="#d97706"/>
+  <text x="300" y="209" class="node-title" text-anchor="middle">③</text>
+  <text x="300" y="228" class="node-sub" text-anchor="middle">领导提纲</text>
+  <text x="300" y="290" class="node-desc" text-anchor="middle">产出：10 页对齐提纲</text>
+  <text x="300" y="308" class="node-desc" text-anchor="middle">防：误判为技术项目</text>
+
+  <!-- node 1 文档 右上 -->
+  <circle cx="680" cy="250" r="46" fill="#2563eb"/>
+  <text x="680" y="244" class="node-title" text-anchor="middle">①</text>
+  <text x="680" y="263" class="node-sub" text-anchor="middle">仓库文档</text>
+  <text x="680" y="325" class="node-desc" text-anchor="middle">产出：版本化定位文档</text>
+  <text x="680" y="343" class="node-desc" text-anchor="middle">防：口径漂移 / 重复解释</text>
+
+  <!-- node 2 模板 右下 -->
+  <circle cx="680" cy="500" r="46" fill="#059669"/>
+  <text x="680" y="494" class="node-title" text-anchor="middle">②</text>
+  <text x="680" y="513" class="node-sub" text-anchor="middle">责任矩阵+基线</text>
+  <text x="490" y="560" class="node-desc" text-anchor="middle">产出：可填写模板（对齐平台字段）</text>
+  <text x="490" y="578" class="node-desc" text-anchor="middle">防：业务方推脱 / 目标不可验收</text>
+
+  <!-- arrows 3 -> 1 -> 2 -->
+  <path d="M 344 232 C 470 232, 560 240, 634 250" fill="none" stroke="#94a3b8" stroke-width="2" marker-end="url(#arr)"/>
+  <path d="M 680 296 C 680 380, 680 420, 680 454" fill="none" stroke="#94a3b8" stroke-width="2" marker-end="url(#arr)"/>
+  <defs>
+    <marker id="arr" markerWidth="10" markerHeight="10" refX="7" refY="5" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/>
+    </marker>
+  </defs>
+
+  <text x="470" y="222" class="quad" text-anchor="middle">授权 → 固化</text>
+  <text x="712" y="385" class="quad" text-anchor="middle">口径 → 执行</text>
+
+  <rect x="130" y="648" width="760" height="40" fill="#0f172a" rx="8"/>
+  <text x="510" y="673" class="foot" fill="#ffffff" text-anchor="middle">三者互补，不是三选一：③ 赢授权 → ① 固共识 → ② 驱动执行</text>
+</svg>
