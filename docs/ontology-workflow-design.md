@@ -29,8 +29,18 @@
 - **前端**：本体页第三个页签 `工程流`，包含轮次选择/新建、八步页签卡片、范围与门禁目标、CQ 工作台（导入/导出/试跑）、复用、结构摘要、语义检查、样例校验、验收、评审发布、门禁侧栏；结构编辑仍复用原有 `表格 / 关系图`，没有另造编辑器。
 - **测试**：后端全量 806 项通过，新增 `tests/test_workflow.py` 12 项（含 REST 全链路与 runtime 引擎）；前端 82 项通过，新增 `src/lib/workflow.test.ts` 5 项；`pnpm build` 通过。
 
-当前明确**未实现**：
+### 0.2 项目落地管控 + 使用驱动（本轮新增）
 
+在工程流之上补齐「项目落地管控」与「使用驱动」两类能力，把定位、目标、责任、验收落成平台对象：
+
+- **CQ 责任方 `owner`**：`normalize_cq` / `_MUTABLE_CQ` / 追踪矩阵 / 验收结果均带 `owner`，把"业务方推脱"变成责任到人、可核对。
+- **轮次价值指标 `scope.metrics`**：`{name, unit, baseline, target, owner}`，对应"先立基线再谈收益"；`value_readings` 追加记录实测值（`record_metric_reading`，审计 `workflow.metric.reading`，只读轮次/未声明指标/非数字会被拒绝）。
+- **管控看板 `oversight`**：只读聚合责任矩阵（CQ × owner × 状态）、价值指标达成（baseline→target→actual→attainment）、门禁红灯、八步进度；GET 不产生副作用。
+- **使用量指标**：`metrics.py` 新增 `ask_total / agent_runs_total / capability_invocations_total`（审计事件全时计数，区别于窗口化 SLO 的"运行得好不好"）。
+
+新增 API：`GET /ontology/workflow/rounds/{rid}/oversight`、`POST /ontology/workflow/rounds/{rid}/metrics/readings`。
+
+当前明确**未实现**：
 - `runtime` 引擎支持对象类型过滤和关系邻接，但尚未接 `platform_query` / SPARQL / 聚合查询；复杂查询仍要拆成多条 CQ 或后续适配器。
 - IRI/命名空间设置、模型 diff、评审人强制分离、通知/SLA、CQ 历史版本尚未实现。
 - 复用台账不自动导入标准，不合并外部本体。
@@ -271,6 +281,8 @@ ReviewRecord
 | GET | `/ontology/workflow/rounds/{rid}/publish-check` | 发布前硬检查（blockers/warnings） |
 | POST | `/ontology/workflow/rounds/{rid}/publish` | 发布本轮（调用现有本体发布） |
 | GET | `/ontology/workflow/rounds/{rid}/report` | 评审/证据报告（Markdown + JSON） |
+| GET | `/ontology/workflow/rounds/{rid}/oversight` | 管控看板：责任矩阵 + 价值指标达成 + 门禁 + 进度 |
+| POST | `/ontology/workflow/rounds/{rid}/metrics/readings` | 记录价值指标实测值（append-only） |
 
 现有 `/ontology/*`、`/standards/*`、`/state/*` 不破坏；新增接口只服务轮次。
 

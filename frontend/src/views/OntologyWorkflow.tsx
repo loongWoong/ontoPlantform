@@ -276,7 +276,7 @@ export function OntologyWorkflow({
   const [reuseSkipped, setReuseSkipped] = useState(false);
   useEffect(() => {
     if (!round) return;
-    const value = round.scope || { summary: "", in_scope: [], out_of_scope: [], actors: [], decisions: [] };
+    const value = round.scope || { summary: "", in_scope: [], out_of_scope: [], actors: [], decisions: [], metrics: [] };
     setScope({
       goal: round.goal || "",
       summary: value.summary || "",
