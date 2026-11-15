@@ -6,7 +6,7 @@ import {
 import {
   api, type WorkflowCq, type WorkflowCqPreview, type WorkflowCqPriority,
   type WorkflowDetail, type WorkflowOversight, type WorkflowReuse,
-  type WorkflowSample,
+  type WorkflowSample, type WorkflowValueMetric,
 } from "../api";
 import { usePlatform } from "../store";
 import {
@@ -769,7 +769,7 @@ export function OntologyWorkflow({
                 out_of_scope: splitRefs(scope.out_of_scope),
                 actors: splitRefs(scope.actors),
                 decisions: round.scope?.decisions || [],
-                metrics: parseJsonRows(scope.metrics),
+                metrics: parseJsonRows(scope.metrics) as unknown as WorkflowValueMetric[],
               },
               target: {
                 min_cq: targetNumber(target.min_cq, 5),

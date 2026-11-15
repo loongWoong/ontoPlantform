@@ -20,6 +20,20 @@ def _round(platform, wid, **overrides):
     return platform.workflow.create_round(wid, "admin", payload)
 
 
+def _draft_workspace(platform):
+    """A workspace with a draft ontology but no published runtime (kernel-free).
+
+    The owner/value-metric/oversight features are platform-side control, so
+    they must be verifiable without the Ontology Runtime Kernel.
+    """
+    wid = platform.workspaces.create("草稿本体", actor="admin")["id"]
+    platform.ontologies.create(wid, "traffic", actor="admin")
+    platform.ontologies.upsert_object(
+        wid, "admin", "Vehicle",
+        properties=[{"name": "plate", "type": "string"}])
+    return wid
+
+
 def _cq(platform, wid, rid, code, question, expected, query,
         *, priority="P1", model_refs=None):
     return platform.workflow.add_cq(wid, "admin", rid, {
@@ -446,8 +460,9 @@ def test_sample_validation_and_configurable_target(platform, workspace_id):
     assert any("与本体不一致" in warning for warning in check["warnings"])
 
 
-def test_owner_responsibility_and_value_metrics_oversight(platform, workspace_id):
-    rid = _round(platform, workspace_id, scope={
+def test_owner_responsibility_and_value_metrics_oversight(platform):
+    wid = _draft_workspace(platform)
+    rid = _round(platform, wid, scope={
         "summary": "对账链路",
         "in_scope": ["车辆", "收费站"],
         "actors": ["业务方甲", "知识工程师乙"],
@@ -459,23 +474,23 @@ def test_owner_responsibility_and_value_metrics_oversight(platform, workspace_id
         ],
     })["id"]
 
-    cq = _cq(platform, workspace_id, rid, "CQ-01", "有哪些车辆？",
+    cq = _cq(platform, wid, rid, "CQ-01", "有哪些车辆？",
              {"kind": "row_count", "value": 2},
              {"object_type": "Vehicle"}, priority="P0",
              model_refs=["Vehicle"])
     platform.workflow.update_cq(
-        workspace_id, "admin", rid, cq["id"], {"owner": "业务方甲"})
+        wid, "admin", rid, cq["id"], {"owner": "业务方甲"})
 
     # the trace matrix now carries the responsible owner
-    matrix = platform.workflow.trace_matrix(workspace_id, "admin", rid)
+    matrix = platform.workflow.trace_matrix(wid, "admin", rid)
     assert matrix["rows"][0]["owner"] == "业务方甲"
 
     platform.workflow.record_metric_reading(
-        workspace_id, "admin", rid, {"metric": "对账差异笔数", "value": 60})
+        wid, "admin", rid, {"metric": "对账差异笔数", "value": 60})
     platform.workflow.record_metric_reading(
-        workspace_id, "admin", rid, {"metric": "取数耗时", "value": 1.2})
+        wid, "admin", rid, {"metric": "取数耗时", "value": 1.2})
 
-    oversight = platform.workflow.oversight(workspace_id, "admin", rid)
+    oversight = platform.workflow.oversight(wid, "admin", rid)
     assert oversight["responsibility"][0]["owner"] == "业务方甲"
     assert oversight["responsibility"][0]["status"] == "open"  # no run yet
     by_name = {m["name"]: m for m in oversight["value_metrics"]}
@@ -486,55 +501,62 @@ def test_owner_responsibility_and_value_metrics_oversight(platform, workspace_id
     assert by_name["取数耗时"]["actual"] == 1.2
 
 
-def test_metric_reading_validation_and_persistence(platform, workspace_id):
-    rid = _round(platform, workspace_id, scope={
+def test_metric_reading_validation_and_persistence(platform):
+    wid = _draft_workspace(platform)
+    rid = _round(platform, wid, scope={
         "metrics": [{"name": "返工工时", "baseline": 20, "target": 5}]})["id"]
     with pytest.raises(ValidationError):
         platform.workflow.record_metric_reading(
-            workspace_id, "admin", rid, {"metric": "未声明的指标", "value": 1})
+            wid, "admin", rid, {"metric": "未声明的指标", "value": 1})
     with pytest.raises(ValidationError):
         platform.workflow.record_metric_reading(
-            workspace_id, "admin", rid,
+            wid, "admin", rid,
             {"metric": "返工工时", "value": "不是数字"})
     platform.workflow.record_metric_reading(
-        workspace_id, "admin", rid, {"metric": "返工工时", "value": 12})
+        wid, "admin", rid, {"metric": "返工工时", "value": 12})
     # a scope update must not clobber the append-only readings
     platform.workflow.update_round(
-        workspace_id, "admin", rid, {"goal": "调整目标"})
-    round_doc = platform.workflow.detail(workspace_id, "admin", rid)["round"]
+        wid, "admin", rid, {"goal": "调整目标"})
+    round_doc = platform.workflow.detail(wid, "admin", rid)["round"]
     assert len(round_doc["value_readings"]) == 1
     assert round_doc["value_readings"][0]["value"] == 12.0
 
 
-def test_oversight_and_metric_reading_rest_routes(http_server):
-    base, wid = http_server
-    status, body = http_post(
-        base, f"/api/workspaces/{wid}/ontology/workflow/rounds",
-        {"name": "管控轮", "scope": {
-            "metrics": [{"name": "对账差异", "baseline": 100, "target": 5}]},
-         "user": "admin"})
-    assert status == 200, body
-    rid = body["id"]
+def test_oversight_and_metric_reading_rest_routes(platform):
+    import threading
+    from http.server import ThreadingHTTPServer
 
-    status, oversight = http_get(
-        base,
-        f"/api/workspaces/{wid}/ontology/workflow/rounds/{rid}/oversight?user=admin")
-    assert status == 200
-    assert oversight["value_metrics"][0]["name"] == "对账差异"
-    assert oversight["value_metrics"][0]["actual"] is None
+    from onto_platform.interfaces.api import build_handler
 
-    status, _ = http_post(
-        base,
-        f"/api/workspaces/{wid}/ontology/workflow/rounds/{rid}/metrics/readings",
-        {"metric": "对账差异", "value": 40, "user": "admin"})
-    assert status == 200
+    wid = _draft_workspace(platform)
+    rid = _round(platform, wid, scope={
+        "metrics": [{"name": "对账差异", "baseline": 100, "target": 5}]})["id"]
 
-    status, oversight = http_get(
-        base,
-        f"/api/workspaces/{wid}/ontology/workflow/rounds/{rid}/oversight?user=admin")
-    assert status == 200
-    assert oversight["value_metrics"][0]["actual"] == 40.0
-    assert oversight["value_metrics"][0]["readings"] == 1
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), build_handler(platform))
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{httpd.server_address[1]}"
+    try:
+        status, oversight = http_get(
+            base,
+            f"/api/workspaces/{wid}/ontology/workflow/rounds/{rid}/oversight?user=admin")
+        assert status == 200
+        assert oversight["value_metrics"][0]["name"] == "对账差异"
+        assert oversight["value_metrics"][0]["actual"] is None
+
+        status, _ = http_post(
+            base,
+            f"/api/workspaces/{wid}/ontology/workflow/rounds/{rid}/metrics/readings",
+            {"metric": "对账差异", "value": 40, "user": "admin"})
+        assert status == 200
+
+        status, oversight = http_get(
+            base,
+            f"/api/workspaces/{wid}/ontology/workflow/rounds/{rid}/oversight?user=admin")
+        assert status == 200
+        assert oversight["value_metrics"][0]["actual"] == 40.0
+        assert oversight["value_metrics"][0]["readings"] == 1
+    finally:
+        httpd.shutdown()
 
 
 
