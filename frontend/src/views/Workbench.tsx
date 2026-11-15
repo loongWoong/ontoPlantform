@@ -281,6 +281,18 @@ export function Workbench() {
             </div>
           </Card>
 
+          <Card title="使用驱动" sub="业务方是否真的在用这个语义世界（全时计数，区别于窗口化 SLO 的“运行得好不好”）。"
+                aside={<Btn size="sm" variant="link" onClick={() => go("assistant")}>去提问</Btn>}>
+            <div className="bento">
+              <div className="col-4"><Stat label="业务提问" value={bundle.loading ? "…" : fmtNum(b?.metrics?.indicators?.ask_total ?? 0)} foot="intelligence.ask" /></div>
+              <div className="col-4"><Stat label="智能体运行" value={bundle.loading ? "…" : fmtNum(b?.metrics?.indicators?.agent_runs_total ?? 0)} foot="intelligence.agent" /></div>
+              <div className="col-4"><Stat label="能力调用" value={bundle.loading ? "…" : fmtNum(b?.metrics?.indicators?.capability_invocations_total ?? 0)} foot="capability.invoke" /></div>
+            </div>
+            {!bundle.loading && !b?.metrics?.indicators?.ask_total && !b?.metrics?.indicators?.agent_runs_total && !b?.metrics?.indicators?.capability_invocations_total && (
+              <p className="muted small gap-top">还没有使用记录：去「AI 助手」提一个问题、调用一次能力，或让业务方打开应用，这里就会出现消费方使用量——没有使用的语义世界，价值无法被证明。</p>
+            )}
+          </Card>
+
           <div className="bento gap-top">
             <div className="col-6">
               <Card title="下一步" sub="按依赖顺序给出，完成前一步之前，后一步通常没有意义。"
